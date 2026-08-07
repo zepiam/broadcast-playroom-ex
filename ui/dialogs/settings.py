@@ -233,14 +233,44 @@ class SettingsDialog(QDialog):
         )
 
     def _build_translate_section(self):
-        self._add_section("translate", "🌐 การแปลภาษา", "แปลข้อความต่างประเทศเป็นไทย")
-        self.at_enabled = QCheckBox("เปิดการแปลอัตโนมัติ")
+        self._add_section("translate", "🌐 การแปลภาษา + หลายภาษา", "แปลข้อความต่างประเทศเป็นไทย + อ่านหลายภาษา")
+        # ★ Auto translate
+        self.at_enabled = QCheckBox("เปิดการแปลอัตโนมัติ (แปลเป็นไทย → TTS อ่านไทย)")
         self._current_section_layout.insertWidget(
             self._current_section_layout.count() - 1, self.at_enabled
         )
         self.at_provider = QComboBox()
-        self.at_provider.addItems(["Google (ฟรี)", "DeepL", "DeepSeek"])
-        self._add_row("ผู้ให้บริการ:", self.at_provider)
+        self.at_provider.addItems(["google", "deepl", "deepseek"])
+        self._add_row("ผู้ให้บริการแปล:", self.at_provider)
+        self.at_apikey = QLineEdit()
+        self.at_apikey.setPlaceholderText("API Key (ถ้าใช้ DeepL/DeepSeek)")
+        self.at_apikey.setEchoMode(QLineEdit.Password)
+        self._add_row("API Key:", self.at_apikey)
+        self.at_host = QLineEdit()
+        self.at_host.setPlaceholderText("Host (สำหรับ DeepL/DeepSeek — ว่าง = default)")
+        self._add_row("Host:", self.at_host)
+
+        # ★ Multilang (อ่านหลายภาษา)
+        sep = QLabel("─" * 40)
+        sep.setStyleSheet("color: #2a2f45;")
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, sep
+        )
+        self.ml_enabled = QCheckBox("อ่านหลายภาษา (ตรวจจับภาษา → เลือกเสียงที่เหมาะสม)")
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, self.ml_enabled
+        )
+        lang_label = QLabel("ภาษาที่รองรับ: en, ja, ko, zh, zh-TW, fr, vi, id")
+        lang_label.setObjectName("Faint")
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, lang_label
+        )
+
+        # ★ Mixed Voice (อ่านสลับภาษาในประโยคเดียว)
+        self.mv_enabled = QCheckBox("Mixed Voice (อ่านสลับหลายเสียงในประโยคเดียว)")
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, self.mv_enabled
+        )
 
     def _build_playroom_section(self):
         self._add_section("playroom", "🎮 Playroom", "ตั้งค่า Playroom triggers")
@@ -331,6 +361,15 @@ class SettingsDialog(QDialog):
         self.read_message.setChecked(getattr(s, 'read_message', True))
         # Translate
         self.at_enabled.setChecked(getattr(s, 'auto_translate_enabled', False))
+        # translate provider
+        provider = getattr(s, 'auto_translate_provider', 'google')
+        idx = self.at_provider.findText(provider)
+        if idx >= 0: self.at_provider.setCurrentIndex(idx)
+        self.at_apikey.setText(getattr(s, 'auto_translate_api_key', '') or '')
+        self.at_host.setText(getattr(s, 'auto_translate_host', '') or '')
+        # multilang + mixed voice
+        self.ml_enabled.setChecked(getattr(s, 'multilang_enabled', False))
+        self.mv_enabled.setChecked(getattr(s, 'mixed_voice_enabled', False))
 
     def _save(self):
         """บันทึกค่าจาก form ลง settings"""
@@ -352,6 +391,11 @@ class SettingsDialog(QDialog):
         s.read_message = self.read_message.isChecked()
         # Translate
         s.auto_translate_enabled = self.at_enabled.isChecked()
+        s.auto_translate_provider = self.at_provider.currentText()
+        s.auto_translate_api_key = self.at_apikey.text().strip()
+        s.auto_translate_host = self.at_host.text().strip()
+        s.multilang_enabled = self.ml_enabled.isChecked()
+        s.mixed_voice_enabled = self.mv_enabled.isChecked()
         # Save
         try:
             from settings import save_settings

@@ -192,13 +192,14 @@ class ChatRow(QWidget):
         layout.addWidget(label, 1)
 
     def _render_content(self, extra, platform):
-        """Render message content — text + emotes + segments"""
+        """Render message content — text + emotes + segments + translated original"""
         segments = extra.get('segments', [])
         twitch_emotes = extra.get('twitch_emotes', []) or []
-        # Also check "emotes" (raw from chat client)
-        raw_emotes = extra.get('emotes', []) or []
         sticker_url = extra.get('sticker_url', '')
         raw_text = extra.get('raw_text', '') or getattr(self.msg, 'text', '')
+        is_translated = bool(extra.get('translated'))
+        original_text = extra.get('original_text', '')
+        source_lang = extra.get('source_lang', '')
 
         # ★ Sticker (MyLive) — show image only
         if sticker_url and not segments and not twitch_emotes:
@@ -206,29 +207,36 @@ class ChatRow(QWidget):
             return
 
         # ★ Segments (MyLive/YouTube/TikTok) — render inline
-        if segments and not getattr(self.msg, 'is_translated', False):
+        #    ถ้าแปลแล้ว → ข้าม segments (เป็น text ต้นฉบับ)
+        if segments and not is_translated:
             self._render_segments(segments)
-            # ★ append translated text if available
-            translated = getattr(self.msg, 'text', '')
-            if translated and translated != raw_text:
-                lbl = QLabel(f"  ⟶ {translated}")
-                lbl.setStyleSheet(f"color: #10b981; font-size: {self._font_size}px;")
-                lbl.setWordWrap(True)
-                self.content_layout.addWidget(lbl)
             return
 
         # ★ Twitch emotes — render with text interpolation
-        if twitch_emotes and raw_text and not getattr(self.msg, 'is_translated', False):
+        #    ถ้าแปลแล้ว → ข้าม emotes (offset ผิด)
+        if twitch_emotes and raw_text and not is_translated:
             self._render_twitch_emotes(raw_text, twitch_emotes)
             return
 
-        # ★ Fallback: plain text
+        # ★ Main text (translated or plain)
         text = getattr(self.msg, 'text', '') or raw_text
         lbl = QLabel(text)
         lbl.setWordWrap(True)
         lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
         lbl.setStyleSheet(f"color: #e5e7eb; font-size: {self._font_size}px;")
         self.content_layout.addWidget(lbl, 1)
+
+        # ★ แสดงต้นฉบับใต้คำแปล (บรรทัด 2 — สีเขียว + flag)
+        if is_translated and original_text:
+            try:
+                from flag_utils import flag_for
+                flag = flag_for(source_lang)
+            except Exception:
+                flag = "🌐"
+            orig_label = QLabel(f"{flag} {original_text}")
+            orig_label.setWordWrap(True)
+            orig_label.setStyleSheet(f"color: #10b981; font-size: {max(10, self._font_size - 1)}px; padding-top: 2px;")
+            self.content_layout.addWidget(orig_label)
 
     def _render_segments(self, segments):
         """Render segments (MyLive/YouTube/TikTok format)"""
@@ -308,6 +316,18 @@ class ChatRow(QWidget):
         """Called when emote image loads"""
         if not pixmap.isNull():
             label.setPixmap(pixmap)
+
+    def update_translation(self, msg):
+        """อัปเดต row เมื่อข้อความถูกแปลแล้ว (re-render content)"""
+        self.msg = msg
+        # ★ clear old content
+        for i in reversed(range(self.content_layout.count())):
+            item = self.content_layout.takeAt(i)
+            if item.widget():
+                item.widget().deleteLater()
+        # ★ re-render with translated content
+        extra = getattr(msg, 'extra', {}) or {}
+        self._render_content(extra, getattr(msg, 'platform', ''))
 
     def _get_platform_color(self, platform):
         """สี author ตามแพลตฟอร์ม"""

@@ -62,6 +62,7 @@ class TTSForLivestreamApp(QMainWindow):
     _chat_message = Signal(object)  # ChatMessage
     _platform_error = Signal(str, str)  # platform, error_msg
     _viewer_update = Signal()
+    _msg_translated = Signal(object)  # ChatMessage (translated)
 
     def __init__(self):
         super().__init__()
@@ -74,6 +75,7 @@ class TTSForLivestreamApp(QMainWindow):
         self._chat_message.connect(self._on_chat_message)
         self._platform_error.connect(self._on_platform_error_signal)
         self._viewer_update.connect(self._update_viewer_ui)
+        self._msg_translated.connect(self._on_msg_translated)
 
         # ═══ State ═══
         self._closing = False
@@ -478,6 +480,8 @@ class TTSForLivestreamApp(QMainWindow):
             if self.settings:
                 self.pipeline.set_filter(self.settings.to_text_filter())
             self.pipeline.on_status = lambda msg: self._safe_status(msg)
+            # ★ translation callback → re-render chat row (thread-safe via signal)
+            self.pipeline.on_translated = lambda msg: self._msg_translated.emit(msg)
             # ★ start the pipeline worker thread (สำคัญ — ถ้าไม่ start TTS จะไม่อ่าน!)
             self.pipeline.start()
         except Exception as e:
@@ -506,6 +510,8 @@ class TTSForLivestreamApp(QMainWindow):
                 auto_translate_langs=getattr(s, 'auto_translate_langs', ['en', 'ja', 'ko', 'zh', 'vi', 'id']),
                 # ★ mixed voice
                 mixed_voice_enabled=getattr(s, 'mixed_voice_enabled', False),
+                multilang_enabled=getattr(s, 'multilang_enabled', False),
+                multilang_langs=getattr(s, 'multilang_langs', ['en', 'ja', 'ko', 'zh', 'zh-TW', 'fr']),
                 # ★ events
                 playroom_enabled=getattr(s, 'playroom_enabled', False),
                 playroom_triggers=list(getattr(s, 'playroom_triggers', [])),
@@ -864,6 +870,24 @@ class TTSForLivestreamApp(QMainWindow):
             self._popout_window.update_viewers(total)
         # ★ forward to composer
         self._composer_push_viewers(total, dict(self._viewer_counts))
+
+    def _on_msg_translated(self, msg):
+        """re-render chat row เมื่อข้อความถูกแปลแล้ว (แสดงคำแปล + ต้นฉบับ)"""
+        # ★ หา row ที่ msg เดียวกัน (object identity)
+        for row in self.chat_panel._rows:
+            if getattr(row, 'msg', None) is msg:
+                row.update_translation(msg)
+                return
+        # ★ fallback: หาด้วย author + original_text (ถ้า object identity ไม่ตรง)
+        extra = getattr(msg, 'extra', {}) or {}
+        original = extra.get('original_text', '')
+        for row in self.chat_panel._rows:
+            row_msg = getattr(row, 'msg', None)
+            if row_msg and getattr(row_msg, 'author', '') == getattr(msg, 'author', ''):
+                row_extra = getattr(row_msg, 'extra', {}) or {}
+                if not row_extra.get('translated') and original:
+                    row.update_translation(msg)
+                    return
 
     # ════════════════════════════════════════════════════════════
     # Voice / TTS controls (#3 RVC + #7 Voice test)

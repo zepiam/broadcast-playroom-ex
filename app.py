@@ -1109,19 +1109,26 @@ class TTSForLivestreamApp(QMainWindow):
             index_path = pth_path.replace('.pth', '.index')
             if not os.path.exists(index_path):
                 index_path = ''
-            try:
-                from rvc_engine import RVCEngine, RVCParams
-                engine = RVCEngine(model_path=pth_path)
-                engine.load()
-                if self.pipeline:
-                    pitch = getattr(self.settings, 'rvc_pitch', 0)
-                    f0method = getattr(self.settings, 'rvc_f0method', 'rmvpe')
-                    params = RVCParams(f0up_key=pitch, f0method=f0method, index_path=index_path)
-                    self.pipeline.set_rvc(engine, voice_id, index_path)
-                self.status_bar.set_status(f"🎤 เสียง: {voice_id} (RVC)")
-            except Exception as e:
-                logger.error(f"Failed to load RVC voice: {e}")
-                self.status_bar.set_status(f"❌ โหลด RVC ไม่ได้: {e}")
+
+            # ★ show loading state
+            self.status_bar.set_status(f"⏳ กำลังโหลด RVC: {voice_id}... (5-15 วินาที)")
+            self.sidebar.voice_combo.setEnabled(False)
+
+            # ★ load in background thread (กัน UI ค้าง)
+            _pth = pth_path
+            _vid = voice_id
+            _idx = index_path
+            def _bg_load_rvc():
+                try:
+                    from rvc_engine import RVCEngine, RVCParams
+                    engine = RVCEngine(model_path=_pth)
+                    engine.load()
+                    QTimer.singleShot(0, lambda: self._on_rvc_loaded(engine, _vid, _idx))
+                except Exception as e:
+                    logger.error(f"Failed to load RVC voice: {e}")
+                    QTimer.singleShot(0, lambda err=str(e): self._on_rvc_load_failed(err))
+
+            threading.Thread(target=_bg_load_rvc, name="RvcLoad", daemon=True).start()
         else:
             self.settings.voice_id = ''
             if self.pipeline:
@@ -1133,6 +1140,18 @@ class TTSForLivestreamApp(QMainWindow):
             save_settings(self.settings)
         except Exception:
             pass
+
+    def _on_rvc_loaded(self, engine, voice_id, index_path):
+        """RVC โหลดเสร็จ (main thread)"""
+        self.sidebar.voice_combo.setEnabled(True)
+        if self.pipeline:
+            self.pipeline.set_rvc(engine, voice_id, index_path)
+        self.status_bar.set_status(f"🎤 เสียง: {voice_id} (RVC)")
+
+    def _on_rvc_load_failed(self, error):
+        """RVC โหลดล้มเหลว (main thread)"""
+        self.sidebar.voice_combo.setEnabled(True)
+        self.status_bar.set_status(f"❌ โหลด RVC ไม่ได้: {error}")
 
     def _on_volume_change(self, value):
         if self.settings:

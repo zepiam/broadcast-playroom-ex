@@ -1,1 +1,5 @@
-{"cmd": "ready", "hwnd": 9047296}
+{"cmd": "ready", "hwnd": 48303514}
+{"cmd": "toggle_demo"}
+{"cmd": "open_settings"}
+{"cmd": "open_settings"}
+{"cmd": "open_settings"}

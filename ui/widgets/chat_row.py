@@ -37,6 +37,7 @@ class ChatRow(QWidget):
         self.msg = msg
         self._font_size = font_size
         self._emote_labels = {}
+        self._emote_threads = []  # ★ keep refs to prevent GC
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
         self._build_ui()
@@ -258,37 +259,28 @@ class ChatRow(QWidget):
         if url.startswith('/emote/') or url.startswith('/'):
             src_url = f"http://localhost:8808{url}"
 
-        # ★ download via QThread (thread-safe)
-        class _EmoteThread(QThread):
-            loaded = Signal(str, QPixmap)
-            def __init__(self, url):
-                super().__init__()
-                self.url = url
-            def run(self):
-                try:
-                    req = urllib.request.Request(self.url, headers={'User-Agent': 'BroadcastPlayroom/2.0'})
-                    with urllib.request.urlopen(req, timeout=5) as resp:
-                        data = resp.read()
-                    img = QImage()
-                    img.loadFromData(data)
-                    if not img.isNull():
-                        pix = QPixmap.fromImage(img).scaled(sz, sz, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                        QTimer.singleShot(0, lambda: self.loaded.emit(self.url, pix))
-                except Exception as e:
-                    logger.debug(f"Emote load failed {self.url}: {e}")
+        # ★ download via QThread (thread-safe) — keep ref to prevent GC
+        thread = QThread()
+        thread._url = src_url
+        thread._sz = sz
+        thread._lbl = lbl
+        def _run():
+            try:
+                import urllib.request
+                req = urllib.request.Request(thread._url, headers={'User-Agent': 'BroadcastPlayroom/2.0'})
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    data = resp.read()
+                img = QImage()
+                img.loadFromData(data)
+                if not img.isNull():
+                    pix = QPixmap.fromImage(img).scaled(thread._sz, thread._sz, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    QTimer.singleShot(0, lambda: _set_pixmap(thread._lbl, pix))
+            except Exception as e:
+                logger.debug(f"Emote load failed {thread._url}: {e}")
 
-        thread = _EmoteThread(src_url)
-        thread.loaded.connect(lambda u, p, l=lbl: self._apply_pixmap(l, p))
+        thread.run = _run
         thread.start()
-        # ★ keep ref to prevent GC
-        self._emote_labels[id(lbl)] = thread
-
-    def _apply_pixmap(self, label, pixmap):
-        """apply pixmap to label"""
-        if pixmap and not pixmap.isNull():
-            label.setPixmap(pixmap)
-            label.setText("")
-            label.setStyleSheet("")
+        self._emote_threads.append(thread)
 
     def _add_sticker(self, url, size=64):
         lbl = QLabel()
@@ -344,6 +336,14 @@ class ChatRow(QWidget):
 
 
 # ★ helper: convert CTkImage / PIL → QPixmap
+def _set_pixmap(label, pixmap):
+    """set pixmap on label (called from QTimer.singleShot — main thread)"""
+    if pixmap and not pixmap.isNull():
+        label.setPixmap(pixmap)
+        label.setText("")
+        label.setStyleSheet("")
+
+
 def _ctk_to_qpixmap(ctk_img, size):
     """แปลง CTkImage → QPixmap (สำหรับ Qt)"""
     try:

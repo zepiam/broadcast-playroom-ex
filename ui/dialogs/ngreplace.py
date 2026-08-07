@@ -57,12 +57,16 @@ class NGReplaceDialog(QDialog):
         hlayout.addWidget(btn_add)
         layout.addWidget(header)
 
-        # ★ Table (3 columns: source / display / read)
-        self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["คำเดิม", "คำที่แสดง", "คำที่อ่าน TTS"])
+        # ★ Table (5 columns: source / display / read / 🔊 original / 🔊 read)
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(["คำเดิม", "คำที่แสดง", "คำที่อ่าน TTS", "🔊 เดิม", "🔊 อ่าน"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)
+        self.table.setColumnWidth(3, 50)
+        self.table.setColumnWidth(4, 50)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setStyleSheet("""
             QTableWidget {
@@ -126,6 +130,34 @@ class NGReplaceDialog(QDialog):
         self.table.setItem(row, 0, QTableWidgetItem(src))
         self.table.setItem(row, 1, QTableWidgetItem(display))
         self.table.setItem(row, 2, QTableWidgetItem(read))
+        # ★ TTS preview buttons
+        btn_orig = QPushButton("🔊")
+        btn_orig.setFixedSize(36, 28)
+        btn_orig.setToolTip("ฟังเสียงคำเดิม")
+        btn_orig.clicked.connect(lambda _, r=row: self._preview_tts(r, 0))
+        self.table.setCellWidget(row, 3, btn_orig)
+        btn_read = QPushButton("🔊")
+        btn_read.setFixedSize(36, 28)
+        btn_read.setToolTip("ฟังเสียงคำที่อ่าน")
+        btn_read.clicked.connect(lambda _, r=row: self._preview_tts(r, 2))
+        self.table.setCellWidget(row, 4, btn_read)
+
+    def _preview_tts(self, row, col):
+        """เล่นเสียง TTS ของ cell ที่เลือก"""
+        item = self.table.item(row, col)
+        if not item:
+            return
+        text = item.text().strip()
+        if not text:
+            return
+        # ★ enqueue เข้า pipeline (ถ้ามี)
+        if self.parent_app and hasattr(self.parent_app, 'pipeline') and self.parent_app.pipeline:
+            try:
+                from chat_twitch import ChatMessage
+                msg = ChatMessage(platform='test', author='ทดสอบ', text=text)
+                self.parent_app.pipeline.enqueue(msg)
+            except Exception as e:
+                logger.error(f"TTS preview failed: {e}")
 
     def _add_row(self):
         """เพิ่มแถวว่าง"""
@@ -186,18 +218,50 @@ class NGReplaceDialog(QDialog):
 
         def _worker():
             try:
-                import requests as _req
-                r = _req.get(DICT_URL, headers={"User-Agent": "BroadcastPlayroom/2.0"},
-                             timeout=20, allow_redirects=True)
-                if r.status_code != 200:
+                raw = None
+                # ★ ลอง requests ก่อน
+                try:
+                    import requests as _req
+                    r = _req.get(DICT_URL, headers={"User-Agent": "BroadcastPlayroom/2.0"},
+                                 timeout=20, allow_redirects=True)
+                    if r.status_code == 200:
+                        raw = r.text
+                    else:
+                        QTimer.singleShot(0, lambda: QMessageBox.critical(
+                            self, "ล้มเหลว", f"เซิร์ฟเวอร์ตอบ HTTP {r.status_code}"))
+                        return
+                except Exception:
+                    pass
+
+                # ★ fallback: urllib
+                if raw is None:
+                    import urllib.request as _urq
+                    import ssl
+                    ctx = ssl.create_default_context()
+                    ctx.load_default_certs()
+                    req = _urq.Request(DICT_URL, headers={
+                        "User-Agent": "BroadcastPlayroom/2.0",
+                        "Accept": "application/json",
+                    })
+                    with _urq.urlopen(req, timeout=20, context=ctx) as resp:
+                        raw = resp.read().decode("utf-8")
+
+                # ★ parse JSON — อาจเป็น {replace_words: {...}} หรือ dict ตรงๆ
+                parsed = _json.loads(raw)
+                if isinstance(parsed, dict) and "replace_words" in parsed:
+                    incoming = parsed["replace_words"]
+                elif isinstance(parsed, dict):
+                    incoming = parsed
+                else:
                     QTimer.singleShot(0, lambda: QMessageBox.critical(
-                        self, "ล้มเหลว", f"เซิร์ฟเวอร์ตอบ HTTP {r.status_code}"))
+                        self, "ล้มเหลว", "format ไม่ถูกต้อง"))
                     return
-                incoming = _json.loads(r.text)
-                if not isinstance(incoming, dict):
-                    QTimer.singleShot(0, lambda: QMessageBox.critical(
-                        self, "ล้มเหลว", "คลังศัพท์ว่าง หรือ format ไม่ถูกต้อง"))
+
+                if not isinstance(incoming, dict) or not incoming:
+                    QTimer.singleShot(0, lambda: QMessageBox.warning(
+                        self, "ไม่มีข้อมูล", "คลังศัพท์ว่าง"))
                     return
+
                 QTimer.singleShot(0, lambda: self._on_download_done(incoming))
             except Exception as e:
                 logger.error(f"Download failed: {e}")

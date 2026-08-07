@@ -97,11 +97,26 @@ class TTSForLivestreamApp(QMainWindow):
         """เริ่ม servers ทั้งหมด (overlay + composer + playroom)"""
         # ★ Composer server (Canvas Overlay Composer)
         self._start_composer_server()
+        # ★ Overlay server (OBS Browser Source)
+        self._start_overlay_server()
         # ★ Playroom server (ถ้าเปิดไว้)
         if getattr(self.settings, 'playroom_enabled', False):
             self._start_playroom_server()
         # ★ Now Playing watcher (หน่วง 5 วิ)
         QTimer.singleShot(5000, self._start_np_watcher)
+
+    def _start_overlay_server(self):
+        """เริ่ม overlay server (OBS Browser Source)"""
+        try:
+            from overlay_server import OverlayServer
+            self.overlay_server = OverlayServer(self.settings)
+            if self.overlay_server.start():
+                logger.info("Overlay server started")
+            else:
+                self.overlay_server = None
+        except Exception as e:
+            logger.error(f"Failed to start overlay server: {e}")
+            self.overlay_server = None
 
     def _start_composer_server(self):
         """เริ่ม composer server"""
@@ -653,8 +668,28 @@ class TTSForLivestreamApp(QMainWindow):
         dlg.exec()
 
     def _toggle_overlay(self):
-        """เปิด/ปิด overlay"""
-        self.status_bar.set_status("Overlay — เร็วๆ นี้")
+        """เปิด/ปิด Game Overlay (subprocess)"""
+        if hasattr(self, '_overlay_proc') and self._overlay_proc:
+            # ★ ปิด overlay
+            try:
+                self._overlay_proc.terminate()
+            except Exception:
+                pass
+            self._overlay_proc = None
+            self.status_bar.set_status("🔲 Overlay ปิดแล้ว")
+            return
+        # ★ เปิด overlay (subprocess)
+        import subprocess
+        import sys
+        try:
+            self._overlay_proc = subprocess.Popen(
+                [sys.executable, 'game_overlay_qt.py', '--port', '8767'],
+                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0,
+            )
+            self.status_bar.set_status("🔲 Overlay เปิดแล้ว")
+        except Exception as e:
+            logger.error(f"Failed to start overlay: {e}")
+            self.status_bar.set_status(f"❌ Overlay: {e}")
 
     def _toggle_mute(self):
         """เปิด/ปิด TTS"""

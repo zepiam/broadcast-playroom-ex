@@ -74,9 +74,12 @@ class ChatPanel(QFrame):
         self.scroll.setWidget(self.container)
         layout.addWidget(self.scroll, 1)
 
-    def add_message(self, msg):
-        """เพิ่ม chat message ใหม่ — ใหม่สุดอยู่บน (insert at index 0)"""
-        row = ChatRow(msg, self.container)
+    def add_message(self, msg, font_size=None):
+        """เพิ่ม chat message ใหม่ — ใหม่สุดอยู่บน (insert at index 0)
+        font_size: ถ้าระบุ → ใช้ขนาดนี้ (สำหรับ font scale)
+        """
+        fs = font_size or getattr(self, '_current_font_size', 14)
+        row = ChatRow(msg, self.container, fs)
         self.container_layout.insertWidget(0, row)
         self._rows.append(row)
 

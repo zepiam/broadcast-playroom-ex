@@ -109,9 +109,9 @@ class ChatRow(QWidget):
         self._build_ui()
 
     def _build_ui(self):
-        layout = QHBoxLayout(self)
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(6)
+        layout.setSpacing(2)
         layout.setAlignment(Qt.AlignTop)
         # ★ ใช้ SizePolicy เพื่อให้ row ขยายตามเนื้อหา (ไม่ตัดความสูง)
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
@@ -128,33 +128,28 @@ class ChatRow(QWidget):
         platform = getattr(self.msg, 'platform', '')
         author = getattr(self.msg, 'author', '?') or '?'
 
-        # ★ Author label (clickable)
+        # ★ Author label (clickable) — อยู่บนสุดของ row
         self.author_label = QLabel()
         self.author_label.setCursor(Qt.PointingHandCursor)
         self.author_label.setTextFormat(Qt.RichText)
         author_color = self._get_platform_color(platform)
-        # ★ apply rename if available
         display_name = author
         self.author_label.setText(f'<span style="color:{author_color}; font-weight:600;">{display_name}</span>:')
         font = QFont("Kanit", self._font_size)
         font.setWeight(QFont.DemiBold)
         self.author_label.setFont(font)
-        # ★ ไม่ fixed height — ให้ขยายตาม font
-        self.author_label.setMinimumHeight(self._font_size + 8)
-        # click handler
+        self.author_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         self.author_label.mousePressEvent = lambda e: self.author_clicked.emit(author)
         layout.addWidget(self.author_label)
 
-        # ★ Message content (text + emotes + segments)
-        self.content_widget = QWidget()
-        self.content_layout = QHBoxLayout(self.content_widget)
+        # ★ Content area — vertical layout (ข้อความแปล บน / ต้นฉบับ ล่าง)
+        self.content_layout = QVBoxLayout()
         self.content_layout.setContentsMargins(0, 0, 0, 0)
         self.content_layout.setSpacing(2)
-        self.content_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
 
         # render content
         self._render_content(extra, platform)
-        layout.addWidget(self.content_widget, 1)
+        layout.addLayout(self.content_layout)
 
     def _build_event_row(self, layout, event):
         """render event message (sub/bits/raid/etc)"""
@@ -206,27 +201,29 @@ class ChatRow(QWidget):
             self._add_sticker(sticker_url)
             return
 
-        # ★ Segments (MyLive/YouTube/TikTok) — render inline
-        #    ถ้าแปลแล้ว → ข้าม segments (เป็น text ต้นฉบับ)
+        # ★ inline layout สำหรับ text + emotes (แนวนอน)
+        inline_layout = QHBoxLayout()
+        inline_layout.setContentsMargins(0, 0, 0, 0)
+        inline_layout.setSpacing(2)
+
+        # ★ Segments — render inline
         if segments and not is_translated:
-            self._render_segments(segments)
-            return
+            self._render_segments_inline(inline_layout, segments)
+        elif twitch_emotes and raw_text and not is_translated:
+            self._render_twitch_emotes_inline(inline_layout, raw_text, twitch_emotes)
+        else:
+            # plain text
+            text = getattr(self.msg, 'text', '') or raw_text
+            lbl = QLabel(text)
+            lbl.setWordWrap(True)
+            lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            lbl.setStyleSheet(f"color: #e5e7eb; font-size: {self._font_size}px;")
+            lbl.setFont(QFont("Kanit", self._font_size))
+            inline_layout.addWidget(lbl, 1)
 
-        # ★ Twitch emotes — render with text interpolation
-        #    ถ้าแปลแล้ว → ข้าม emotes (offset ผิด)
-        if twitch_emotes and raw_text and not is_translated:
-            self._render_twitch_emotes(raw_text, twitch_emotes)
-            return
+        self.content_layout.addLayout(inline_layout)
 
-        # ★ Main text (translated or plain)
-        text = getattr(self.msg, 'text', '') or raw_text
-        lbl = QLabel(text)
-        lbl.setWordWrap(True)
-        lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        lbl.setStyleSheet(f"color: #e5e7eb; font-size: {self._font_size}px;")
-        self.content_layout.addWidget(lbl, 1)
-
-        # ★ แสดงต้นฉบับใต้คำแปล (บรรทัด 2 — สีเขียว + flag)
+        # ★ ต้นฉบับ (บรรทัดใหม่ — ใต้คำแปล)
         if is_translated and original_text:
             try:
                 from flag_utils import flag_for
@@ -235,11 +232,12 @@ class ChatRow(QWidget):
                 flag = "🌐"
             orig_label = QLabel(f"{flag} {original_text}")
             orig_label.setWordWrap(True)
+            orig_label.setFont(QFont("Kanit", max(10, self._font_size - 1)))
             orig_label.setStyleSheet(f"color: #10b981; font-size: {max(10, self._font_size - 1)}px; padding-top: 2px;")
             self.content_layout.addWidget(orig_label)
 
-    def _render_segments(self, segments):
-        """Render segments (MyLive/YouTube/TikTok format)"""
+    def _render_segments_inline(self, layout, segments):
+        """Render segments inline ใน layout แนวนอน"""
         for seg in segments:
             stype = seg.get('type', '')
             if stype == 'text':
@@ -247,56 +245,56 @@ class ChatRow(QWidget):
                 if content:
                     lbl = QLabel(content)
                     lbl.setWordWrap(True)
+                    lbl.setFont(QFont("Kanit", self._font_size))
                     lbl.setStyleSheet(f"color: #e5e7eb; font-size: {self._font_size}px;")
-                    self.content_layout.addWidget(lbl)
+                    layout.addWidget(lbl)
             elif stype == 'emoji':
                 char = seg.get('char', '')
                 if char:
                     lbl = QLabel(char)
+                    lbl.setFont(QFont("Kanit", self._font_size + 2))
                     lbl.setStyleSheet(f"font-size: {self._font_size + 2}px;")
-                    self.content_layout.addWidget(lbl)
+                    layout.addWidget(lbl)
             elif stype == 'emote':
                 url = seg.get('url', '')
                 if url:
-                    self._add_emote(url)
+                    self._add_emote_to_layout(layout, url)
 
-    def _render_twitch_emotes(self, text, emotes):
-        """Render Twitch emotes inline with text"""
+    def _render_twitch_emotes_inline(self, layout, text, emotes):
+        """Render Twitch emotes inline"""
         sorted_emotes = sorted(emotes, key=lambda e: e.get('start', 0))
         cur = 0
         for em in sorted_emotes:
             start = em.get('start', 0)
             end = em.get('end', 0)
             url = em.get('url', '')
-            # text before emote
             if start > cur:
                 txt = text[cur:start]
                 if txt:
                     lbl = QLabel(txt)
                     lbl.setWordWrap(True)
+                    lbl.setFont(QFont("Kanit", self._font_size))
                     lbl.setStyleSheet(f"color: #e5e7eb; font-size: {self._font_size}px;")
-                    self.content_layout.addWidget(lbl)
-            # emote image
+                    layout.addWidget(lbl)
             if url:
-                self._add_emote(url)
+                self._add_emote_to_layout(layout, url)
             cur = end + 1
-        # remaining text
         if cur < len(text):
             txt = text[cur:]
             if txt:
                 lbl = QLabel(txt)
                 lbl.setWordWrap(True)
+                lbl.setFont(QFont("Kanit", self._font_size))
                 lbl.setStyleSheet(f"color: #e5e7eb; font-size: {self._font_size}px;")
-                self.content_layout.addWidget(lbl)
+                layout.addWidget(lbl)
 
-    def _add_emote(self, url, size=28):
-        """Add emote image to row (async load)"""
+    def _add_emote_to_layout(self, layout, url, size=28):
+        """Add emote image to a horizontal layout (async load)"""
         lbl = QLabel()
         lbl.setFixedSize(size, size)
         lbl.setAlignment(Qt.AlignCenter)
-        self.content_layout.addWidget(lbl)
+        layout.addWidget(lbl)
         self._emote_labels[url] = lbl
-        # async load
         loader = get_emote_loader()
         loader.loaded.connect(lambda u, p, l=lbl: self._on_emote_loaded(u, p, l))
         loader.load(url, size)
@@ -320,14 +318,24 @@ class ChatRow(QWidget):
     def update_translation(self, msg):
         """อัปเดต row เมื่อข้อความถูกแปลแล้ว (re-render content)"""
         self.msg = msg
-        # ★ clear old content
-        for i in reversed(range(self.content_layout.count())):
-            item = self.content_layout.takeAt(i)
+        # ★ clear old content layout
+        while self.content_layout.count():
+            item = self.content_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+            elif item.layout():
+                self._clear_sublayout(item.layout())
         # ★ re-render with translated content
         extra = getattr(msg, 'extra', {}) or {}
         self._render_content(extra, getattr(msg, 'platform', ''))
+
+    def _clear_sublayout(self, layout):
+        """clear sub-layout (inline layout)"""
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        layout.deleteLater()
 
     def _get_platform_color(self, platform):
         """สี author ตามแพลตฟอร์ม"""

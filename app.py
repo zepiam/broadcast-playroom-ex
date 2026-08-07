@@ -1134,6 +1134,8 @@ class TTSForLivestreamApp(QMainWindow):
         scale = getattr(self, '_chat_font_scale', 0)
         base = 14
         size = base + scale
+        # ★ เก็บขนาดปัจจุบัน → message ใหม่จะได้ใช้ขนาดนี้
+        self.chat_panel._current_font_size = size
         # ★ re-render ทุก row (ล้างเก่า + สร้างใหม่ด้วยขนาดใหม่)
         msgs = []
         for row in self.chat_panel._rows:
@@ -1142,9 +1144,7 @@ class TTSForLivestreamApp(QMainWindow):
         self.chat_panel.clear_messages()
         for msg in msgs:
             row = ChatRow(msg, self.chat_panel.container, size)
-            self.chat_panel.container_layout.insertWidget(
-                self.chat_panel.container_layout.count() - 1, row
-            )
+            self.chat_panel.container_layout.insertWidget(0, row)
             self.chat_panel._rows.append(row)
         self.status_bar.set_status(f"🔤 Font: {size}px")
 

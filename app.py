@@ -780,8 +780,104 @@ class TTSForLivestreamApp(QMainWindow):
                 self.pipeline.enqueue(msg)
             except Exception:
                 pass
-        # ★ forward to composer (overlay)
+        # ★ forward to composer (Canvas overlay — includes playroom widget + emote party widget)
         self._composer_push_message(msg)
+        self._composer_push_emotes(msg)
+        # ★ forward to overlay server (OBS overlay)
+        self._overlay_push_message(msg)
+        # ★ forward to game overlay (ถ้าเปิดอยู่)
+        if hasattr(self, '_game_overlay') and self._game_overlay and self._game_overlay.is_running:
+            try:
+                self._game_overlay.add_row(msg)
+            except Exception:
+                pass
+
+    def _composer_push_emotes(self, msg):
+        """สกัด emote จาก message → push ไป Emote Party widget"""
+        if self.composer_server is None:
+            return
+        try:
+            extra = getattr(msg, 'extra', {}) or {}
+            has_ep = any(
+                w.get("type") == "emote_party" and w.get("enabled", True)
+                for w in getattr(self.settings, "composer_widgets", []) or []
+            )
+            if not has_ep:
+                return
+            emotes = []
+            # Twitch emotes
+            for em in (extra.get("emotes") or []):
+                eid = em.get("id")
+                url = em.get("url", "")
+                if url:
+                    emotes.append({"url": url, "text": "", "source": "twitch"})
+                elif eid is not None:
+                    emotes.append({"url": f"/emote/{eid}", "text": "", "source": "twitch"})
+            # Segments (YouTube/TikTok/MyLive)
+            for seg in (extra.get("segments") or []):
+                if isinstance(seg, dict) and seg.get("type") == "emote":
+                    url = seg.get("url", "") or seg.get("src", "")
+                    if url:
+                        emotes.append({"url": url, "text": "", "source": getattr(msg, 'platform', '')})
+            # Unicode emoji
+            any_ep_emoji = any(
+                w.get("type") == "emote_party" and w.get("enabled", True) and w.get("ep_emoji_enabled", True)
+                for w in getattr(self.settings, "composer_widgets", []) or []
+            )
+            if any_ep_emoji:
+                raw_text = extra.get("raw_text") or getattr(msg, 'text', '') or ''
+                emoji_groups = self._extract_emoji_groups(raw_text)
+                for eg in emoji_groups:
+                    emotes.append({"url": "", "text": eg, "source": "emoji"})
+            if emotes:
+                self.composer_server.push_emote_party(emotes)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _extract_emoji_groups(text):
+        """สกัด emoji จาก text"""
+        if not text:
+            return []
+        result = []
+        current = []
+        def _is_emoji_cp(cp):
+            return ((0x1F300 <= cp <= 0x1FAFF) or (0x2600 <= cp <= 0x27BF) or
+                    (0x1F600 <= cp <= 0x1F64F) or (0x1F900 <= cp <= 0x1F9FF) or
+                    (0x2B00 <= cp <= 0x2BFF) or (0x2300 <= cp <= 0x23FF))
+        def _is_modifier_cp(cp):
+            return (cp == 0x200D or cp == 0xFE0F or
+                    (0x1F3FB <= cp <= 0x1F3FF) or (0xE0020 <= cp <= 0xE007F))
+        for ch in text:
+            cp = ord(ch)
+            if _is_emoji_cp(cp):
+                current.append(ch)
+            elif _is_modifier_cp(cp) and current:
+                current.append(ch)
+            else:
+                if current:
+                    result.append("".join(current))
+                    current = []
+        if current:
+            result.append("".join(current))
+        filtered = []
+        for em in result:
+            stripped = em.replace("\uFE0F", "").replace("\u200D", "").strip()
+            if not stripped or stripped.isdigit() or stripped in ("#", "*"):
+                continue
+            filtered.append(em)
+        return filtered
+
+    def _overlay_push_message(self, msg):
+        """forward chat message ไป overlay server (OBS + game overlay)"""
+        if self.overlay_server is None:
+            return
+        try:
+            payload = self._serialize_msg_for_overlay(msg)
+            if payload:
+                self.overlay_server.push_message(payload)
+        except Exception:
+            pass
 
     def _on_connect_result(self, platform, client, ok):
         """รับผล connect จาก signal (main thread)"""

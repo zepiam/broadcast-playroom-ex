@@ -32,12 +32,8 @@ def _get_cache_lock():
 
 
 class EmoteLoader(QObject):
-    """Background thread loader for emote images"""
+    """QThread-based loader for emote images — thread-safe signal emission"""
     loaded = Signal(str, QPixmap)  # url, pixmap
-
-    def __init__(self):
-        super().__init__()
-        self._thread = None
 
     def load(self, url, size=28):
         """Load emote async — emit loaded signal when done"""
@@ -49,37 +45,42 @@ class EmoteLoader(QObject):
                     self.loaded.emit(url, pix.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
                 return
 
-        # load in background
-        def _bg_load():
-            try:
-                # resolve relative URLs (composer proxy)
-                src_url = url
-                if url.startswith('/emote/'):
-                    src_url = f"http://localhost:8808{url}"
-                elif url.startswith('/'):
-                    src_url = f"http://localhost:8808{url}"
-
-                req = urllib.request.Request(src_url, headers={'User-Agent': 'BroadcastPlayroom/2.0'})
-                with urllib.request.urlopen(req, timeout=5) as resp:
-                    data = resp.read()
-                img = QImage()
-                img.loadFromData(data)
-                if img.isNull():
+        # ★ use QThread (not raw thread) — signal emission must be from Qt thread
+        class _LoadThread(QThread):
+            def __init__(self, url, callback):
+                super().__init__()
+                self.url = url
+                self.callback = callback
+            def run(self):
+                try:
+                    src_url = self.url
+                    if self.url.startswith('/emote/') or self.url.startswith('/'):
+                        src_url = f"http://localhost:8808{self.url}"
+                    req = urllib.request.Request(src_url, headers={'User-Agent': 'BroadcastPlayroom/2.0'})
+                    with urllib.request.urlopen(req, timeout=5) as resp:
+                        data = resp.read()
+                    img = QImage()
+                    img.loadFromData(data)
+                    if img.isNull():
+                        with _get_cache_lock():
+                            _EMOTE_CACHE[self.url] = None
+                        return
+                    pix = QPixmap.fromImage(img)
                     with _get_cache_lock():
-                        _EMOTE_CACHE[url] = None
-                    return
-                pix = QPixmap.fromImage(img)
-                with _get_cache_lock():
-                    _EMOTE_CACHE[url] = pix
-                # emit on main thread
-                self.loaded.emit(url, pix.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-            except Exception as e:
-                logger.debug(f"Emote load failed {url}: {e}")
-                with _get_cache_lock():
-                    _EMOTE_CACHE[url] = None
+                        _EMOTE_CACHE[self.url] = pix
+                    # ★ emit on main thread (QThread.finished or direct signal)
+                    self.callback(self.url, pix, size)
+                except Exception as e:
+                    logger.debug(f"Emote load failed {self.url}: {e}")
+                    with _get_cache_lock():
+                        _EMOTE_CACHE[self.url] = None
 
-        import threading
-        t = threading.Thread(target=_bg_load, daemon=True)
+        def _on_loaded(url, pix, sz):
+            """called from QThread.run → schedule on main thread"""
+            QTimer.singleShot(0, lambda: self.loaded.emit(
+                url, pix.scaled(sz, sz, Qt.KeepAspectRatio, Qt.SmoothTransformation)))
+
+        t = _LoadThread(url, _on_loaded)
         t.start()
 
     def load_sticker(self, url, size=64):

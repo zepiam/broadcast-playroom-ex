@@ -1018,6 +1018,22 @@ class TTSForLivestreamApp(QMainWindow):
         dlg.exec()
         self._refresh_voice_combo()
 
+    def _safe_status(self, msg):
+        """thread-safe status update (เรียกจาก game_overlay.py + pipeline)"""
+        QTimer.singleShot(0, lambda: self.status_bar.set_status(msg))
+
+    def after(self, ms, callback):
+        """Tk compatibility shim — game_overlay.py อ้าง parent_app.after"""
+        QTimer.singleShot(ms, callback)
+
+    def _open_game_overlay_settings(self):
+        """game_overlay.py อ้าง — เปิด settings"""
+        self._open_settings()
+
+    def _update_game_overlay_btn(self):
+        """game_overlay.py อ้าง — update button state (no-op ใน v2)"""
+        pass
+
     # ════════════════════════════════════════════════════════════
     # TopBar actions (#6 Translate + #10 OBS + #11 Secret code + #12 Viewer profile + #13 Playroom + #14 Overlay+ + #15 Menu)
     # ════════════════════════════════════════════════════════════
@@ -1186,28 +1202,38 @@ class TTSForLivestreamApp(QMainWindow):
         self.status_bar.set_status(f"🔤 Font: {size}px")
 
     def _toggle_overlay(self):
-        """เปิด/ปิด Game Overlay (subprocess)"""
-        if hasattr(self, '_overlay_proc') and self._overlay_proc:
-            # ★ ปิด overlay
+        """เปิด/ปิด Game Overlay (ใช้ GameOverlay manager เหมือน v1)"""
+        # ★ ถ้ารันอยู่ → ปิด
+        if hasattr(self, '_game_overlay') and self._game_overlay and self._game_overlay.is_running:
             try:
-                self._overlay_proc.terminate()
+                self._game_overlay.stop()
             except Exception:
                 pass
-            self._overlay_proc = None
+            self._game_overlay = None
             self.status_bar.set_status("🔲 Overlay ปิดแล้ว")
             return
-        # ★ เปิด overlay (subprocess)
-        import subprocess
-        import sys
-        try:
-            self._overlay_proc = subprocess.Popen(
-                [sys.executable, 'game_overlay_qt.py', '--port', '8767'],
-                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0,
-            )
+        # ★ เปิด (background thread — server + subprocess)
+        def _bg_start():
+            try:
+                from game_overlay import GameOverlay
+                ov = GameOverlay(self)
+                ok = ov.start()
+                QTimer.singleShot(0, lambda: self._on_overlay_started(ok, ov if ok else None))
+            except Exception as e:
+                logger.error(f"Failed to start overlay: {e}")
+                QTimer.singleShot(0, lambda: self.status_bar.set_status(f"❌ Overlay: {e}"))
+
+        threading.Thread(target=_bg_start, name="GameOverlayToggle", daemon=True).start()
+        self.status_bar.set_status("⏳ Game Overlay กำลังเปิด...")
+
+    def _on_overlay_started(self, ok, overlay):
+        """หลัง Game Overlay เริ่มเสร็จ"""
+        if ok and overlay:
+            self._game_overlay = overlay
             self.status_bar.set_status("🔲 Overlay เปิดแล้ว")
-        except Exception as e:
-            logger.error(f"Failed to start overlay: {e}")
-            self.status_bar.set_status(f"❌ Overlay: {e}")
+        else:
+            self._game_overlay = None
+            self.status_bar.set_status("❌ Overlay เปิดไม่ได้")
 
     def _toggle_mute(self):
         """เปิด/ปิด TTS"""
@@ -1219,9 +1245,6 @@ class TTSForLivestreamApp(QMainWindow):
     # ════════════════════════════════════════════════════════════
     # Logic bridges (เรียกจาก widgets)
     # ════════════════════════════════════════════════════════════
-    def _safe_status(self, msg):
-        """thread-safe status update"""
-        QTimer.singleShot(0, lambda: self.status_bar.set_status(msg))
 
     def _maybe_auto_connect(self):
         """auto-connect แพลตฟอร์มที่เปิดไว้ (per-platform checkbox)"""
@@ -1264,6 +1287,12 @@ class TTSForLivestreamApp(QMainWindow):
         if self._np_watcher:
             try:
                 self._np_watcher.stop()
+            except Exception:
+                pass
+        # ★ หยุด Game Overlay
+        if hasattr(self, '_game_overlay') and self._game_overlay:
+            try:
+                self._game_overlay.stop()
             except Exception:
                 pass
         # ★ หยุด servers

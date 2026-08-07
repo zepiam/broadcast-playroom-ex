@@ -635,6 +635,8 @@ class TTSForLivestreamApp(QMainWindow):
         self.sidebar.voice_combo.currentIndexChanged.connect(self._on_voice_change)
         self.sidebar.vol_slider.valueChanged.connect(self._on_volume_change)
         self.sidebar.rate_slider.valueChanged.connect(self._on_rate_change)
+        self.sidebar.pitch_slider.valueChanged.connect(self._on_pitch_change)
+        self.sidebar.f0_combo.currentIndexChanged.connect(self._on_f0method_change)
         self.sidebar.voice_download_btn.clicked.connect(self._open_voice_downloader)
         self.sidebar.voice_test_btn.clicked.connect(self._test_voice)
         # ★ refresh voice combo
@@ -1275,6 +1277,12 @@ class TTSForLivestreamApp(QMainWindow):
         self._rvc_loading = False
         self.sidebar.voice_combo.setEnabled(True)
         if self.pipeline:
+            pitch = getattr(self.settings, 'rvc_pitch', 0)
+            methods = ['rmvpe', 'fc', 'pm', 'harvest', 'crepe']
+            f0_idx = self.sidebar.f0_combo.currentIndex()
+            f0method = methods[f0_idx] if f0_idx < len(methods) else 'rmvpe'
+            from rvc_engine import RVCParams
+            params = RVCParams(f0up_key=pitch, f0method=f0method, index_path=index_path)
             self.pipeline.set_rvc(engine, voice_id, index_path)
         self.status_bar.set_status(f"🎤 เสียง: {voice_id} (RVC)")
         self.sidebar.rvc_status.setText(f"✅ {voice_id} (RVC)")
@@ -1307,6 +1315,22 @@ class TTSForLivestreamApp(QMainWindow):
             self.settings.rate = value
         if self.pipeline:
             self.pipeline.config.rate = value
+
+    def _on_pitch_change(self, value):
+        """ปรับ pitch (RVC)"""
+        if self.settings:
+            self.settings.rvc_pitch = value
+        if self.pipeline:
+            self.pipeline.config.rvc_pitch = value
+
+    def _on_f0method_change(self, index):
+        """เปลี่ยน f0method (RVC)"""
+        methods = ['rmvpe', 'fc', 'pm', 'harvest', 'crepe']
+        method = methods[index] if index < len(methods) else 'rmvpe'
+        if self.settings:
+            self.settings.rvc_f0method = method
+        if self.pipeline:
+            self.pipeline.config.rvc_f0method = method
 
     def _test_voice(self):
         """ทดสอบเสียง TTS"""

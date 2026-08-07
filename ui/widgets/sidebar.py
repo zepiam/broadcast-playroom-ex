@@ -235,14 +235,50 @@ class Sidebar(QFrame):
         self.vol_slider.setValue(100)
         clayout.addWidget(self.vol_slider)
 
-        # ★ Rate slider
-        rate_label = QLabel("Rate")
+        # ★ Rate slider (ความเร็วอ่าน)
+        rate_label = QLabel("Speed (ความเร็ว)")
         rate_label.setStyleSheet("color: #9ca3af; font-size: 11px;")
         clayout.addWidget(rate_label)
         self.rate_slider = QSlider(Qt.Horizontal)
         self.rate_slider.setRange(-50, 50)
         self.rate_slider.setValue(0)
         clayout.addWidget(self.rate_slider)
+
+        # ★ RVC controls (แสดงเฉพาะ Full — มี RVC)
+        self.rvc_controls = QWidget()
+        rvc_layout = QVBoxLayout(self.rvc_controls)
+        rvc_layout.setContentsMargins(0, 0, 0, 0)
+        rvc_layout.setSpacing(2)
+        # f0method
+        f0_label = QLabel("RVC โหมด")
+        f0_label.setStyleSheet("color: #9ca3af; font-size: 11px;")
+        rvc_layout.addWidget(f0_label)
+        self.f0_combo = QComboBox()
+        self.f0_combo.addItems(["rmvpe (คมชัด)", "fc (เร็ว)", "pm (เบสิก)", "harvest (นุ่ม)", "crepe (ละเอียด)"])
+        self.f0_combo.setCurrentIndex(0)
+        rvc_layout.addWidget(self.f0_combo)
+        # pitch slider
+        pitch_label_row = QHBoxLayout()
+        pitch_label = QLabel("Pitch")
+        pitch_label.setStyleSheet("color: #9ca3af; font-size: 11px;")
+        self.pitch_val_label = QLabel("+0")
+        self.pitch_val_label.setStyleSheet("color: #06b6d4; font-size: 11px;")
+        pitch_label_row.addWidget(pitch_label)
+        pitch_label_row.addStretch()
+        pitch_label_row.addWidget(self.pitch_val_label)
+        rvc_layout.addLayout(pitch_label_row)
+        self.pitch_slider = QSlider(Qt.Horizontal)
+        self.pitch_slider.setRange(-24, 24)
+        self.pitch_slider.setValue(0)
+        self.pitch_slider.valueChanged.connect(lambda v: self.pitch_val_label.setText(f"{v:+d}"))
+        rvc_layout.addWidget(self.pitch_slider)
+        clayout.addWidget(self.rvc_controls)
+        # ★ ซ่อน RVC controls ถ้าเป็น Lite (ไม่มี RVC)
+        try:
+            import rvc_engine
+            self.rvc_controls.setVisible(True)
+        except ImportError:
+            self.rvc_controls.setVisible(False)
 
         clayout.addStretch()
         self.scroll.setWidget(container)

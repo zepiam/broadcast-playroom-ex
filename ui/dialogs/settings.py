@@ -258,53 +258,105 @@ class SettingsDialog(QDialog):
         )
 
     def _build_translate_section(self):
-        self._add_section("translate", "🌐 การแปลภาษา + หลายภาษา", "แปลข้อความต่างประเทศเป็นไทย + อ่านหลายภาษา")
-        # ★ Auto translate
-        self.at_enabled = QCheckBox("เปิดการแปลอัตโนมัติ (แปลเป็นไทย → TTS อ่านไทย)")
+        self._add_section("translate", "🌐 การแปลภาษา + หลายภาษา", "เลือกโหมด: แปลเป็นไทย หรือ อ่านหลายภาษา")
+        from PySide6.QtWidgets import QRadioButton, QButtonGroup, QGridLayout
+
+        # ★ โหมดเลือก (radio buttons)
+        mode_label = QLabel("เลือกโหมด:")
+        mode_label.setStyleSheet("font-weight: 600; color: #f59e0b;")
         self._current_section_layout.insertWidget(
-            self._current_section_layout.count() - 1, self.at_enabled
+            self._current_section_layout.count() - 1, mode_label
         )
+        self.mode_translate = QRadioButton("🌐 แปลเป็นไทย (แปลข้อความต่างประเทศ → TTS อ่านไทย)")
+        self.mode_multilang = QRadioButton("🎤 อ่านหลายภาษา (ตรวจจับภาษา → เลือกเสียงที่เหมาะสม)")
+        self.mode_off = QRadioButton("❌ ปิด (อ่านไทยอย่างเดียว)")
+        self.mode_off.setChecked(True)
+
+        mode_group = QButtonGroup(self)
+        mode_group.addButton(self.mode_translate)
+        mode_group.addButton(self.mode_multilang)
+        mode_group.addButton(self.mode_off)
+        # ★ เก็กว่าเป็น exclusive → ไม่ต้อง setExclusive (default = True)
+
+        self.mode_translate.toggled.connect(self._on_translate_mode_change)
+        self.mode_multilang.toggled.connect(self._on_translate_mode_change)
+
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, self.mode_translate
+        )
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, self.mode_multilang
+        )
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, self.mode_off
+        )
+
+        # ★ Translate settings (ซ่อนจนกว่าจะเลือกโหมดแปล)
+        self._translate_settings = QWidget()
+        ts_layout = QVBoxLayout(self._translate_settings)
+        ts_layout.setContentsMargins(20, 0, 0, 0)
+        ts_layout.setSpacing(6)
+
+        # provider
+        provider_row = QHBoxLayout()
+        provider_row.addWidget(QLabel("ผู้ให้บริการ:"))
         self.at_provider = QComboBox()
         self.at_provider.addItems(["google", "deepl", "deepseek"])
         self.at_provider.currentTextChanged.connect(self._on_translate_provider_change)
-        self._add_row("ผู้ให้บริการแปล:", self.at_provider)
-        # ★ API Key + Host (ซ่อนเมื่อเลือก Google)
+        provider_row.addWidget(self.at_provider, 1)
+        ts_layout.addLayout(provider_row)
+        # API key
         self.at_apikey = QLineEdit()
-        self.at_apikey.setPlaceholderText("API Key (ถ้าใช้ DeepL/DeepSeek)")
+        self.at_apikey.setPlaceholderText("API Key (DeepL/DeepSeek)")
         self.at_apikey.setEchoMode(QLineEdit.Password)
-        self._at_apikey_row = self._add_row_widget("API Key:", self.at_apikey)
+        ts_layout.addWidget(QLabel("API Key:"))
+        ts_layout.addWidget(self.at_apikey)
+        # host
         self.at_host = QLineEdit()
-        self.at_host.setPlaceholderText("Host (สำหรับ DeepL/DeepSeek — ว่าง = default)")
-        self._at_host_row = self._add_row_widget("Host:", self.at_host)
-        # ★ Language list (ภาษาที่แปล)
-        lang_label = QLabel("ภาษาที่จะแปล (เลือกภาษาที่ต้องการแปลเป็นไทย):")
-        lang_label.setObjectName("Dim")
-        self._current_section_layout.insertWidget(
-            self._current_section_layout.count() - 1, lang_label
-        )
+        self.at_host.setPlaceholderText("Host (ว่าง = default)")
+        ts_layout.addWidget(QLabel("Host:"))
+        ts_layout.addWidget(self.at_host)
+        # language grid (2 columns)
+        ts_layout.addWidget(QLabel("ภาษาที่จะแปล:"))
         self._lang_checks = {}
         all_langs = [
             ("en", "🇬🇧 อังกฤษ"), ("ja", "🇯🇵 ญี่ปุ่น"), ("ko", "🇰🇷 เกาหลี"),
-            ("zh", "🇨🇳 จีนกลาง"), ("zh-TW", "🇹🇼 จีนไต้หวัน"), ("fr", "🇫🇷 ฝรั่งเศส"),
-            ("vi", "🇻🇳 เวียดนาม"), ("id", "🇮🇩 อินโดนีเซีย"), ("es", "🇪🇸 สเปน"),
+            ("zh", "🇨🇳 จีน"), ("zh-TW", "🇹🇼 ไต้หวัน"), ("fr", "🇫🇷 ฝรั่งเศส"),
+            ("vi", "🇻🇳 เวียดนาม"), ("id", "🇮🇩 อินโด"), ("es", "🇪🇸 สเปน"),
             ("de", "🇩🇪 เยอรมัน"), ("ru", "🇷🇺 รัสเซีย"),
         ]
-        for code, name in all_langs:
+        lang_grid = QGridLayout()
+        lang_grid.setSpacing(4)
+        for i, (code, name) in enumerate(all_langs):
             cb = QCheckBox(name)
             self._lang_checks[code] = cb
-            self._current_section_layout.insertWidget(
-                self._current_section_layout.count() - 1, cb
-            )
-
-        # ★ Multilang
-        sep = QLabel("─" * 40)
-        sep.setStyleSheet("color: #2a2f45;")
+            lang_grid.addWidget(cb, i // 2, i % 2)
+        ts_layout.addLayout(lang_grid)
         self._current_section_layout.insertWidget(
-            self._current_section_layout.count() - 1, sep
+            self._current_section_layout.count() - 1, self._translate_settings
         )
-        self.ml_enabled = QCheckBox("อ่านหลายภาษา (ตรวจจับภาษา → เลือกเสียงที่เหมาะสม)")
+
+        # ★ Multilang settings (ซ่อนจนกว่าจะเลือกโหมด multilang)
+        self._multilang_settings = QWidget()
+        ml_layout = QVBoxLayout(self._multilang_settings)
+        ml_layout.setContentsMargins(20, 0, 0, 0)
+        ml_label = QLabel("ภาษาที่จะอ่าน (เลือกเสียงตามภาษา):")
+        ml_layout.addWidget(ml_label)
+        self._ml_lang_checks = {}
+        ml_grid = QGridLayout()
+        ml_grid.setSpacing(4)
+        ml_langs = [
+            ("en", "🇬🇧 อังกฤษ"), ("ja", "🇯🇵 ญี่ปุ่น"), ("ko", "🇰🇷 เกาหลี"),
+            ("zh", "🇨🇳 จีน"), ("zh-TW", "🇹🇼 ไต้หวัน"), ("fr", "🇫🇷 ฝรั่งเศส"),
+            ("vi", "🇻🇳 เวียดนาม"), ("id", "🇮🇩 อินโด"),
+        ]
+        for i, (code, name) in enumerate(ml_langs):
+            cb = QCheckBox(name)
+            self._ml_lang_checks[code] = cb
+            ml_grid.addWidget(cb, i // 2, i % 2)
+        ml_layout.addLayout(ml_grid)
         self._current_section_layout.insertWidget(
-            self._current_section_layout.count() - 1, self.ml_enabled
+            self._current_section_layout.count() - 1, self._multilang_settings
         )
 
         # ★ Mixed Voice
@@ -313,8 +365,17 @@ class SettingsDialog(QDialog):
             self._current_section_layout.count() - 1, self.mv_enabled
         )
 
-        # ★ ซ่อน API key/host ตอนเริ่ม (ถ้า default = google)
-        self._on_translate_provider_change(self.at_provider.currentText())
+        # ★ initial state
+        self._translate_settings.setVisible(False)
+        self._multilang_settings.setVisible(False)
+        self._on_translate_provider_change("google")
+
+    def _on_translate_mode_change(self):
+        """แสดง/ซ่อน settings ตามโหมดที่เลือก"""
+        is_translate = self.mode_translate.isChecked()
+        is_multilang = self.mode_multilang.isChecked()
+        self._translate_settings.setVisible(is_translate)
+        self._multilang_settings.setVisible(is_multilang)
 
     def _on_translate_provider_change(self, provider):
         """ซ่อน/แสดง API Key + Host ตาม provider"""
@@ -513,26 +574,36 @@ class SettingsDialog(QDialog):
         self.kc_auto.setChecked(getattr(s, 'auto_connect_kick', False))
         # playroom
         self.playroom_enabled.setChecked(getattr(s, 'playroom_enabled', False))
+        # translate mode
+        at_on = getattr(s, 'auto_translate_enabled', False)
+        ml_on = getattr(s, 'multilang_enabled', False)
+        if at_on:
+            self.mode_translate.setChecked(True)
+        elif ml_on:
+            self.mode_multilang.setChecked(True)
+        else:
+            self.mode_off.setChecked(True)
+        # API key/host
+        self.at_apikey.setText(getattr(s, 'auto_translate_api_key', '') or '')
+        self.at_host.setText(getattr(s, 'auto_translate_host', '') or '')
+        provider = getattr(s, 'auto_translate_provider', 'google')
+        idx = self.at_provider.findText(provider)
+        if idx >= 0: self.at_provider.setCurrentIndex(idx)
+        # translate language list
+        enabled_langs = getattr(s, 'auto_translate_langs', ['en', 'ja', 'ko', 'zh', 'vi', 'id'])
+        for code, cb in self._lang_checks.items():
+            cb.setChecked(code in enabled_langs)
+        # multilang language list
+        ml_langs = getattr(s, 'multilang_langs', ['en', 'ja', 'ko', 'zh', 'zh-TW', 'fr'])
+        for code, cb in self._ml_lang_checks.items():
+            cb.setChecked(code in ml_langs)
+        # mixed voice
+        self.mv_enabled.setChecked(getattr(s, 'mixed_voice_enabled', False))
         # TTS
         self.tts_volume.setValue(getattr(s, 'volume', 100))
         self.tts_rate.setValue(getattr(s, 'rate', 0))
         self.read_author.setChecked(getattr(s, 'read_author', True))
         self.read_message.setChecked(getattr(s, 'read_message', True))
-        # Translate
-        self.at_enabled.setChecked(getattr(s, 'auto_translate_enabled', False))
-        # translate provider
-        provider = getattr(s, 'auto_translate_provider', 'google')
-        idx = self.at_provider.findText(provider)
-        if idx >= 0: self.at_provider.setCurrentIndex(idx)
-        self.at_apikey.setText(getattr(s, 'auto_translate_api_key', '') or '')
-        self.at_host.setText(getattr(s, 'auto_translate_host', '') or '')
-        # multilang + mixed voice
-        self.ml_enabled.setChecked(getattr(s, 'multilang_enabled', False))
-        self.mv_enabled.setChecked(getattr(s, 'mixed_voice_enabled', False))
-        # language list
-        enabled_langs = getattr(s, 'auto_translate_langs', ['en', 'ja', 'ko', 'zh', 'vi', 'id'])
-        for code, cb in self._lang_checks.items():
-            cb.setChecked(code in enabled_langs)
 
     def _save(self):
         """บันทึกค่าจาก form ลง settings"""
@@ -555,6 +626,15 @@ class SettingsDialog(QDialog):
         s.auto_connect_kick = self.kc_auto.isChecked()
         # playroom
         s.playroom_enabled = self.playroom_enabled.isChecked()
+        # translate mode
+        s.auto_translate_enabled = self.mode_translate.isChecked()
+        s.multilang_enabled = self.mode_multilang.isChecked()
+        s.auto_translate_provider = self.at_provider.currentText()
+        s.auto_translate_api_key = self.at_apikey.text().strip()
+        s.auto_translate_host = self.at_host.text().strip()
+        s.auto_translate_langs = [c for c, cb in self._lang_checks.items() if cb.isChecked()]
+        s.multilang_langs = [c for c, cb in self._ml_lang_checks.items() if cb.isChecked()]
+        s.mixed_voice_enabled = self.mv_enabled.isChecked()
         # banned words + blocked users
         banned_text = self.banned_words.text().strip()
         s.banned_words = [w.strip() for w in banned_text.split(',') if w.strip()] if banned_text else []

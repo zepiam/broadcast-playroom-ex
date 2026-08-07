@@ -57,16 +57,12 @@ class NGReplaceDialog(QDialog):
         hlayout.addWidget(btn_add)
         layout.addWidget(header)
 
-        # ★ Table (5 columns: source / display / read / 🔊 original / 🔊 read)
-        self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["คำเดิม", "คำที่แสดง", "คำที่อ่าน TTS", "🔊 เดิม", "🔊 อ่าน"])
+        # ★ Table (3 columns: source / display+🔊 / read+🔊)
+        self.table = QTableWidget(0, 3)
+        self.table.setHorizontalHeaderLabels(["คำเดิม", "คำที่แสดง", "คำที่อ่าน TTS"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)
-        self.table.setColumnWidth(3, 50)
-        self.table.setColumnWidth(4, 50)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setStyleSheet("""
             QTableWidget {
@@ -124,33 +120,32 @@ class NGReplaceDialog(QDialog):
         self._update_count()
 
     def _add_row_data(self, src='', display='', read=''):
-        """เพิ่ม row ลง table"""
+        """เพิ่ม row ลง table — ปุ่ม 🔊 อยู่ใน cell เดียวกับ text (ชิดขวา)"""
         row = self.table.rowCount()
         self.table.insertRow(row)
         self.table.setItem(row, 0, QTableWidgetItem(src))
         self.table.setItem(row, 1, QTableWidgetItem(display))
         self.table.setItem(row, 2, QTableWidgetItem(read))
-        # ★ TTS preview buttons
-        btn_orig = QPushButton("🔊")
-        btn_orig.setFixedSize(36, 28)
-        btn_orig.setToolTip("ฟังเสียงคำเดิม")
-        btn_orig.clicked.connect(lambda _, r=row: self._preview_tts(r, 0))
-        self.table.setCellWidget(row, 3, btn_orig)
-        btn_read = QPushButton("🔊")
-        btn_read.setFixedSize(36, 28)
-        btn_read.setToolTip("ฟังเสียงคำที่อ่าน")
-        btn_read.clicked.connect(lambda _, r=row: self._preview_tts(r, 2))
-        self.table.setCellWidget(row, 4, btn_read)
+        # ★ TTS preview buttons (cell widget แยก — ทับที่ชิดขวา)
+        if src:
+            btn_orig = QPushButton("🔊")
+            btn_orig.setFixedSize(24, 24)
+            btn_orig.setToolTip("ฟังเสียงคำเดิม")
+            btn_orig.setStyleSheet("border: none; background: transparent; font-size: 14px;")
+            btn_orig.clicked.connect(lambda _, t=src: self._preview_tts_text(t))
+            self.table.setCellWidget(row, 0, btn_orig)
+        if read:
+            btn_read = QPushButton("🔊")
+            btn_read.setFixedSize(24, 24)
+            btn_read.setToolTip("ฟังเสียงคำที่อ่าน")
+            btn_read.setStyleSheet("border: none; background: transparent; font-size: 14px;")
+            btn_read.clicked.connect(lambda _, t=read: self._preview_tts_text(t))
+            self.table.setCellWidget(row, 2, btn_read)
 
-    def _preview_tts(self, row, col):
-        """เล่นเสียง TTS ของ cell ที่เลือก"""
-        item = self.table.item(row, col)
-        if not item:
+    def _preview_tts_text(self, text):
+        """เล่นเสียง TTS ของ text"""
+        if not text.strip():
             return
-        text = item.text().strip()
-        if not text:
-            return
-        # ★ enqueue เข้า pipeline (ถ้ามี)
         if self.parent_app and hasattr(self.parent_app, 'pipeline') and self.parent_app.pipeline:
             try:
                 from chat_twitch import ChatMessage
@@ -219,22 +214,8 @@ class NGReplaceDialog(QDialog):
         def _worker():
             try:
                 raw = None
-                # ★ ลอง requests ก่อน
+                # ★ ลอง urllib ก่อน (เร็วกว่า + ไม่ติด SSL cert issues)
                 try:
-                    import requests as _req
-                    r = _req.get(DICT_URL, headers={"User-Agent": "BroadcastPlayroom/2.0"},
-                                 timeout=20, allow_redirects=True)
-                    if r.status_code == 200:
-                        raw = r.text
-                    else:
-                        QTimer.singleShot(0, lambda: QMessageBox.critical(
-                            self, "ล้มเหลว", f"เซิร์ฟเวอร์ตอบ HTTP {r.status_code}"))
-                        return
-                except Exception:
-                    pass
-
-                # ★ fallback: urllib
-                if raw is None:
                     import urllib.request as _urq
                     import ssl
                     ctx = ssl.create_default_context()
@@ -243,8 +224,30 @@ class NGReplaceDialog(QDialog):
                         "User-Agent": "BroadcastPlayroom/2.0",
                         "Accept": "application/json",
                     })
-                    with _urq.urlopen(req, timeout=20, context=ctx) as resp:
+                    with _urq.urlopen(req, timeout=10, context=ctx) as resp:
                         raw = resp.read().decode("utf-8")
+                except Exception as e1:
+                    logger.warning(f"urllib download failed: {e1}")
+
+                # ★ fallback: requests
+                if raw is None:
+                    try:
+                        import requests as _req
+                        r = _req.get(DICT_URL, headers={"User-Agent": "BroadcastPlayroom/2.0"},
+                                     timeout=10, allow_redirects=True, verify=False)
+                        if r.status_code == 200:
+                            raw = r.text
+                        else:
+                            QTimer.singleShot(0, lambda s=r.status_code: QMessageBox.critical(
+                                self, "ล้มเหลว", f"เซิร์ฟเวอร์ตอบ HTTP {s}"))
+                            return
+                    except Exception as e2:
+                        logger.warning(f"requests download failed: {e2}")
+
+                if raw is None:
+                    QTimer.singleShot(0, lambda: QMessageBox.critical(
+                        self, "ล้มเหลว", "ดาวน์โหลดไม่ได้ — ตรวจสอบการเชื่อมต่ออินเทอร์เน็ต"))
+                    return
 
                 # ★ parse JSON — อาจเป็น {replace_words: {...}} หรือ dict ตรงๆ
                 parsed = _json.loads(raw)
@@ -264,9 +267,9 @@ class NGReplaceDialog(QDialog):
 
                 QTimer.singleShot(0, lambda: self._on_download_done(incoming))
             except Exception as e:
-                logger.error(f"Download failed: {e}")
-                QTimer.singleShot(0, lambda: QMessageBox.critical(
-                    self, "ล้มเหลว", f"ดาวน์โหลดไม่ได้: {e}"))
+                logger.error(f"Download failed: {e}", exc_info=True)
+                QTimer.singleShot(0, lambda err=str(e): QMessageBox.critical(
+                    self, "ล้มเหลว", f"ดาวน์โหลดไม่ได้: {err}"))
             finally:
                 QTimer.singleShot(0, self._reset_download_btn)
 

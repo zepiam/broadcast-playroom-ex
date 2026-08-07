@@ -1084,9 +1084,9 @@ class TTSForLivestreamApp(QMainWindow):
         if not found:
             self.sidebar.voice_combo.setCurrentIndex(0)  # Premwadee
         self.sidebar.voice_combo.blockSignals(False)
-        # ★ auto-load RVC ตอนเปิดโปรแกรม (ถ้ามี voice_id)
-        if current and found:
-            # ★ แสดงสถานะ loading ทันที (ก่อน delay)
+        # ★ auto-load RVC ตอนเปิดโปรแกรม (ถ้ามี voice_id) — กัน double-load
+        if current and found and not getattr(self, '_rvc_loading', False):
+            self._rvc_loading = True
             self.sidebar.rvc_status.setText(f"⏳ กำลังโหลด {current}...")
             self.sidebar.rvc_status.setStyleSheet("color: #f59e0b; font-size: 11px;")
             self.sidebar.voice_combo.setEnabled(False)
@@ -1148,6 +1148,9 @@ class TTSForLivestreamApp(QMainWindow):
     def _on_voice_change(self, index):
         """เปลี่ยนเสียง TTS"""
         if index < 0 or not self.settings:
+            return
+        # ★ กัน double-load
+        if getattr(self, '_rvc_loading', False):
             return
         text = self.sidebar.voice_combo.itemText(index)
         if '(RVC)' in text:
@@ -1213,6 +1216,7 @@ class TTSForLivestreamApp(QMainWindow):
 
     def _on_rvc_loaded(self, engine, voice_id, index_path):
         """RVC โหลดเสร็จ (main thread)"""
+        self._rvc_loading = False
         self.sidebar.voice_combo.setEnabled(True)
         if self.pipeline:
             self.pipeline.set_rvc(engine, voice_id, index_path)
@@ -1222,6 +1226,7 @@ class TTSForLivestreamApp(QMainWindow):
 
     def _on_rvc_load_failed(self, error):
         """RVC โหลดล้มเหลว (main thread)"""
+        self._rvc_loading = False
         self.sidebar.voice_combo.setEnabled(True)
         self.status_bar.set_status(f"❌ โหลด RVC ไม่ได้: {error}")
         self.sidebar.rvc_status.setText(f"❌ โหลดไม่ได้")

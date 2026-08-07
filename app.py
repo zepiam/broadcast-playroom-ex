@@ -199,6 +199,10 @@ class TTSForLivestreamApp(QMainWindow):
         self.sidebar.rate_slider.valueChanged.connect(self._on_rate_change)
         self.sidebar.voice_download_btn.clicked.connect(self._open_voice_downloader)
 
+        # ═══ Connect chat panel signals ═══
+        self.chat_panel.popout_requested.connect(self._open_popout)
+        self.chat_panel.clear_requested.connect(self._clear_chat)
+
     def _build_platform_cards(self):
         """สร้าง card สำหรับแต่ละแพลตฟอร์ม + เชื่อม connect signal"""
         # ★ อ่านว่าแสดงแพลตฟอร์มไหนบ้าง (default = ทั้งหมด)
@@ -374,9 +378,18 @@ class TTSForLivestreamApp(QMainWindow):
             self._msg_buffer.clear()
         for msg in msgs:
             self.chat_panel.add_message(msg)
+            # ★ sync to popout (ถ้าเปิดอยู่)
+            if hasattr(self, '_popout_window') and self._popout_window:
+                self._popout_window.add_message(msg)
             # ★ system message → status bar
             if getattr(msg, 'event', '') == 'system':
                 self.status_bar.set_status(msg.text or msg.system_text or '')
+
+    def _clear_chat(self):
+        """ล้าง chat feed"""
+        self.chat_panel.clear_messages()
+        if hasattr(self, '_popout_window') and self._popout_window:
+            self._popout_window.clear_messages()
 
     def _update_viewer_ui(self):
         """อัปเดตยอดคนดู"""
@@ -429,6 +442,28 @@ class TTSForLivestreamApp(QMainWindow):
     def _open_user_manager(self):
         """เปิด User Manager"""
         self.status_bar.set_status("User Manager — เร็วๆ นี้")
+
+    def _open_about(self):
+        """เปิด About dialog"""
+        from ui.dialogs.about import AboutDialog
+        dlg = AboutDialog(self)
+        dlg.exec()
+
+    def _open_popout(self):
+        """เปิด/ปิด Popout chat window"""
+        if hasattr(self, '_popout_window') and self._popout_window:
+            self._popout_window.close()
+            self._popout_window = None
+            return
+        from ui.dialogs.popout import PopoutWindow
+        self._popout_window = PopoutWindow(self)
+        self._popout_window.show()
+
+    def _open_voice_downloader(self):
+        """เปิด Voice Downloader dialog"""
+        from ui.dialogs.voice_downloader import VoiceDownloaderDialog
+        dlg = VoiceDownloaderDialog(self)
+        dlg.exec()
 
     def _toggle_overlay(self):
         """เปิด/ปิด overlay"""

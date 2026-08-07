@@ -40,6 +40,9 @@ class ChatRow(QWidget):
 class ChatPanel(QFrame):
     """Chat feed — scrollable list of ChatRow"""
 
+    popout_requested = Signal()  # emit เมื่อกดปุ่ม popout
+    clear_requested = Signal()   # emit เมื่อกด clear
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("ChatPanel")
@@ -56,7 +59,8 @@ class ChatPanel(QFrame):
         header.setFixedHeight(36)
         header.setStyleSheet(f"background-color: {COLOR_CARD}; border-bottom: 1px solid {COLOR_BORDER};")
         hlayout = QHBoxLayout(header)
-        hlayout.setContentsMargins(12, 0, 12, 0)
+        hlayout.setContentsMargins(12, 0, 8, 0)
+        hlayout.setSpacing(4)
         title = QLabel("💬 แชทสด")
         title.setStyleSheet("font-weight: 600;")
         hlayout.addWidget(title)
@@ -65,6 +69,22 @@ class ChatPanel(QFrame):
         self.viewers_label = QLabel("👥 0")
         self.viewers_label.setStyleSheet("color: #9ca3af; font-size: 12px;")
         hlayout.addWidget(self.viewers_label)
+        # ★ Popout button
+        btn_popout = QPushButton("↗")
+        btn_popout.setObjectName("IconButton")
+        btn_popout.setFixedSize(28, 28)
+        btn_popout.setToolTip("แยกจอ")
+        btn_popout.setCursor(Qt.PointingHandCursor)
+        btn_popout.clicked.connect(self.popout_requested.emit)
+        hlayout.addWidget(btn_popout)
+        # ★ Clear button
+        btn_clear = QPushButton("🗑")
+        btn_clear.setObjectName("IconButton")
+        btn_clear.setFixedSize(28, 28)
+        btn_clear.setToolTip("ล้างแชท")
+        btn_clear.setCursor(Qt.PointingHandCursor)
+        btn_clear.clicked.connect(self.clear_requested.emit)
+        hlayout.addWidget(btn_clear)
         layout.addWidget(header)
 
         # ★ Scroll area for chat
@@ -94,7 +114,8 @@ class ChatPanel(QFrame):
             old.deleteLater()
 
         # ★ auto-scroll to bottom
-        QTimer_singleShot(0, lambda: self.scroll.verticalScrollBar().setValue(
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, lambda: self.scroll.verticalScrollBar().setValue(
             self.scroll.verticalScrollBar().maximum()
         ))
 
@@ -103,7 +124,3 @@ class ChatPanel(QFrame):
         for row in self._rows:
             row.deleteLater()
         self._rows.clear()
-
-
-# ★ local import (กัน circular)
-from PySide6.QtCore import QTimer as QTimer_singleShot

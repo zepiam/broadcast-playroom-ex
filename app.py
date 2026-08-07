@@ -266,6 +266,20 @@ class TTSForLivestreamApp(QMainWindow):
         except Exception:
             pass
 
+    def _save_splitter_sizes(self):
+        """บันทึกความกว้าง sidebar/chat/events + events collapsed state"""
+        import json, os
+        layout_path = os.path.join(os.path.expanduser("~"), ".tts-for-livestream", "layout.json")
+        try:
+            data = {
+                'splitter_sizes': self.splitter.sizes(),
+                'events_collapsed': getattr(self.events_panel, '_collapsed', False),
+            }
+            with open(layout_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f)
+        except Exception:
+            pass
+
     # ════════════════════════════════════════════════════════════
     # Server startup (overlay + composer + playroom + now playing)
     # ════════════════════════════════════════════════════════════
@@ -546,24 +560,53 @@ class TTSForLivestreamApp(QMainWindow):
         layout.addWidget(self.topbar)
 
         # ★ Body (3-column splitter)
-        splitter = QSplitter(Qt.Horizontal)
-        splitter.setHandleWidth(1)
-        splitter.setChildrenCollapsible(False)
+        self.splitter = QSplitter(Qt.Horizontal)
+        self.splitter.setHandleWidth(1)
+        self.splitter.setChildrenCollapsible(False)
 
         self.sidebar = Sidebar(self)
         self.chat_panel = ChatPanel(self)
         self.events_panel = EventsPanel(self)
 
-        splitter.addWidget(self.sidebar)
-        splitter.addWidget(self.chat_panel)
-        splitter.addWidget(self.events_panel)
-        splitter.setStretchFactor(0, 0)  # sidebar fixed
-        splitter.setStretchFactor(1, 1)  # chat expands
-        splitter.setStretchFactor(2, 0)  # events fixed
-        # ★ เริ่มต้นด้วยความกว้างที่พอดีเห็นครบ (sidebar 300, chat พอประมาณ, events 200)
-        splitter.setSizes([300, 580, 200])
+        self.splitter.addWidget(self.sidebar)
+        self.splitter.addWidget(self.chat_panel)
+        self.splitter.addWidget(self.events_panel)
+        self.splitter.setStretchFactor(0, 0)  # sidebar fixed
+        self.splitter.setStretchFactor(1, 1)  # chat expands
+        self.splitter.setStretchFactor(2, 0)  # events fixed
 
-        layout.addWidget(splitter, 1)
+        # ★ restore saved splitter sizes (บันทึกความกว้างที่ user ตั้งไว้)
+        import json, os
+        layout_path = os.path.join(os.path.expanduser("~"), ".tts-for-livestream", "layout.json")
+        saved_sizes = None
+        try:
+            if os.path.exists(layout_path):
+                with open(layout_path, encoding='utf-8') as f:
+                    data = json.load(f)
+                    saved_sizes = data.get('splitter_sizes')
+        except Exception:
+            pass
+        if saved_sizes and len(saved_sizes) == 3:
+            self.splitter.setSizes(saved_sizes)
+        else:
+            self.splitter.setSizes([320, 580, 200])
+
+        # ★ save splitter sizes เมื่อ user ขยาย/หด
+        self.splitter.splitterMoved.connect(self._save_splitter_sizes)
+
+        # ★ restore events panel collapsed state
+        events_collapsed = False
+        try:
+            if os.path.exists(layout_path):
+                with open(layout_path, encoding='utf-8') as f:
+                    data = json.load(f)
+                    events_collapsed = data.get('events_collapsed', False)
+        except Exception:
+            pass
+        if events_collapsed:
+            QTimer.singleShot(100, self.events_panel.toggle_collapse)
+
+        layout.addWidget(self.splitter, 1)
 
         # ★ StatusBar
         self.status_bar = StatusBar(self)
@@ -607,7 +650,12 @@ class TTSForLivestreamApp(QMainWindow):
         self.chat_panel.font_inc_btn.clicked.connect(self._increase_chat_font)
 
         # ═══ Events panel toggle ═══
-        self.events_panel.header.clicked.connect(self.events_panel.toggle_collapse)
+        self.events_panel.header.clicked.connect(self._toggle_events)
+
+    def _toggle_events(self):
+        """toggle events panel + save state"""
+        self.events_panel.toggle_collapse()
+        self._save_splitter_sizes()
 
     def _build_platform_cards(self):
         """สร้าง card สำหรับแต่ละแพลตฟอร์ม + เชื่อม connect signal"""

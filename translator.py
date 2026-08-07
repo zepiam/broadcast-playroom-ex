@@ -149,7 +149,8 @@ class Translator:
         }
         if source_lang != "auto":
             params["source_lang"] = source_lang.upper()
-        resp = requests.post(url, data=params, timeout=10)
+        # ★ DeepL ใช้ form data → requests อาจ encode เป็น latin-1 → บังคับ UTF-8
+        resp = requests.post(url, data=params, timeout=10, headers={"Content-Type": "application/x-www-form-urlencoded; charset=utf-8"})
         resp.raise_for_status()
         data = resp.json()
         translations = data.get("translations", [])
@@ -204,9 +205,13 @@ class Translator:
         }
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
+            "Content-Type": "application/json; charset=utf-8",
         }
-        resp = requests.post(url, json=payload, headers=headers, timeout=15)
+        # ★ encode payload เป็น UTF-8 bytes เอง (กัน requests ใช้ latin-1 กับ Thai text)
+        import json as _json
+        data_bytes = _json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        headers["Content-Length"] = str(len(data_bytes))
+        resp = requests.post(url, data=data_bytes, headers=headers, timeout=15)
         resp.raise_for_status()
         data = resp.json()
         choices = data.get("choices", [])

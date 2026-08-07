@@ -70,15 +70,14 @@ class ChatPanel(QFrame):
         self.container_layout = QVBoxLayout(self.container)
         self.container_layout.setContentsMargins(0, 0, 0, 0)
         self.container_layout.setSpacing(0)
-        self.container_layout.addStretch()  # push rows up
+        self.container_layout.setAlignment(Qt.AlignTop)
         self.scroll.setWidget(self.container)
         layout.addWidget(self.scroll, 1)
 
     def add_message(self, msg):
-        """เพิ่ม chat message ใหม่"""
+        """เพิ่ม chat message ใหม่ — ใหม่สุดอยู่บน (insert at index 0)"""
         row = ChatRow(msg, self.container)
-        # insert ก่อน stretch (index -1 = stretch)
-        self.container_layout.insertWidget(self.container_layout.count() - 1, row)
+        self.container_layout.insertWidget(0, row)
         self._rows.append(row)
 
         # ★ cap rows (เก็บล่าสุด 60)
@@ -86,12 +85,6 @@ class ChatPanel(QFrame):
         if len(self._rows) > max_rows:
             old = self._rows.pop(0)
             old.deleteLater()
-
-        # ★ auto-scroll to bottom
-        from PySide6.QtCore import QTimer
-        QTimer.singleShot(0, lambda: self.scroll.verticalScrollBar().setValue(
-            self.scroll.verticalScrollBar().maximum()
-        ))
 
     def clear_messages(self):
         """ล้าง chat ทั้งหมด"""

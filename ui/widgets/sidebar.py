@@ -152,6 +152,7 @@ class Sidebar(QFrame):
         # ★ Platforms header (with toggle button)
         ph = QHBoxLayout()
         ph.setContentsMargins(0, 0, 0, 0)
+        ph.setSpacing(4)
         header = QLabel("🔌 แพลตฟอร์ม")
         header.setObjectName("Heading")
         header.setStyleSheet("font-size: 14px; font-weight: 700; color: #f59e0b;")
@@ -160,10 +161,10 @@ class Sidebar(QFrame):
         # ★ Settings gear for platform selection
         self.gear_btn = QPushButton("⚙")
         self.gear_btn.setObjectName("IconButton")
-        self.gear_btn.setFixedSize(32, 32)
+        self.gear_btn.setFixedSize(28, 28)
         self.gear_btn.setCursor(Qt.PointingHandCursor)
         self.gear_btn.setToolTip("ตั้งค่าแพลตฟอร์ม")
-        self.gear_btn.setStyleSheet("font-size: 18px;")
+        self.gear_btn.setStyleSheet("font-size: 16px; padding: 0px; margin: 0px;")
         ph.addWidget(self.gear_btn)
         clayout.addLayout(ph)
 

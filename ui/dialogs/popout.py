@@ -53,24 +53,19 @@ class PopoutWindow(QDialog):
         self.container_layout = QVBoxLayout(self.container)
         self.container_layout.setContentsMargins(0, 0, 0, 0)
         self.container_layout.setSpacing(0)
-        self.container_layout.addStretch()
+        self.container_layout.setAlignment(Qt.AlignTop)
         self.scroll.setWidget(self.container)
         layout.addWidget(self.scroll, 1)
 
     def add_message(self, msg):
-        """เพิ่มข้อความเข้า popout"""
+        """เพิ่มข้อความเข้า popout — ใหม่สุดอยู่บน"""
         row = ChatRow(msg, self.container)
-        self.container_layout.insertWidget(self.container_layout.count() - 1, row)
+        self.container_layout.insertWidget(0, row)
         self._rows.append(row)
         # cap 60
         if len(self._rows) > 60:
             old = self._rows.pop(0)
             old.deleteLater()
-        # auto-scroll
-        from PySide6.QtCore import QTimer
-        QTimer.singleShot(0, lambda: self.scroll.verticalScrollBar().setValue(
-            self.scroll.verticalScrollBar().maximum()
-        ))
 
     def clear_messages(self):
         for row in self._rows:

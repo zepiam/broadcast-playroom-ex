@@ -64,6 +64,8 @@ class TTSForLivestreamApp(QMainWindow):
     _viewer_update = Signal()
     _msg_translated = Signal(object)  # ChatMessage (translated)
     _overlay_started_sig = Signal(bool, int)  # ok, ov_id
+    _rvc_loaded_sig = Signal(object, str, str)  # engine, voice_id, index_path
+    _rvc_failed_sig = Signal(str)  # error
 
     def __init__(self):
         super().__init__()
@@ -78,6 +80,8 @@ class TTSForLivestreamApp(QMainWindow):
         self._viewer_update.connect(self._update_viewer_ui)
         self._msg_translated.connect(self._on_msg_translated)
         self._overlay_started_sig.connect(self._on_overlay_started_sig)
+        self._rvc_loaded_sig.connect(self._on_rvc_loaded)
+        self._rvc_failed_sig.connect(self._on_rvc_load_failed)
 
         # ═══ State ═══
         self._closing = False
@@ -1134,10 +1138,10 @@ class TTSForLivestreamApp(QMainWindow):
                 from rvc_engine import RVCEngine
                 engine = RVCEngine(model_path=_pth)
                 engine.load()
-                QTimer.singleShot(0, lambda: self._on_rvc_loaded(engine, _vid, _idx))
+                self._rvc_loaded_sig.emit(engine, _vid, _idx)
             except Exception as e:
                 logger.error(f"Auto RVC load failed: {e}")
-                QTimer.singleShot(0, lambda err=str(e): self._on_rvc_load_failed(err))
+                self._rvc_failed_sig.emit(str(e))
         threading.Thread(target=_bg, name="AutoRvcLoad", daemon=True).start()
 
     def _set_rvc_status_premwadee(self):
@@ -1194,10 +1198,10 @@ class TTSForLivestreamApp(QMainWindow):
                     from rvc_engine import RVCEngine, RVCParams
                     engine = RVCEngine(model_path=_pth)
                     engine.load()
-                    QTimer.singleShot(0, lambda: self._on_rvc_loaded(engine, _vid, _idx))
+                    self._rvc_loaded_sig.emit(engine, _vid, _idx)
                 except Exception as e:
                     logger.error(f"Failed to load RVC voice: {e}")
-                    QTimer.singleShot(0, lambda err=str(e): self._on_rvc_load_failed(err))
+                    self._rvc_failed_sig.emit(str(e))
 
             threading.Thread(target=_bg_load_rvc, name="RvcLoad", daemon=True).start()
         else:

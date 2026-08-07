@@ -1,17 +1,10 @@
 """chat_row.py — Chat message row with full emote/segment/sticker rendering
 
-รองรับ:
-- Twitch emotes (sub + BTTV/FFZ/7TV) via extra["emotes"] → twitch_emotes
-- MyLive/YouTube/TikTok segments via extra["segments"]
-- Stickers via extra["sticker_url"]
-- System messages (sub/bits/raid) styling
-- Platform color coding
-- Click author → open viewer profile (signal)
+ใช้ EmoteCache (จาก v1) สำหรับโหลด emote — sync + async + cache + resize
 """
 import logging
 import os
-import urllib.request
-from PySide6.QtCore import Qt, Signal, QSize, QTimer, QThread, QObject
+from PySide6.QtCore import Qt, Signal, QSize, QTimer, QObject
 from PySide6.QtGui import QPixmap, QImage, QFont, QColor
 from PySide6.QtWidgets import (
     QWidget, QLabel, QHBoxLayout, QVBoxLayout, QFrame, QSizePolicy,
@@ -19,103 +12,36 @@ from PySide6.QtWidgets import (
 
 logger = logging.getLogger("chat_row")
 
-# ═══ Emote cache (in-memory — กันโหลดซ้ำ) ═══
-_EMOTE_CACHE = {}  # url → QPixmap (or None if failed)
-_EMOTE_CACHE_LOCK = None
-
-def _get_cache_lock():
-    global _EMOTE_CACHE_LOCK
-    if _EMOTE_CACHE_LOCK is None:
-        import threading
-        _EMOTE_CACHE_LOCK = threading.Lock()
-    return _EMOTE_CACHE_LOCK
-
-
-class EmoteLoader(QObject):
-    """QThread-based loader for emote images — thread-safe signal emission"""
-    loaded = Signal(str, QPixmap)  # url, pixmap
-
-    def load(self, url, size=28):
-        """Load emote async — emit loaded signal when done"""
-        # check cache first
-        with _get_cache_lock():
-            if url in _EMOTE_CACHE:
-                pix = _EMOTE_CACHE[url]
-                if pix is not None:
-                    self.loaded.emit(url, pix.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-                return
-
-        # ★ use QThread (not raw thread) — signal emission must be from Qt thread
-        class _LoadThread(QThread):
-            def __init__(self, url, callback):
-                super().__init__()
-                self.url = url
-                self.callback = callback
-            def run(self):
-                try:
-                    src_url = self.url
-                    if self.url.startswith('/emote/') or self.url.startswith('/'):
-                        src_url = f"http://localhost:8808{self.url}"
-                    req = urllib.request.Request(src_url, headers={'User-Agent': 'BroadcastPlayroom/2.0'})
-                    with urllib.request.urlopen(req, timeout=5) as resp:
-                        data = resp.read()
-                    img = QImage()
-                    img.loadFromData(data)
-                    if img.isNull():
-                        with _get_cache_lock():
-                            _EMOTE_CACHE[self.url] = None
-                        return
-                    pix = QPixmap.fromImage(img)
-                    with _get_cache_lock():
-                        _EMOTE_CACHE[self.url] = pix
-                    # ★ emit on main thread (QThread.finished or direct signal)
-                    self.callback(self.url, pix, size)
-                except Exception as e:
-                    logger.debug(f"Emote load failed {self.url}: {e}")
-                    with _get_cache_lock():
-                        _EMOTE_CACHE[self.url] = None
-
-        def _on_loaded(url, pix, sz):
-            """called from QThread.run → schedule on main thread"""
-            QTimer.singleShot(0, lambda: self.loaded.emit(
-                url, pix.scaled(sz, sz, Qt.KeepAspectRatio, Qt.SmoothTransformation)))
-
-        t = _LoadThread(url, _on_loaded)
-        t.start()
-
-    def load_sticker(self, url, size=64):
-        """Load sticker (larger)"""
-        self.load(url, size)
-
-
-# ★ Singleton loader
-_emote_loader = None
-def get_emote_loader():
-    global _emote_loader
-    if _emote_loader is None:
-        _emote_loader = EmoteLoader()
-    return _emote_loader
+# ★ EmoteCache singleton (จาก v1)
+_emote_cache = None
+def _get_emote_cache():
+    global _emote_cache
+    if _emote_cache is None:
+        try:
+            from emote_cache import EmoteCache
+            _emote_cache = EmoteCache(theme="dark", size_px=28)
+        except Exception as e:
+            logger.warning(f"EmoteCache not available: {e}")
+    return _emote_cache
 
 
 class ChatRow(QWidget):
     """Single chat message row — full rendering with emotes/segments/stickers"""
 
-    author_clicked = Signal(str)  # emit author name on click
-    delete_requested = Signal(object)  # emit self (row) for deletion
-    block_user_requested = Signal(str)  # emit author for blocking
+    author_clicked = Signal(str)
+    delete_requested = Signal(object)
+    block_user_requested = Signal(str)
 
     def __init__(self, msg, parent=None, font_size=14):
         super().__init__(parent)
         self.msg = msg
         self._font_size = font_size
         self._emote_labels = {}
-        # ★ context menu (right-click)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
         self._build_ui()
 
     def _show_context_menu(self, pos):
-        """context menu — ลบข้อความ / บล็อกผู้ใช้"""
         from PySide6.QtWidgets import QMenu
         menu = QMenu(self)
         menu.setStyleSheet("QMenu { background: #131726; border: 1px solid #2a2f45; border-radius: 8px; padding: 4px; } QMenu::item { padding: 8px 24px; border-radius: 4px; color: #e5e7eb; } QMenu::item:selected { background: #7c3aed; }")
@@ -138,22 +64,19 @@ class ChatRow(QWidget):
         layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(2)
         layout.setAlignment(Qt.AlignTop)
-        # ★ ใช้ SizePolicy เพื่อให้ row ขยายตามเนื้อหา (ไม่ตัดความสูง)
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
 
         event = getattr(self.msg, 'event', 'message')
 
-        # ═══ System/event messages (sub/bits/raid) ═══
         if event != 'message':
             self._build_event_row(layout, event)
             return
 
-        # ═══ Normal chat message ═══
         extra = getattr(self.msg, 'extra', {}) or {}
         platform = getattr(self.msg, 'platform', '')
         author = getattr(self.msg, 'author', '?') or '?'
 
-        # ★ Author label (clickable) — อยู่บนสุดของ row
+        # ★ Author label
         self.author_label = QLabel()
         self.author_label.setCursor(Qt.PointingHandCursor)
         self.author_label.setTextFormat(Qt.RichText)
@@ -167,17 +90,14 @@ class ChatRow(QWidget):
         self.author_label.mousePressEvent = lambda e: self.author_clicked.emit(author)
         layout.addWidget(self.author_label)
 
-        # ★ Content area — vertical layout (ข้อความแปล บน / ต้นฉบับ ล่าง)
+        # ★ Content area
         self.content_layout = QVBoxLayout()
         self.content_layout.setContentsMargins(0, 0, 0, 0)
         self.content_layout.setSpacing(2)
-
-        # render content
         self._render_content(extra, platform)
         layout.addLayout(self.content_layout)
 
     def _build_event_row(self, layout, event):
-        """render event message (sub/bits/raid/etc)"""
         author = getattr(self.msg, 'author', '') or ''
         system_text = getattr(self.msg, 'system_text', '') or ''
         amount = getattr(self.msg, 'amount', None)
@@ -186,7 +106,7 @@ class ChatRow(QWidget):
         icon_map = {
             'sub': '⭐', 'resub': '⭐', 'subgift': '🎁',
             'bits': '💎', 'raid': '🚀', 'follow': '❤️',
-            'share': '📢', 'join': '👋',
+            'share': '📢', 'join': '👋', 'system': '🔔',
         }
         icon = icon_map.get(event, '🔔')
         text = f"{icon} "
@@ -202,6 +122,8 @@ class ChatRow(QWidget):
             text += "subscribed!"
         elif event == 'resub':
             text += "resubscribed!"
+        elif event == 'system':
+            text += getattr(self.msg, 'text', '') or getattr(self.msg, 'system_text', '') or ''
         else:
             text += event
 
@@ -212,7 +134,7 @@ class ChatRow(QWidget):
         layout.addWidget(label, 1)
 
     def _render_content(self, extra, platform):
-        """Render message content — text + emotes + segments + translated original"""
+        """Render message content"""
         segments = extra.get('segments', [])
         twitch_emotes = extra.get('twitch_emotes', []) or []
         sticker_url = extra.get('sticker_url', '')
@@ -221,24 +143,29 @@ class ChatRow(QWidget):
         original_text = extra.get('original_text', '')
         source_lang = extra.get('source_lang', '')
 
-        # ★ Sticker (MyLive) — show image only
+        # ★ Sticker
         if sticker_url and not segments and not twitch_emotes:
             self._add_sticker(sticker_url)
             return
 
-        # ★ text/emote content — ใช้ QLabel เดียวที่ word-wrap ตามความกว้าง
-        #    (ไม่ใช้ QHBoxLayout เพราะ text จะไม่ wrap)
+        # ★ inline layout สำหรับ text + emotes
+        from PySide6.QtWidgets import QHBoxLayout as _HBox
+        inline = _HBox()
+        inline.setContentsMargins(0, 0, 0, 0)
+        inline.setSpacing(2)
+
         if segments and not is_translated:
-            self._render_segments_wrap(segments)
+            self._render_segments_inline(inline, segments)
         elif twitch_emotes and raw_text and not is_translated:
-            self._render_twitch_emotes_wrap(raw_text, twitch_emotes)
+            self._render_twitch_emotes_inline(inline, raw_text, twitch_emotes)
         else:
-            # plain text
             text = getattr(self.msg, 'text', '') or raw_text
             lbl = self._make_wrap_label(text)
-            self.content_layout.addWidget(lbl)
+            inline.addWidget(lbl, 1)
 
-        # ★ ต้นฉบับ (บรรทัดใหม่ — ใต้คำแปล)
+        self.content_layout.addLayout(inline)
+
+        # ★ ต้นฉบับ
         if is_translated and original_text:
             try:
                 from flag_utils import flag_for
@@ -249,24 +176,18 @@ class ChatRow(QWidget):
             self.content_layout.addWidget(orig_label)
 
     def _make_wrap_label(self, text, color="#e5e7eb", size_offset=0):
-        """สร้าง QLabel ที่ word-wrap ตามความกว้างของ container (สำคัญสำหรับข้อความยาว)"""
         fs = self._font_size + size_offset
         lbl = QLabel(text)
         lbl.setWordWrap(True)
         lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
         lbl.setFont(QFont("Kanit", fs))
         lbl.setStyleSheet(f"color: {color}; font-size: {fs}px;")
-        # ★ บังคับให้ label ขยายตามความกว้างของ parent (wrap ไม่ล้นออกขวา)
         lbl.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Preferred)
         lbl.setMinimumWidth(0)
         return lbl
 
-    def _render_segments_wrap(self, segments):
-        """Render segments — text ใช้ wrap label, emote inline"""
-        from PySide6.QtWidgets import QHBoxLayout as _HBox
-        # ★ แยก text segments กับ emote segments
-        #    text → wrap label เดียว (concat ทั้งหมด)
-        #    emote → แสดงหลัง text
+    def _render_segments_inline(self, layout, segments):
+        """Render segments — text wrap + emotes inline"""
         text_parts = []
         emote_urls = []
         emoji_chars = []
@@ -284,106 +205,124 @@ class ChatRow(QWidget):
                 url = seg.get('url', '')
                 if url:
                     emote_urls.append(url)
-        # ★ render text (wrap)
         if text_parts:
-            full_text = ' '.join(text_parts)
-            lbl = self._make_wrap_label(full_text)
-            self.content_layout.addWidget(lbl)
-        # ★ render emoji + emotes inline (หลัง text)
-        if emoji_chars or emote_urls:
-            inline = _HBox()
-            inline.setContentsMargins(0, 0, 0, 0)
-            inline.setSpacing(2)
+            lbl = self._make_wrap_label(' '.join(text_parts))
+            layout.addWidget(lbl)
+        if emoji_chars:
             for char in emoji_chars:
                 lbl = QLabel(char)
                 lbl.setFont(QFont("Kanit", self._font_size + 2))
                 lbl.setStyleSheet(f"font-size: {self._font_size + 2}px;")
-                inline.addWidget(lbl)
+                layout.addWidget(lbl)
+        if emote_urls:
             for url in emote_urls:
-                self._add_emote_to_layout(inline, url)
-            self.content_layout.addLayout(inline)
+                self._add_emote_to_layout(layout, url)
 
-    def _render_twitch_emotes_wrap(self, text, emotes):
+    def _render_twitch_emotes_inline(self, layout, text, emotes):
         """Render Twitch emotes — text wrap + emotes inline"""
-        from PySide6.QtWidgets import QHBoxLayout as _HBox
         sorted_emotes = sorted(emotes, key=lambda e: e.get('start', 0))
-        # ★ ถ้ามีแค่ text ล้วน (ไม่มี emote กลาง) → wrap label เดียว
-        if not sorted_emotes:
-            lbl = self._make_wrap_label(text)
-            self.content_layout.addWidget(lbl)
-            return
-        # ★ มี emote → แยกเป็น text segments + emote
         text_parts = []
-        emote_urls = []
+        emote_data = []
         cur = 0
         for em in sorted_emotes:
             start = em.get('start', 0)
             end = em.get('end', 0)
             url = em.get('url', '')
+            name = em.get('name', '')
             if start > cur:
                 text_parts.append(text[cur:start])
             if url:
-                emote_urls.append(url)
+                emote_data.append(('url', url, name))
             cur = end + 1
         if cur < len(text):
             text_parts.append(text[cur:])
-        # ★ render text (wrap)
         if text_parts:
-            full_text = ''.join(text_parts)
-            lbl = self._make_wrap_label(full_text)
-            self.content_layout.addWidget(lbl)
-        # ★ render emotes inline
-        if emote_urls:
-            inline = _HBox()
-            inline.setContentsMargins(0, 0, 0, 0)
-            inline.setSpacing(2)
-            for url in emote_urls:
-                self._add_emote_to_layout(inline, url)
-            self.content_layout.addLayout(inline)
+            lbl = self._make_wrap_label(''.join(text_parts))
+            layout.addWidget(lbl)
+        for kind, val, name in emote_data:
+            self._add_emote_to_layout(layout, val, name)
 
-    def _add_emote_to_layout(self, layout, url, size=28):
-        """Add emote image to a horizontal layout (async load)"""
-        lbl = QLabel()
-        lbl.setFixedSize(size, size)
+    def _add_emote_to_layout(self, layout, url, name=''):
+        """Add emote using EmoteCache (sync + async like v1)"""
+        cache = _get_emote_cache()
+        sz = self._font_size + 14  # emote slightly larger than text
+
+        # placeholder label
+        lbl = QLabel(name or '⬚')
+        lbl.setFixedSize(sz, sz)
         lbl.setAlignment(Qt.AlignCenter)
+        lbl.setStyleSheet(f"color: #9ca3af; font-size: 10px;")
         layout.addWidget(lbl)
-        self._emote_labels[url] = lbl
-        loader = get_emote_loader()
-        loader.loaded.connect(lambda u, p, l=lbl: self._on_emote_loaded(u, p, l))
-        loader.load(url, size)
+
+        if cache is None:
+            return
+
+        # resolve URL
+        src_url = url
+        if url.startswith('/emote/') or url.startswith('/'):
+            src_url = f"http://localhost:8808{url}"
+
+        try:
+            # ★ try sync first
+            cached = cache.get_url_sync(src_url, size_px=sz)
+            if cached is not None:
+                # ★ convert CTkImage → QPixmap
+                pix = _ctk_to_qpixmap(cached, sz)
+                if pix:
+                    lbl.setPixmap(pix)
+                    lbl.setStyleSheet("")
+                    lbl.setText("")
+                return
+        except Exception:
+            pass
+
+        # ★ async fetch
+        try:
+            def _on_ready(_url, img, l=lbl, s=sz):
+                QTimer.singleShot(0, lambda: _apply_emote(l, img, s))
+            cache.fetch_url_async(src_url, _on_ready, size_px=sz)
+        except Exception as e:
+            logger.debug(f"Emote async fetch failed: {e}")
 
     def _add_sticker(self, url, size=64):
-        """Add sticker image (larger)"""
         lbl = QLabel()
         lbl.setFixedSize(size, size)
         lbl.setAlignment(Qt.AlignCenter)
         self.content_layout.addWidget(lbl)
-        self._emote_labels[url] = lbl
-        loader = get_emote_loader()
-        loader.loaded.connect(lambda u, p, l=lbl: self._on_emote_loaded(u, p, l))
-        loader.load_sticker(url, size)
+        self._add_emote_to_layout_qlabel(lbl, url, size)
 
-    def _on_emote_loaded(self, url, pixmap, label):
-        """Called when emote image loads"""
-        if not pixmap.isNull():
-            label.setPixmap(pixmap)
+    def _add_emote_to_layout_qlabel(self, lbl, url, size):
+        cache = _get_emote_cache()
+        if cache is None:
+            return
+        src_url = url
+        if url.startswith('/'):
+            src_url = f"http://localhost:8808{url}"
+        try:
+            cached = cache.get_url_sync(src_url, size_px=size)
+            if cached is not None:
+                pix = _ctk_to_qpixmap(cached, size)
+                if pix:
+                    lbl.setPixmap(pix)
+                return
+            def _on_ready(_url, img, l=lbl, s=size):
+                QTimer.singleShot(0, lambda: _apply_emote(l, img, s))
+            cache.fetch_url_async(src_url, _on_ready, size_px=size)
+        except Exception:
+            pass
 
     def update_translation(self, msg):
-        """อัปเดต row เมื่อข้อความถูกแปลแล้ว (re-render content)"""
         self.msg = msg
-        # ★ clear old content layout
         while self.content_layout.count():
             item = self.content_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
             elif item.layout():
                 self._clear_sublayout(item.layout())
-        # ★ re-render with translated content
         extra = getattr(msg, 'extra', {}) or {}
         self._render_content(extra, getattr(msg, 'platform', ''))
 
     def _clear_sublayout(self, layout):
-        """clear sub-layout (inline layout)"""
         while layout.count():
             item = layout.takeAt(0)
             if item.widget():
@@ -391,12 +330,49 @@ class ChatRow(QWidget):
         layout.deleteLater()
 
     def _get_platform_color(self, platform):
-        """สี author ตามแพลตฟอร์ม"""
         colors = {
-            'twitch': '#bf94ff',
-            'youtube': '#ff4444',
-            'mylive': '#ff8800',
-            'tiktok': '#00f2ea',
-            'kick': '#53fc18',
+            'twitch': '#bf94ff', 'youtube': '#ff4444',
+            'mylive': '#ff8800', 'tiktok': '#00f2ea', 'kick': '#53fc18',
         }
         return colors.get(platform, '#06b6d4')
+
+
+# ★ helper: convert CTkImage / PIL → QPixmap
+def _ctk_to_qpixmap(ctk_img, size):
+    """แปลง CTkImage → QPixmap (สำหรับ Qt)"""
+    try:
+        # CTkImage has _photoImage (PIL ImageTk.PhotoImage)
+        if hasattr(ctk_img, '_photoImage'):
+            pil_img = ctk_img._photoImage
+            # access PIL Image from PhotoImage
+            if hasattr(pil_img, '_PhotoImage__photo'):
+                # can't easily extract — try different approach
+                pass
+        # fallback: use the PIL image directly
+        if hasattr(ctk_img, '_pil_image'):
+            from PIL import Image
+            pil = ctk_img._pil_image
+            if hasattr(pil, 'size'):
+                # convert PIL → QImage → QPixmap
+                import io
+                buf = io.BytesIO()
+                pil.save(buf, format='PNG')
+                buf.seek(0)
+                img = QImage()
+                img.loadFromData(buf.read())
+                return QPixmap.fromImage(img).scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+    except Exception as e:
+        logger.debug(f"ctk_to_qpixmap failed: {e}")
+    return None
+
+
+def _apply_emote(label, ctk_img, size):
+    """apply emote image to QLabel"""
+    try:
+        pix = _ctk_to_qpixmap(ctk_img, size)
+        if pix:
+            label.setPixmap(pix)
+            label.setText("")
+            label.setStyleSheet("")
+    except Exception:
+        pass

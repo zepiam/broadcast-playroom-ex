@@ -123,50 +123,57 @@ class NGReplaceDialog(QDialog):
         self._update_count()
 
     def _add_row_data(self, src='', display='', read=''):
-        """เพิ่ม row — text แก้ไขได้ + 🔊 icon ชิดขวาใน cell"""
-        from PySide6.QtWidgets import QHBoxLayout, QWidget
+        """เพิ่ม row — text editable + 🔊 icon ชิดขวาใน container widget"""
+        from PySide6.QtWidgets import QHBoxLayout, QWidget, QLineEdit
         row = self.table.rowCount()
         self.table.insertRow(row)
+        self.table.setRowHeight(row, 40)
 
-        # ★ column 0: source + TTS button (in container widget)
+        # ★ column 0: source text + TTS button (in container)
         w0 = QWidget()
         l0 = QHBoxLayout(w0)
-        l0.setContentsMargins(4, 0, 4, 0)
+        l0.setContentsMargins(4, 2, 4, 2)
         l0.setSpacing(4)
-        item0 = QTableWidgetItem(src)
-        # ★ แก้ไขได้ (double-click)
-        self.table.setItem(row, 0, item0)
+        edit0 = QLineEdit(src)
+        edit0.setStyleSheet("border: none; background: transparent; color: #e5e7eb; padding: 0px;")
+        l0.addWidget(edit0)
         if src:
             btn0 = QPushButton("🔊")
             btn0.setFixedSize(24, 24)
             btn0.setToolTip("ฟังคำเดิม")
             btn0.setStyleSheet("border: none; background: transparent; font-size: 14px;")
             btn0.clicked.connect(lambda _, t=src: self._preview_tts_text(t))
-            l0.addStretch()
             l0.addWidget(btn0)
-            self.table.setCellWidget(row, 0, w0)
+        self.table.setCellWidget(row, 0, w0)
+        w0._edit = edit0  # เก็บ ref สำหรับ save
 
         # ★ column 1: display (editable)
-        self.table.setItem(row, 1, QTableWidgetItem(display))
+        w1 = QWidget()
+        l1 = QHBoxLayout(w1)
+        l1.setContentsMargins(4, 2, 4, 2)
+        edit1 = QLineEdit(display)
+        edit1.setStyleSheet("border: none; background: transparent; color: #e5e7eb; padding: 0px;")
+        l1.addWidget(edit1)
+        self.table.setCellWidget(row, 1, w1)
+        w1._edit = edit1
 
-        # ★ column 2: read + TTS button
+        # ★ column 2: read text + TTS button
         w2 = QWidget()
         l2 = QHBoxLayout(w2)
-        l2.setContentsMargins(4, 0, 4, 0)
+        l2.setContentsMargins(4, 2, 4, 2)
         l2.setSpacing(4)
-        self.table.setItem(row, 2, QTableWidgetItem(read))
+        edit2 = QLineEdit(read)
+        edit2.setStyleSheet("border: none; background: transparent; color: #e5e7eb; padding: 0px;")
+        l2.addWidget(edit2)
         if read:
             btn2 = QPushButton("🔊")
             btn2.setFixedSize(24, 24)
             btn2.setToolTip("ฟังคำที่อ่าน")
             btn2.setStyleSheet("border: none; background: transparent; font-size: 14px;")
             btn2.clicked.connect(lambda _, t=read: self._preview_tts_text(t))
-            l2.addStretch()
             l2.addWidget(btn2)
-            self.table.setCellWidget(row, 2, w2)
-
-        # ★ edit button (ด้านขวาของแถว — ใช้ header section)
-        # ไม่ต้องมี edit button — table editable อยู่แล้ว (double-click to edit)
+        self.table.setCellWidget(row, 2, w2)
+        w2._edit = edit2
 
     def _preview_tts_text(self, text):
         """เล่นเสียง TTS ของ text"""
@@ -303,24 +310,25 @@ class NGReplaceDialog(QDialog):
             entry = _TF._normalize_entry(v)
             normalized[src] = entry
 
-        # ★ เก็บค่าปัจจุบันจาก table
-        existing = {}
+        # ★ เก็บค่าปัจจุบันจาก table (อ่านจาก cellWidget._edit)
+        existing = set()
         for row in range(self.table.rowCount()):
-            src_item = self.table.item(row, 0)
-            if src_item:
-                src = src_item.text().strip()
-                display_item = self.table.item(row, 1)
-                read_item = self.table.item(row, 2)
-                existing[src] = {
-                    'display': display_item.text().strip() if display_item else '',
-                    'read': read_item.text().strip() if read_item else '',
-                }
+            w0 = self.table.cellWidget(row, 0)
+            if w0 and hasattr(w0, '_edit'):
+                src = w0._edit.text().strip()
+                if src:
+                    existing.add(src)
 
         # ★ merge: เพิ่มเฉพาะคำใหม่ (คำซ้ำข้าม)
         added = 0
         conflicts = 0
         for src, entry in normalized.items():
             if src in existing:
+                conflicts += 1
+            else:
+                self._add_row_data(src, entry.get('display', ''), entry.get('read', ''))
+                existing.add(src)
+                added += 1
                 # conflict → ถามรวมกัน (เก็บค่าเดิม)
                 conflicts += 1
             else:
@@ -354,16 +362,21 @@ class NGReplaceDialog(QDialog):
             return
         words = {}
         for row in range(self.table.rowCount()):
-            src_item = self.table.item(row, 0)
-            display_item = self.table.item(row, 1)
-            read_item = self.table.item(row, 2)
-            if not src_item:
-                continue
-            src = src_item.text().strip()
+            # ★ อ่านจาก QLineEdit ใน cell widget (w._edit)
+            src = ''
+            display = ''
+            read = ''
+            w0 = self.table.cellWidget(row, 0)
+            w1 = self.table.cellWidget(row, 1)
+            w2 = self.table.cellWidget(row, 2)
+            if w0 and hasattr(w0, '_edit'):
+                src = w0._edit.text().strip()
+            if w1 and hasattr(w1, '_edit'):
+                display = w1._edit.text().strip()
+            if w2 and hasattr(w2, '_edit'):
+                read = w2._edit.text().strip()
             if not src:
                 continue
-            display = display_item.text().strip() if display_item else ''
-            read = read_item.text().strip() if read_item else ''
             words[src] = {'display': display, 'read': read}
         self.settings.replace_words = words
         try:

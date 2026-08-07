@@ -40,6 +40,21 @@ class ChatPanel(QFrame):
         title = QLabel("💬 แชทสด")
         title.setStyleSheet("font-weight: 600;")
         hlayout.addWidget(title)
+        # ★ Font controls (A-/A+ อยู่ใน header เดียวกับ "แชทสด")
+        btn_font_dec = QPushButton("A-")
+        btn_font_dec.setObjectName("IconButton")
+        btn_font_dec.setFixedSize(28, 28)
+        btn_font_dec.setCursor(Qt.PointingHandCursor)
+        btn_font_dec.setToolTip("ลดขนาดฟอนต์")
+        btn_font_dec.setStyleSheet("font-size: 11px; font-weight: bold; padding: 0px;")
+        hlayout.addWidget(btn_font_dec)
+        btn_font_inc = QPushButton("A+")
+        btn_font_inc.setObjectName("IconButton")
+        btn_font_inc.setFixedSize(28, 28)
+        btn_font_inc.setCursor(Qt.PointingHandCursor)
+        btn_font_inc.setToolTip("เพิ่มขนาดฟอนต์")
+        btn_font_inc.setStyleSheet("font-size: 11px; font-weight: bold; padding: 0px;")
+        hlayout.addWidget(btn_font_inc)
         hlayout.addStretch()
         # ★ viewer count
         self.viewers_label = QLabel("👥 0")
@@ -62,6 +77,10 @@ class ChatPanel(QFrame):
         btn_clear.clicked.connect(self.clear_requested.emit)
         hlayout.addWidget(btn_clear)
         layout.addWidget(header)
+
+        # ★ expose font buttons for external connections
+        self.font_dec_btn = btn_font_dec
+        self.font_inc_btn = btn_font_inc
 
         # ★ Scroll area for chat
         self.scroll = QScrollArea()

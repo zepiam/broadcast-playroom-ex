@@ -574,8 +574,6 @@ class TTSForLivestreamApp(QMainWindow):
         self.topbar.code_mute_clicked.connect(self._toggle_code_mute)
         self.topbar.about_clicked.connect(self._open_about)
         self.topbar.ngreplace_clicked.connect(self._open_ngreplace)
-        self.topbar.font_increase_clicked.connect(self._increase_chat_font)
-        self.topbar.font_decrease_clicked.connect(self._decrease_chat_font)
 
         # ═══ Build platform cards ═══
         self._platform_cards = {}
@@ -600,6 +598,9 @@ class TTSForLivestreamApp(QMainWindow):
         self.chat_panel.clear_requested.connect(self._clear_chat)
         self.chat_panel.block_user_requested.connect(self._block_user_from_chat)
         self.chat_panel.author_clicked.connect(self._open_author_modal)
+        # ★ font buttons (อยู่ใน chat panel header ไม่ใช่ topbar)
+        self.chat_panel.font_dec_btn.clicked.connect(self._decrease_chat_font)
+        self.chat_panel.font_inc_btn.clicked.connect(self._increase_chat_font)
 
         # ═══ Events panel toggle ═══
         self.events_panel.header.clicked.connect(self.events_panel.toggle_collapse)
@@ -1110,8 +1111,8 @@ class TTSForLivestreamApp(QMainWindow):
                 index_path = ''
             try:
                 from rvc_engine import RVCEngine, RVCParams
-                engine = RVCEngine()
-                engine.load(pth_path)
+                engine = RVCEngine(model_path=pth_path)
+                engine.load()
                 if self.pipeline:
                     pitch = getattr(self.settings, 'rvc_pitch', 0)
                     f0method = getattr(self.settings, 'rvc_f0method', 'rmvpe')

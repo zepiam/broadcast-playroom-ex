@@ -266,16 +266,37 @@ class SettingsDialog(QDialog):
         )
         self.at_provider = QComboBox()
         self.at_provider.addItems(["google", "deepl", "deepseek"])
+        self.at_provider.currentTextChanged.connect(self._on_translate_provider_change)
         self._add_row("ผู้ให้บริการแปล:", self.at_provider)
+        # ★ API Key + Host (ซ่อนเมื่อเลือก Google)
         self.at_apikey = QLineEdit()
         self.at_apikey.setPlaceholderText("API Key (ถ้าใช้ DeepL/DeepSeek)")
         self.at_apikey.setEchoMode(QLineEdit.Password)
-        self._add_row("API Key:", self.at_apikey)
+        self._at_apikey_row = self._add_row_widget("API Key:", self.at_apikey)
         self.at_host = QLineEdit()
         self.at_host.setPlaceholderText("Host (สำหรับ DeepL/DeepSeek — ว่าง = default)")
-        self._add_row("Host:", self.at_host)
+        self._at_host_row = self._add_row_widget("Host:", self.at_host)
+        # ★ Language list (ภาษาที่แปล)
+        lang_label = QLabel("ภาษาที่จะแปล (เลือกภาษาที่ต้องการแปลเป็นไทย):")
+        lang_label.setObjectName("Dim")
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, lang_label
+        )
+        self._lang_checks = {}
+        all_langs = [
+            ("en", "🇬🇧 อังกฤษ"), ("ja", "🇯🇵 ญี่ปุ่น"), ("ko", "🇰🇷 เกาหลี"),
+            ("zh", "🇨🇳 จีนกลาง"), ("zh-TW", "🇹🇼 จีนไต้หวัน"), ("fr", "🇫🇷 ฝรั่งเศส"),
+            ("vi", "🇻🇳 เวียดนาม"), ("id", "🇮🇩 อินโดนีเซีย"), ("es", "🇪🇸 สเปน"),
+            ("de", "🇩🇪 เยอรมัน"), ("ru", "🇷🇺 รัสเซีย"),
+        ]
+        for code, name in all_langs:
+            cb = QCheckBox(name)
+            self._lang_checks[code] = cb
+            self._current_section_layout.insertWidget(
+                self._current_section_layout.count() - 1, cb
+            )
 
-        # ★ Multilang (อ่านหลายภาษา)
+        # ★ Multilang
         sep = QLabel("─" * 40)
         sep.setStyleSheet("color: #2a2f45;")
         self._current_section_layout.insertWidget(
@@ -285,25 +306,63 @@ class SettingsDialog(QDialog):
         self._current_section_layout.insertWidget(
             self._current_section_layout.count() - 1, self.ml_enabled
         )
-        lang_label = QLabel("ภาษาที่รองรับ: en, ja, ko, zh, zh-TW, fr, vi, id")
-        lang_label.setObjectName("Faint")
-        self._current_section_layout.insertWidget(
-            self._current_section_layout.count() - 1, lang_label
-        )
 
-        # ★ Mixed Voice (อ่านสลับภาษาในประโยคเดียว)
+        # ★ Mixed Voice
         self.mv_enabled = QCheckBox("Mixed Voice (อ่านสลับหลายเสียงในประโยคเดียว)")
         self._current_section_layout.insertWidget(
             self._current_section_layout.count() - 1, self.mv_enabled
         )
 
+        # ★ ซ่อน API key/host ตอนเริ่ม (ถ้า default = google)
+        self._on_translate_provider_change(self.at_provider.currentText())
+
+    def _on_translate_provider_change(self, provider):
+        """ซ่อน/แสดง API Key + Host ตาม provider"""
+        show = provider != "google"
+        if hasattr(self, '_at_apikey_row'):
+            self._at_apikey_row.setVisible(show)
+        if hasattr(self, '_at_host_row'):
+            self._at_host_row.setVisible(show)
+
+    def _add_row_widget(self, label, widget):
+        """เพิ่ม row (label + widget) และคืน container widget (สำหรับ show/hide)"""
+        container = QWidget()
+        row = QHBoxLayout(container)
+        row.setContentsMargins(0, 0, 0, 0)
+        lbl = QLabel(label)
+        lbl.setMinimumWidth(140)
+        row.addWidget(lbl)
+        row.addWidget(widget, 1)
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, container
+        )
+        return container
+
     def _build_playroom_section(self):
-        self._add_section("playroom", "🎮 Playroom", "ตั้งค่า Playroom triggers")
-        info = QLabel("ตั้งค่า trigger / เพิ่ม clip / ปรับ weight ได้ที่นี่ (เร็วๆ นี้)")
+        self._add_section("playroom", "🎮 Playroom", "ตั้งค่า Playroom triggers + clips")
+        # ★ open trigger editor button
+        btn_edit = QPushButton("🎮 จัดการ Triggers")
+        btn_edit.setObjectName("Primary")
+        btn_edit.setMinimumHeight(36)
+        def _open_triggers():
+            from ui.dialogs.playroom_trigger import PlayroomTriggerDialog
+            dlg = PlayroomTriggerDialog(self.parent_app)
+            dlg.exec()
+        btn_edit.clicked.connect(_open_triggers)
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, btn_edit
+        )
+        # ★ show current triggers count
+        triggers = getattr(self.settings, 'playroom_triggers', []) or []
+        info = QLabel(f"📋 มี {len(triggers)} triggers ตั้งไว้")
         info.setObjectName("Dim")
-        info.setWordWrap(True)
         self._current_section_layout.insertWidget(
             self._current_section_layout.count() - 1, info
+        )
+        # ★ enable/disable playroom
+        self.playroom_enabled = QCheckBox("เปิดใช้งาน Playroom")
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, self.playroom_enabled
         )
 
     def _build_canvas_section(self):
@@ -334,19 +393,86 @@ class SettingsDialog(QDialog):
             )
 
     def _build_ngreplace_section(self):
-        self._add_section("ngreplace", "🚫 NG-Replace", "คำต้องห้าม + คำแทนที่")
-        info = QLabel("จัดการคำต้องห้ามและคำแทนที่ (เร็วๆ นี้)")
+        self._add_section("ngreplace", "🚫 NG-Replace", "คำต้องห้าม + คำแทนที่ (3 ฟิลด์)")
+        # ★ open editor button
+        btn_edit = QPushButton("🚫 จัดการคำต้องห้าม")
+        btn_edit.setObjectName("Primary")
+        btn_edit.setMinimumHeight(36)
+        def _open_ng():
+            from ui.dialogs.ngreplace import NGReplaceDialog
+            dlg = NGReplaceDialog(self.parent_app)
+            dlg.exec()
+        btn_edit.clicked.connect(_open_ng)
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, btn_edit
+        )
+        # ★ show count
+        words = getattr(self.settings, 'replace_words', {}) or {}
+        info = QLabel(f"📋 มี {len(words)} คำต้องห้าม/แทนที่")
         info.setObjectName("Dim")
         self._current_section_layout.insertWidget(
             self._current_section_layout.count() - 1, info
         )
+        # ★ banned words (simple list)
+        ban_label = QLabel("🚫 คำต้องห้าม (ซ่อนข้อความ + ไม่อ่าน):")
+        ban_label.setObjectName("Dim")
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, ban_label
+        )
+        self.banned_words = QLineEdit()
+        self.banned_words.setPlaceholderText("คำ1, คำ2, คำ3 (คั่นด้วยจุลภาค)")
+        banned = getattr(self.settings, 'banned_words', []) or []
+        self.banned_words.setText(', '.join(banned))
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, self.banned_words
+        )
 
     def _build_spam_section(self):
-        self._add_section("spam", "🛡️ Spam & Block", "บล็อกผู้ใช้ + คำต้องห้าม")
-        info = QLabel("บล็อกผู้ใช้ + คำต้องห้าม (เร็วๆ นี้)")
+        self._add_section("spam", "🛡️ Spam & Block", "บล็อกผู้ใช้ + จำกัด rate + ตั้งค่า anti-spam")
+        # ★ open user manager
+        btn_users = QPushButton("👤 จัดการผู้ใช้ (User Manager)")
+        btn_users.setObjectName("Primary")
+        btn_users.setMinimumHeight(36)
+        def _open_um():
+            from ui.dialogs.user_manager import UserManagerDialog
+            dlg = UserManagerDialog(self.parent_app)
+            dlg.exec()
+        btn_users.clicked.connect(_open_um)
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, btn_users
+        )
+        # ★ blocked users count
+        blocked = getattr(self.settings, 'blocked_users', []) or []
+        info = QLabel(f"🚫 บล็อก {len(blocked)} ผู้ใช้")
         info.setObjectName("Dim")
         self._current_section_layout.insertWidget(
             self._current_section_layout.count() - 1, info
+        )
+        # ★ max message length
+        from PySide6.QtWidgets import QSpinBox
+        max_len_label = QLabel("ความยาวข้อความสูงสุด (ตัวอักษร):")
+        max_len_label.setObjectName("Dim")
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, max_len_label
+        )
+        self.max_msg_length = QSpinBox()
+        self.max_msg_length.setRange(0, 10000)
+        self.max_msg_length.setValue(getattr(self.settings, 'max_msg_length', 500))
+        self.max_msg_length.setSpecialValueText("ไม่จำกัด")
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, self.max_msg_length
+        )
+        # ★ blocked users (manual edit)
+        ban_label = QLabel("บล็อกผู้ใช้ (คั่นด้วยจุลภาค):")
+        ban_label.setObjectName("Dim")
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, ban_label
+        )
+        self.blocked_users = QLineEdit()
+        self.blocked_users.setPlaceholderText("user1, user2, user3")
+        self.blocked_users.setText(', '.join(blocked))
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, self.blocked_users
         )
 
     def _build_about_section(self):
@@ -385,6 +511,8 @@ class SettingsDialog(QDialog):
         self.ml_auto.setChecked(getattr(s, 'auto_connect_mylive', False))
         self.tt_auto.setChecked(getattr(s, 'auto_connect_tiktok', False))
         self.kc_auto.setChecked(getattr(s, 'auto_connect_kick', False))
+        # playroom
+        self.playroom_enabled.setChecked(getattr(s, 'playroom_enabled', False))
         # TTS
         self.tts_volume.setValue(getattr(s, 'volume', 100))
         self.tts_rate.setValue(getattr(s, 'rate', 0))
@@ -401,6 +529,10 @@ class SettingsDialog(QDialog):
         # multilang + mixed voice
         self.ml_enabled.setChecked(getattr(s, 'multilang_enabled', False))
         self.mv_enabled.setChecked(getattr(s, 'mixed_voice_enabled', False))
+        # language list
+        enabled_langs = getattr(s, 'auto_translate_langs', ['en', 'ja', 'ko', 'zh', 'vi', 'id'])
+        for code, cb in self._lang_checks.items():
+            cb.setChecked(code in enabled_langs)
 
     def _save(self):
         """บันทึกค่าจาก form ลง settings"""
@@ -421,6 +553,14 @@ class SettingsDialog(QDialog):
         s.auto_connect_mylive = self.ml_auto.isChecked()
         s.auto_connect_tiktok = self.tt_auto.isChecked()
         s.auto_connect_kick = self.kc_auto.isChecked()
+        # playroom
+        s.playroom_enabled = self.playroom_enabled.isChecked()
+        # banned words + blocked users
+        banned_text = self.banned_words.text().strip()
+        s.banned_words = [w.strip() for w in banned_text.split(',') if w.strip()] if banned_text else []
+        blocked_text = self.blocked_users.text().strip()
+        s.blocked_users = [u.strip() for u in blocked_text.split(',') if u.strip()] if blocked_text else []
+        s.max_msg_length = self.max_msg_length.value()
         # TTS
         s.volume = self.tts_volume.value()
         s.rate = self.tts_rate.value()
@@ -433,6 +573,8 @@ class SettingsDialog(QDialog):
         s.auto_translate_host = self.at_host.text().strip()
         s.multilang_enabled = self.ml_enabled.isChecked()
         s.mixed_voice_enabled = self.mv_enabled.isChecked()
+        # language list
+        s.auto_translate_langs = [code for code, cb in self._lang_checks.items() if cb.isChecked()]
         # Save
         try:
             from settings import save_settings

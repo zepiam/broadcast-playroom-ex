@@ -1086,6 +1086,10 @@ class TTSForLivestreamApp(QMainWindow):
         self.sidebar.voice_combo.blockSignals(False)
         # ★ auto-load RVC ตอนเปิดโปรแกรม (ถ้ามี voice_id)
         if current and found:
+            # ★ แสดงสถานะ loading ทันที (ก่อน delay)
+            self.sidebar.rvc_status.setText(f"⏳ กำลังโหลด {current}...")
+            self.sidebar.rvc_status.setStyleSheet("color: #f59e0b; font-size: 11px;")
+            self.sidebar.voice_combo.setEnabled(False)
             QTimer.singleShot(1000, lambda: self._auto_load_rvc(current))
 
     def _auto_load_rvc(self, voice_id):
@@ -1107,20 +1111,21 @@ class TTSForLivestreamApp(QMainWindow):
             self.settings.voice_id = ''
             self.sidebar.voice_combo.blockSignals(True)
             self.sidebar.voice_combo.setCurrentIndex(0)
+            self.sidebar.voice_combo.setEnabled(True)
             self.sidebar.voice_combo.blockSignals(False)
             try:
                 from settings import save_settings
                 save_settings(self.settings)
             except Exception:
                 pass
-            self.status_bar.set_status("🎤 เสียง: Premwadee (RVC model ไม่พบ)")
+            self._set_rvc_status_premwadee()
+            self.status_bar.set_status("🎤 RVC model ไม่พบ → ใช้ Premwadee")
             return
         # ★ โหลดใน background
         index_path = pth_path.replace('.pth', '.index')
         if not os.path.exists(index_path):
             index_path = ''
         self.status_bar.set_status(f"⏳ กำลังโหลด RVC: {voice_id}...")
-        self.sidebar.voice_combo.setEnabled(False)
         _pth = pth_path
         _vid = voice_id
         _idx = index_path

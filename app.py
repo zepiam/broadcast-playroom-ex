@@ -1135,6 +1135,11 @@ class TTSForLivestreamApp(QMainWindow):
                 QTimer.singleShot(0, lambda err=str(e): self._on_rvc_load_failed(err))
         threading.Thread(target=_bg, name="AutoRvcLoad", daemon=True).start()
 
+    def _set_rvc_status_premwadee(self):
+        """คืนสถานะเป็น Premwadee"""
+        self.sidebar.rvc_status.setText("✅ Premwadee (edge-tts)")
+        self.sidebar.rvc_status.setStyleSheet("color: #10b981; font-size: 11px;")
+
     def _on_voice_change(self, index):
         """เปลี่ยนเสียง TTS"""
         if index < 0 or not self.settings:
@@ -1169,6 +1174,8 @@ class TTSForLivestreamApp(QMainWindow):
             # ★ show loading state
             self.status_bar.set_status(f"⏳ กำลังโหลด RVC: {voice_id}... (5-15 วินาที)")
             self.sidebar.voice_combo.setEnabled(False)
+            self.sidebar.rvc_status.setText(f"⏳ กำลังโหลด {voice_id}...")
+            self.sidebar.rvc_status.setStyleSheet("color: #f59e0b; font-size: 11px;")
 
             # ★ load in background thread (กัน UI ค้าง)
             _pth = pth_path
@@ -1191,6 +1198,8 @@ class TTSForLivestreamApp(QMainWindow):
                 self.pipeline.config.voice = ''
                 self.pipeline.set_rvc(None, '', '')
             self.status_bar.set_status("🎤 เสียง: Premwadee (edge-tts)")
+            self.sidebar.rvc_status.setText("✅ Premwadee (edge-tts)")
+            self.sidebar.rvc_status.setStyleSheet("color: #10b981; font-size: 11px;")
         try:
             from settings import save_settings
             save_settings(self.settings)
@@ -1203,11 +1212,23 @@ class TTSForLivestreamApp(QMainWindow):
         if self.pipeline:
             self.pipeline.set_rvc(engine, voice_id, index_path)
         self.status_bar.set_status(f"🎤 เสียง: {voice_id} (RVC)")
+        self.sidebar.rvc_status.setText(f"✅ {voice_id} (RVC)")
+        self.sidebar.rvc_status.setStyleSheet("color: #10b981; font-size: 11px;")
 
     def _on_rvc_load_failed(self, error):
         """RVC โหลดล้มเหลว (main thread)"""
         self.sidebar.voice_combo.setEnabled(True)
         self.status_bar.set_status(f"❌ โหลด RVC ไม่ได้: {error}")
+        self.sidebar.rvc_status.setText(f"❌ โหลดไม่ได้")
+        self.sidebar.rvc_status.setStyleSheet("color: #ef4444; font-size: 11px;")
+        # ★ fallback Premwadee
+        self.settings.voice_id = ''
+        self.sidebar.voice_combo.blockSignals(True)
+        self.sidebar.voice_combo.setCurrentIndex(0)
+        self.sidebar.voice_combo.blockSignals(False)
+        if self.pipeline:
+            self.pipeline.set_rvc(None, '', '')
+        QTimer.singleShot(3000, lambda: self._set_rvc_status_premwadee())
 
     def _on_volume_change(self, value):
         if self.settings:

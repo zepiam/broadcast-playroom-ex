@@ -191,11 +191,20 @@ class Sidebar(QFrame):
         sep.setStyleSheet(f"background-color: {COLOR_BORDER};")
         clayout.addWidget(sep)
 
-        # ★ Voice header
+        # ★ Voice header — สถานะ RVC อยู่ชิดขวา
+        voice_header_row = QHBoxLayout()
+        voice_header_row.setContentsMargins(0, 0, 0, 0)
+        voice_header_row.setSpacing(4)
         voice_header = QLabel("🎤 เสียง")
         voice_header.setObjectName("Heading")
         voice_header.setStyleSheet("font-size: 14px; font-weight: 700; color: #f59e0b;")
-        clayout.addWidget(voice_header)
+        voice_header_row.addWidget(voice_header)
+        voice_header_row.addStretch()
+        # ★ RVC status label (ชิดขวา — เหมือน v1)
+        self.rvc_status = QLabel("✅ Premwadee (edge-tts)")
+        self.rvc_status.setStyleSheet("color: #10b981; font-size: 11px;")
+        voice_header_row.addWidget(self.rvc_status)
+        clayout.addLayout(voice_header_row)
 
         # ★ Voice selector
         voice_row = QHBoxLayout()

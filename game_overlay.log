@@ -1,5 +1,4 @@
-{"cmd": "ready", "hwnd": 3214502}
+{"cmd": "ready", "hwnd": 58264654}
+{"cmd": "toggle_demo"}
 {"cmd": "toggle_demo"}
 {"cmd": "open_settings"}
-{"cmd": "clear_msgs"}
-{"cmd": "toggle_demo"}

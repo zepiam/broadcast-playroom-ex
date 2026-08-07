@@ -579,6 +579,11 @@ class TTSForLivestreamApp(QMainWindow):
         self._platform_cards = {}
         self._build_platform_cards()
 
+        # ★ gear button → open settings at platforms tab
+        self.sidebar.gear_btn.clicked.connect(self._open_platform_settings)
+        # ★ toggle platforms section
+        self.sidebar.platform_toggle.clicked.connect(self.sidebar.toggle_platforms)
+
         # ═══ Connect sidebar voice controls ═══
         self.sidebar.voice_combo.currentIndexChanged.connect(self._on_voice_change)
         self.sidebar.vol_slider.valueChanged.connect(self._on_volume_change)
@@ -624,6 +629,12 @@ class TTSForLivestreamApp(QMainWindow):
         label = PLATFORM_LABELS.get(platform, platform)
         state = "ปิด" if muted else "เปิด"
         self.status_bar.set_status(f"🔊 {label}: {state}")
+
+    def _update_platform_count(self):
+        """อัปเดตตัวเลขจำนวนแพลตฟอร์มที่เชื่อมต่อใน sidebar"""
+        connected = len(self.chat_clients)
+        total = len(self._platform_cards)
+        self.sidebar.update_platform_count(connected, total)
 
     def _on_platform_volume(self, platform, volume):
         """ปรับ volume ของแพลตฟอร์ม"""
@@ -788,6 +799,7 @@ class TTSForLivestreamApp(QMainWindow):
                 card.set_connected(False)
             self._post_system_message(f"❌ {label} เชื่อมต่อไม่ได้")
             self.status_bar.set_status(f"❌ {label} เชื่อมต่อไม่ได้")
+        self._update_platform_count()
 
     def _on_platform_error_signal(self, platform, error_msg):
         """รับ error จาก signal (main thread)"""
@@ -804,6 +816,7 @@ class TTSForLivestreamApp(QMainWindow):
         if st and not st.get('manual_disconnect'):
             if 'ปิด' in error_msg or 'หลุด' in error_msg:
                 st['last_attempt'] = time.time()
+        self._update_platform_count()
 
     def _record_event(self, msg, platform):
         """บันทึก event (sub/bits/raid) → event_log + events panel + donate"""
@@ -853,6 +866,7 @@ class TTSForLivestreamApp(QMainWindow):
             st['manual_disconnect'] = True
             st['last_attempt'] = None
             st['attempts'] = 0
+        self._update_platform_count()
 
     # ════════════════════════════════════════════════════════════
     # Chat feed (event-driven via signals — ไม่ต้อง poll)
@@ -1012,6 +1026,15 @@ class TTSForLivestreamApp(QMainWindow):
         from ui.dialogs.settings import SettingsDialog
         dlg = SettingsDialog(self)
         dlg.settings_changed.connect(self._on_settings_changed)
+        dlg.exec()
+
+    def _open_platform_settings(self):
+        """เปิด Settings ไปที่แท็บแพลตฟอร์ม"""
+        from ui.dialogs.settings import SettingsDialog
+        dlg = SettingsDialog(self)
+        dlg.settings_changed.connect(self._on_settings_changed)
+        # ★ สลับไป section แพลตฟอร์ม (index 0)
+        dlg.sidebar.setCurrentRow(0)
         dlg.exec()
 
     def _on_settings_changed(self):
@@ -1201,15 +1224,21 @@ class TTSForLivestreamApp(QMainWindow):
         QTimer.singleShot(0, lambda: self.status_bar.set_status(msg))
 
     def _maybe_auto_connect(self):
-        """auto-connect แพลตฟอร์มที่เปิดไว้ (ถ้ามี channel)"""
+        """auto-connect แพลตฟอร์มที่เปิดไว้ (per-platform checkbox)"""
         if not self.settings:
             return
-        if not getattr(self.settings, 'auto_connect_on_start', False):
-            return
-        for plat in PLATFORM_ORDER:
-            target = self._get_platform_target(plat)
-            if target and plat in self._platform_cards:
-                self._connect_platform(plat)
+        auto_map = {
+            'twitch': getattr(self.settings, 'auto_connect_twitch', False),
+            'youtube': getattr(self.settings, 'auto_connect_youtube', False),
+            'mylive': getattr(self.settings, 'auto_connect_mylive', False),
+            'tiktok': getattr(self.settings, 'auto_connect_tiktok', False),
+            'kick': getattr(self.settings, 'auto_connect_kick', False),
+        }
+        for plat, auto in auto_map.items():
+            if auto and plat in self._platform_cards:
+                target = self._get_platform_target(plat)
+                if target:
+                    self._connect_platform(plat)
 
     def closeEvent(self, event):
         """cleanup on close"""

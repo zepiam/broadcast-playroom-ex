@@ -149,16 +149,28 @@ class Sidebar(QFrame):
         clayout.setContentsMargins(10, 10, 10, 10)
         clayout.setSpacing(8)
 
-        # ★ Platforms header (with toggle button)
+        # ★ Platforms header (collapsible)
         ph = QHBoxLayout()
         ph.setContentsMargins(0, 0, 0, 0)
         ph.setSpacing(4)
+        # ★ collapse toggle button
+        self.platform_toggle = QPushButton("▼")
+        self.platform_toggle.setObjectName("IconButton")
+        self.platform_toggle.setFixedSize(20, 20)
+        self.platform_toggle.setCursor(Qt.PointingHandCursor)
+        self.platform_toggle.setStyleSheet("font-size: 11px; padding: 0px; margin: 0px;")
+        self.platform_toggle.setToolTip("หด/ขยาย")
+        ph.addWidget(self.platform_toggle)
         header = QLabel("🔌 แพลตฟอร์ม")
         header.setObjectName("Heading")
         header.setStyleSheet("font-size: 14px; font-weight: 700; color: #f59e0b;")
         ph.addWidget(header)
         ph.addStretch()
-        # ★ Settings gear for platform selection
+        # ★ connected count
+        self.platform_count = QLabel("0/0")
+        self.platform_count.setStyleSheet("color: #10b981; font-size: 11px; font-weight: 600;")
+        ph.addWidget(self.platform_count)
+        # ★ Settings gear
         self.gear_btn = QPushButton("⚙")
         self.gear_btn.setObjectName("IconButton")
         self.gear_btn.setFixedSize(28, 28)
@@ -168,7 +180,7 @@ class Sidebar(QFrame):
         ph.addWidget(self.gear_btn)
         clayout.addLayout(ph)
 
-        # ★ Platform cards (dynamic)
+        # ★ Platform container (collapsible)
         self.platforms_container = QVBoxLayout()
         self.platforms_container.setSpacing(6)
         clayout.addLayout(self.platforms_container)
@@ -232,3 +244,20 @@ class Sidebar(QFrame):
         card = PlatformCard(key, label, icon, self)
         self.platforms_container.addWidget(card)
         return card
+
+    def toggle_platforms(self):
+        """หด/ขยาย section แพลตฟอร์ม"""
+        self._platforms_collapsed = not getattr(self, '_platforms_collapsed', False)
+        collapsed = self._platforms_collapsed
+        self.platform_toggle.setText("▶" if collapsed else "▼")
+        # ★ toggle visibility ของทุก card
+        for i in range(self.platforms_container.count()):
+            item = self.platforms_container.itemAt(i)
+            if item.widget():
+                item.widget().setVisible(not collapsed)
+
+    def update_platform_count(self, connected, total):
+        """อัปเดตตัวเลขจำนวนแพลตฟอร์มที่เชื่อมต่ออยู่"""
+        color = "#10b981" if connected > 0 else "#6b7280"
+        self.platform_count.setText(f"{connected}/{total}")
+        self.platform_count.setStyleSheet(f"color: {color}; font-size: 11px; font-weight: 600;")

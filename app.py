@@ -70,6 +70,13 @@ class TTSForLivestreamApp(QMainWindow):
         # ═══ Load settings + engines ═══
         self._init_engines()
 
+        # ═══ Start servers (overlay + composer + playroom) ═══
+        self.overlay_server = None
+        self.composer_server = None
+        self.playroom_server = None
+        self._np_watcher = None
+        self._start_servers()
+
         # ═══ Build UI ═══
         self._build_ui()
 
@@ -82,6 +89,172 @@ class TTSForLivestreamApp(QMainWindow):
         QTimer.singleShot(500, self._maybe_auto_connect)
 
         logger.info("Main window initialized")
+
+    # ════════════════════════════════════════════════════════════
+    # Server startup (overlay + composer + playroom + now playing)
+    # ════════════════════════════════════════════════════════════
+    def _start_servers(self):
+        """เริ่ม servers ทั้งหมด (overlay + composer + playroom)"""
+        # ★ Composer server (Canvas Overlay Composer)
+        self._start_composer_server()
+        # ★ Playroom server (ถ้าเปิดไว้)
+        if getattr(self.settings, 'playroom_enabled', False):
+            self._start_playroom_server()
+        # ★ Now Playing watcher (หน่วง 5 วิ)
+        QTimer.singleShot(5000, self._start_np_watcher)
+
+    def _start_composer_server(self):
+        """เริ่ม composer server"""
+        try:
+            from composer_server import ComposerServer
+            port = int(getattr(self.settings, 'composer_port', 8808))
+            self.composer_server = ComposerServer(self.settings, port=port)
+            # ★ callbacks
+            self.composer_server.on_save_widgets = self._save_composer_widgets
+            self.composer_server.on_open_playroom_settings = lambda: None
+            self.composer_server.on_save_playroom_triggers = self._save_playroom_triggers
+            if self.composer_server.start():
+                logger.info(f"Composer server: http://localhost:{port}")
+            else:
+                logger.error("Composer server failed to start")
+                self.composer_server = None
+        except Exception as e:
+            logger.error(f"Failed to start composer server: {e}")
+            self.composer_server = None
+
+    def _start_playroom_server(self):
+        """เริ่ม playroom server"""
+        try:
+            from playroom_server import PlayroomServer
+            self.playroom_server = PlayroomServer(self.settings)
+            if self.playroom_server.start():
+                logger.info("Playroom server started")
+            else:
+                self.playroom_server = None
+        except Exception as e:
+            logger.error(f"Failed to start playroom server: {e}")
+            self.playroom_server = None
+
+    def _start_np_watcher(self):
+        """เริ่ม Now Playing watcher (อ่านเพลงจาก Windows System Media)"""
+        try:
+            from now_playing import NowPlayingWatcher
+
+            def _on_np_change(title, artist, album, thumb_path, pos, dur, playing):
+                thumb_url = ""
+                if thumb_path:
+                    import urllib.parse
+                    thumb_url = "/now-playing-art?path=" + urllib.parse.quote(thumb_path)
+                data = {
+                    "title": title, "artist": artist, "album": album,
+                    "thumbnail_url": thumb_url, "position": pos,
+                    "duration": dur, "is_playing": playing,
+                }
+                self._last_np_data = data
+                QTimer.singleShot(0, lambda: self._composer_push_now_playing(data))
+
+            def _on_np_position(pos, dur, playing):
+                data = {"position": pos, "duration": dur, "is_playing": playing}
+                QTimer.singleShot(0, lambda: self._composer_push_now_playing(data))
+
+            self._np_watcher = NowPlayingWatcher(on_change=_on_np_change, on_position=_on_np_position)
+            self._np_watcher.start()
+            logger.info("Now Playing watcher started")
+        except Exception as e:
+            logger.error(f"Failed to start NP watcher: {e}")
+            self._np_watcher = None
+
+    def _composer_push_now_playing(self, data):
+        """forward now playing data ไป composer widget"""
+        if self.composer_server is None:
+            return
+        try:
+            if data.get("title"):
+                self.composer_server._last_np_data = data
+            self.composer_server.push_now_playing(data)
+        except Exception:
+            pass
+
+    def _composer_push_message(self, msg):
+        """forward chat message ไป composer server"""
+        if self.composer_server is None:
+            return
+        try:
+            payload = self._serialize_msg_for_overlay(msg)
+            if payload:
+                self.composer_server.push_message(payload)
+        except Exception:
+            pass
+
+    def _composer_push_viewers(self, total, platforms):
+        """forward viewer counts ไป composer"""
+        if self.composer_server is None:
+            return
+        try:
+            self.composer_server.push_viewer_counts(total, platforms)
+        except Exception:
+            pass
+
+    def _serialize_msg_for_overlay(self, msg):
+        """แปลง ChatMessage → dict สำหรับ composer (แบบย่อ)"""
+        try:
+            extra = msg.extra or {}
+            text = msg.text or ""
+            want_animated = bool(getattr(self.settings, "overlay_animated_emotes", True))
+            twitch_emotes = []
+            for em in (extra.get("emotes") or []):
+                eid = em.get("id")
+                emote_url = em.get("url", "")
+                emote_url_animated = em.get("url_animated", "")
+                if emote_url:
+                    final_url = emote_url_animated if (want_animated and emote_url_animated) else emote_url
+                    twitch_emotes.append({"name": em.get("name", ""), "url": final_url, "start": em.get("start", 0), "end": em.get("end", 0)})
+                elif eid is not None:
+                    twitch_emotes.append({"name": em.get("name", ""), "url": f"/emote/{eid}", "start": em.get("start", 0), "end": em.get("end", 0)})
+            return {
+                "author": msg.author or "",
+                "text": text,
+                "raw_text": extra.get("raw_text", ""),
+                "twitch_emotes": twitch_emotes,
+                "segments": extra.get("segments", []),
+                "sticker_url": extra.get("sticker_url", ""),
+                "color": extra.get("color", ""),
+                "platform": getattr(msg, "platform", ""),
+                "event": getattr(msg, "event", "message"),
+                "badge": "",
+                "system_text": msg.system_text or "",
+                "timestamp": "",
+            }
+        except Exception:
+            return None
+
+    def _save_composer_widgets(self, widgets, canvas_size=None):
+        """callback จาก composer editor → persist widgets"""
+        try:
+            self.settings.composer_widgets = list(widgets)
+            if canvas_size in ("720p", "1080p"):
+                self.settings.composer_canvas_size = canvas_size
+            from settings import save_settings
+            save_settings(self.settings)
+        except Exception as e:
+            logger.error(f"Failed to save composer widgets: {e}")
+
+    def _save_playroom_triggers(self):
+        """callback จาก composer → persist playroom triggers"""
+        try:
+            from settings import save_settings
+            save_settings(self.settings)
+            if hasattr(self, "pipeline") and self.pipeline is not None:
+                self.pipeline.config.playroom_triggers = list(self.settings.playroom_triggers)
+        except Exception as e:
+            logger.error(f"Failed to save playroom triggers: {e}")
+
+    def _open_composer(self):
+        """เปิด composer editor ในเบราว์เซอร์"""
+        import webbrowser
+        port = int(getattr(self.settings, 'composer_port', 8808))
+        url = f"http://localhost:{port}/editor"
+        webbrowser.open(url)
 
     # ════════════════════════════════════════════════════════════
     # Engine init (logic — คัดลอกจาก v1)
@@ -317,6 +490,8 @@ class TTSForLivestreamApp(QMainWindow):
                     self.pipeline.enqueue(msg)
                 except Exception:
                     pass
+            # ★ forward to composer (overlay)
+            self._composer_push_message(msg)
 
         def on_status(msg_text):
             QTimer.singleShot(0, lambda: self.status_bar.set_status(f"[{platform}] {msg_text}"))
@@ -395,6 +570,10 @@ class TTSForLivestreamApp(QMainWindow):
         """อัปเดตยอดคนดู"""
         total = sum(self._viewer_counts.values())
         self.chat_panel.viewers_label.setText(f"👥 {total:,}")
+        if hasattr(self, '_popout_window') and self._popout_window:
+            self._popout_window.update_viewers(total)
+        # ★ forward to composer
+        self._composer_push_viewers(total, dict(self._viewer_counts))
 
     # ════════════════════════════════════════════════════════════
     # Voice / TTS controls
@@ -509,5 +688,19 @@ class TTSForLivestreamApp(QMainWindow):
                 self.tts_engine.stop()
             except Exception:
                 pass
+        # ★ หยุด Now Playing watcher
+        if self._np_watcher:
+            try:
+                self._np_watcher.stop()
+            except Exception:
+                pass
+        # ★ หยุด servers
+        for srv_attr in ('composer_server', 'overlay_server', 'playroom_server'):
+            srv = getattr(self, srv_attr, None)
+            if srv:
+                try:
+                    srv.stop()
+                except Exception:
+                    pass
         logger.info("Application closing")
         event.accept()

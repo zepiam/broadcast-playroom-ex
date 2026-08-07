@@ -1,11 +1,10 @@
 @echo off
 chcp 65001 >nul
 REM ===============================================
-REM  TTS for Livestream - Run script
-REM  Uses Python 3.10 (required for fairseq)
+REM  Broadcast Playroom v2 (PySide6) - Run script
 REM ===============================================
 
-title TTS for Livestream
+title Broadcast Playroom v2
 
 cd /d "%~dp0"
 
@@ -19,12 +18,11 @@ if not exist "%PY%" (
 )
 if not exist "%PY%" (
     echo [ERROR] Python 3.10 not found
-    echo Please run setup.bat first
     pause
     exit /b 1
 )
 
-echo [INFO] Starting TTS for Livestream...
+echo [INFO] Starting Broadcast Playroom v2 (PySide6)...
 echo [INFO] Python: %PY%
 echo.
 

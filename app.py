@@ -620,7 +620,15 @@ class TTSForLivestreamApp(QMainWindow):
 
     def _open_user_manager(self):
         """เปิด User Manager"""
-        self.status_bar.set_status("User Manager — เร็วๆ นี้")
+        from ui.dialogs.user_manager import UserManagerDialog
+        dlg = UserManagerDialog(self)
+        dlg.exec()
+
+    def _open_ngreplace(self):
+        """เปิด NG-Replace editor"""
+        from ui.dialogs.ngreplace import NGReplaceDialog
+        dlg = NGReplaceDialog(self)
+        dlg.exec()
 
     def _open_about(self):
         """เปิด About dialog"""

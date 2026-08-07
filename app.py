@@ -659,13 +659,17 @@ class TTSForLivestreamApp(QMainWindow):
 
     def _build_platform_cards(self):
         """สร้าง card สำหรับแต่ละแพลตฟอร์ม + เชื่อม connect signal"""
-        # ★ อ่านว่าแสดงแพลตฟอร์มไหนบ้าง (default = ทั้งหมด)
-        show_platforms = getattr(self.settings, 'show_platforms', None) if self.settings else None
-        if not show_platforms:
-            show_platforms = PLATFORM_ORDER[:]
+        # ★ อ่านว่าแสดงแพลตฟอร์มไหนบ้าง (จาก settings.show_*)
+        show_map = {
+            'twitch': getattr(self.settings, 'show_twitch', True),
+            'youtube': getattr(self.settings, 'show_youtube', True),
+            'mylive': getattr(self.settings, 'show_mylive', True),
+            'tiktok': getattr(self.settings, 'show_tiktok', False),
+            'kick': getattr(self.settings, 'show_kick', False),
+        }
 
         for plat in PLATFORM_ORDER:
-            if plat not in show_platforms:
+            if not show_map.get(plat, True):
                 continue
             label = PLATFORM_LABELS.get(plat, plat)
             icon = PLATFORM_ICONS.get(plat, "📺")

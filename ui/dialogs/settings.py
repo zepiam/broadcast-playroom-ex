@@ -186,51 +186,42 @@ class SettingsDialog(QDialog):
     # ════════════════════════════════════════════════════════════
     def _build_platforms_section(self):
         w = self._add_section("platforms", "🔌 แพลตฟอร์ม", "ตั้งค่า channel/URL สำหรับแต่ละแพลตฟอร์ม")
+        # ★ helper: สร้าง row แพลตฟอร์ม (channel + auto-connect + show/hide)
+        def _platform_row(label, channel_widget, auto_cb_name, show_cb_name):
+            row = QHBoxLayout()
+            row.setSpacing(4)
+            row.addWidget(QLabel(label), 0)
+            row.addWidget(channel_widget, 1)
+            auto_cb = QCheckBox("เชื่อมอัตโนมัติ")
+            auto_cb.setToolTip(f"เชื่อมต่อ {label} อัตโนมัติตอนเปิดโปรแกรม")
+            row.addWidget(auto_cb)
+            setattr(self, auto_cb_name, auto_cb)
+            show_cb = QCheckBox("แสดง")
+            show_cb.setToolTip(f"แสดง {label} ในหน้าหลัก (เลิกติ๊กเพื่อซ่อน)")
+            row.addWidget(show_cb)
+            setattr(self, show_cb_name, show_cb)
+            self._current_section_layout.insertLayout(self._current_section_layout.count() - 1, row)
+
         # Twitch
-        tw_row = QHBoxLayout()
         self.tw_channel = QLineEdit()
         self.tw_channel.setPlaceholderText("เช่น men9ch")
-        tw_row.addWidget(QLabel("Twitch:"), 0)
-        tw_row.addWidget(self.tw_channel, 1)
-        self.tw_auto = QCheckBox("เชื่อมอัตโนมัติ")
-        tw_row.addWidget(self.tw_auto)
-        self._current_section_layout.insertLayout(self._current_section_layout.count() - 1, tw_row)
+        _platform_row("Twitch:", self.tw_channel, 'tw_auto', 'tw_show')
         # YouTube
-        yt_row = QHBoxLayout()
         self.yt_id = QLineEdit()
         self.yt_id.setPlaceholderText("Video ID หรือ URL")
-        yt_row.addWidget(QLabel("YouTube:"), 0)
-        yt_row.addWidget(self.yt_id, 1)
-        self.yt_auto = QCheckBox("เชื่อมอัตโนมัติ")
-        yt_row.addWidget(self.yt_auto)
-        self._current_section_layout.insertLayout(self._current_section_layout.count() - 1, yt_row)
+        _platform_row("YouTube:", self.yt_id, 'yt_auto', 'yt_show')
         # MyLive
-        ml_row = QHBoxLayout()
         self.ml_url = QLineEdit()
         self.ml_url.setPlaceholderText("https://mylive.in.th/streams/XXXXX")
-        ml_row.addWidget(QLabel("MyLive:"), 0)
-        ml_row.addWidget(self.ml_url, 1)
-        self.ml_auto = QCheckBox("เชื่อมอัตโนมัติ")
-        ml_row.addWidget(self.ml_auto)
-        self._current_section_layout.insertLayout(self._current_section_layout.count() - 1, ml_row)
+        _platform_row("MyLive:", self.ml_url, 'ml_auto', 'ml_show')
         # TikTok
-        tt_row = QHBoxLayout()
         self.tt_user = QLineEdit()
         self.tt_user.setPlaceholderText("username")
-        tt_row.addWidget(QLabel("TikTok:"), 0)
-        tt_row.addWidget(self.tt_user, 1)
-        self.tt_auto = QCheckBox("เชื่อมอัตโนมัติ")
-        tt_row.addWidget(self.tt_auto)
-        self._current_section_layout.insertLayout(self._current_section_layout.count() - 1, tt_row)
+        _platform_row("TikTok:", self.tt_user, 'tt_auto', 'tt_show')
         # KICK
-        kc_row = QHBoxLayout()
         self.kc_channel = QLineEdit()
         self.kc_channel.setPlaceholderText("channel")
-        kc_row.addWidget(QLabel("KICK:"), 0)
-        kc_row.addWidget(self.kc_channel, 1)
-        self.kc_auto = QCheckBox("เชื่อมอัตโนมัติ")
-        kc_row.addWidget(self.kc_auto)
-        self._current_section_layout.insertLayout(self._current_section_layout.count() - 1, kc_row)
+        _platform_row("KICK:", self.kc_channel, 'kc_auto', 'kc_show')
         # Auto-reconnect
         self.auto_reconnect = QCheckBox("เชื่อมต่อใหม่อัตโนมัติเมื่อหลุด")
         self._current_section_layout.insertWidget(
@@ -672,6 +663,12 @@ class SettingsDialog(QDialog):
         self.ml_auto.setChecked(getattr(s, 'auto_connect_mylive', False))
         self.tt_auto.setChecked(getattr(s, 'auto_connect_tiktok', False))
         self.kc_auto.setChecked(getattr(s, 'auto_connect_kick', False))
+        # show per platform
+        self.tw_show.setChecked(getattr(s, 'show_twitch', True))
+        self.yt_show.setChecked(getattr(s, 'show_youtube', True))
+        self.ml_show.setChecked(getattr(s, 'show_mylive', True))
+        self.tt_show.setChecked(getattr(s, 'show_tiktok', False))
+        self.kc_show.setChecked(getattr(s, 'show_kick', False))
         # playroom
         self.playroom_enabled.setChecked(getattr(s, 'playroom_enabled', False))
         # translate mode
@@ -722,6 +719,12 @@ class SettingsDialog(QDialog):
         s.auto_connect_mylive = self.ml_auto.isChecked()
         s.auto_connect_tiktok = self.tt_auto.isChecked()
         s.auto_connect_kick = self.kc_auto.isChecked()
+        # show per platform
+        s.show_twitch = self.tw_show.isChecked()
+        s.show_youtube = self.yt_show.isChecked()
+        s.show_mylive = self.ml_show.isChecked()
+        s.show_tiktok = self.tt_show.isChecked()
+        s.show_kick = self.kc_show.isChecked()
         # playroom
         s.playroom_enabled = self.playroom_enabled.isChecked()
         # translate mode

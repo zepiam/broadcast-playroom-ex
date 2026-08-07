@@ -171,6 +171,12 @@ class AppSettings:
     tiktok_username: str = ""  # @username TikTok LIVE (ไม่ต้องมี @)
     kick_channel: str = ""  # KICK slug (username) เช่น "trainwreckstv"
     auto_connect: bool = False  # เชื่อมต่ออัตโนมัติตอนเปิดโปรแกรม
+    # ★ auto-connect per platform
+    auto_connect_twitch: bool = False
+    auto_connect_youtube: bool = False
+    auto_connect_mylive: bool = False
+    auto_connect_tiktok: bool = False
+    auto_connect_kick: bool = False
     # แพลตฟอร์มที่จะแสดงใน sidebar (เปิด/ปิดได้ — ซ่อนเว็บที่ไม่ใช้ออกไป)
     show_twitch: bool = True
     show_youtube: bool = True
@@ -596,6 +602,11 @@ class AppSettings:
             "tiktok_username": self.tiktok_username,
             "kick_channel": self.kick_channel,
             "auto_connect": self.auto_connect,
+            "auto_connect_twitch": self.auto_connect_twitch,
+            "auto_connect_youtube": self.auto_connect_youtube,
+            "auto_connect_mylive": self.auto_connect_mylive,
+            "auto_connect_tiktok": self.auto_connect_tiktok,
+            "auto_connect_kick": self.auto_connect_kick,
             "show_twitch": self.show_twitch,
             "show_youtube": self.show_youtube,
             "show_mylive": self.show_mylive,
@@ -858,6 +869,10 @@ class AppSettings:
             s.kick_channel = str(data["kick_channel"])
         if "auto_connect" in data:
             s.auto_connect = bool(data["auto_connect"])
+        for plat in ("twitch", "youtube", "mylive", "tiktok", "kick"):
+            key = f"auto_connect_{plat}"
+            if key in data:
+                setattr(s, key, bool(data[key]))
         if "show_twitch" in data:
             s.show_twitch = bool(data["show_twitch"])
         if "show_youtube" in data:

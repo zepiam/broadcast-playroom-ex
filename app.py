@@ -554,7 +554,8 @@ class TTSForLivestreamApp(QMainWindow):
         splitter.setStretchFactor(0, 0)  # sidebar fixed
         splitter.setStretchFactor(1, 1)  # chat expands
         splitter.setStretchFactor(2, 0)  # events fixed
-        splitter.setSizes([260, 600, 240])
+        # ★ เริ่มต้นด้วยความกว้างที่พอดีเห็นครบ (sidebar 300, chat พอประมาณ, events 200)
+        splitter.setSizes([300, 580, 200])
 
         layout.addWidget(splitter, 1)
 

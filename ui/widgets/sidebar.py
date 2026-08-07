@@ -128,8 +128,8 @@ class Sidebar(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("Sidebar")
-        self.setMinimumWidth(240)
-        self.setMaximumWidth(340)
+        self.setMinimumWidth(290)
+        self.setMaximumWidth(380)
         self._build_ui()
 
     def _build_ui(self):

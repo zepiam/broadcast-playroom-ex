@@ -63,6 +63,7 @@ class TTSForLivestreamApp(QMainWindow):
     _platform_error = Signal(str, str)  # platform, error_msg
     _viewer_update = Signal()
     _msg_translated = Signal(object)  # ChatMessage (translated)
+    _overlay_started_sig = Signal(bool, int)  # ok, ov_id
 
     def __init__(self):
         super().__init__()
@@ -76,6 +77,7 @@ class TTSForLivestreamApp(QMainWindow):
         self._platform_error.connect(self._on_platform_error_signal)
         self._viewer_update.connect(self._update_viewer_ui)
         self._msg_translated.connect(self._on_msg_translated)
+        self._overlay_started_sig.connect(self._on_overlay_started_sig)
 
         # ═══ State ═══
         self._closing = False
@@ -1497,8 +1499,7 @@ class TTSForLivestreamApp(QMainWindow):
         self.status_bar.set_status(f"🔤 Font: {size}px")
 
     def _toggle_overlay(self):
-        """เปิด/ปิด Game Overlay (ใช้ GameOverlay manager เหมือน v1)"""
-        # ★ ถ้ารันอยู่ → ปิด
+        """เปิด/ปิด Game Overlay"""
         if hasattr(self, '_game_overlay') and self._game_overlay and self._game_overlay.is_running:
             try:
                 self._game_overlay.stop()
@@ -1507,19 +1508,32 @@ class TTSForLivestreamApp(QMainWindow):
             self._game_overlay = None
             self.status_bar.set_status("🔲 Overlay ปิดแล้ว")
             return
-        # ★ เปิด (background thread — server + subprocess)
+
+        self.status_bar.set_status("⏳ Game Overlay กำลังเปิด...")
+        # ★ run in background — use signal to update UI
+        import threading
         def _bg_start():
             try:
                 from game_overlay import GameOverlay
                 ov = GameOverlay(self)
                 ok = ov.start()
-                QTimer.singleShot(0, lambda: self._on_overlay_started(ok, ov if ok else None))
+                # ★ use signal (not QTimer.singleShot from thread)
+                self._overlay_started_sig.emit(ok, id(ov) if ok else 0)
+                if ok:
+                    self._game_overlay = ov
             except Exception as e:
                 logger.error(f"Failed to start overlay: {e}")
-                QTimer.singleShot(0, lambda: self.status_bar.set_status(f"❌ Overlay: {e}"))
+                self._overlay_started_sig.emit(False, 0)
 
         threading.Thread(target=_bg_start, name="GameOverlayToggle", daemon=True).start()
-        self.status_bar.set_status("⏳ Game Overlay กำลังเปิด...")
+
+    def _on_overlay_started_sig(self, ok, ov_id):
+        """หลัง overlay start เสร็จ (signal — main thread)"""
+        if ok:
+            self.status_bar.set_status("🔲 Overlay เปิดแล้ว")
+        else:
+            self._game_overlay = None
+            self.status_bar.set_status("❌ Overlay เปิดไม่ได้")
 
     def _on_overlay_started(self, ok, overlay):
         """หลัง Game Overlay เริ่มเสร็จ"""

@@ -243,9 +243,8 @@ class ChatRow(QWidget):
             self._add_emote_to_layout(layout, val, name)
 
     def _add_emote_to_layout(self, layout, url, name=''):
-        """Add emote using EmoteCache (sync + async like v1)"""
-        cache = _get_emote_cache()
-        sz = self._font_size + 14  # emote slightly larger than text
+        """Add emote — download directly via urllib (EmoteCache returns CTkImage which can't convert to QPixmap)"""
+        sz = self._font_size + 14
 
         # placeholder label
         lbl = QLabel(name or '⬚')
@@ -254,35 +253,42 @@ class ChatRow(QWidget):
         lbl.setStyleSheet(f"color: #9ca3af; font-size: 10px;")
         layout.addWidget(lbl)
 
-        if cache is None:
-            return
-
         # resolve URL
         src_url = url
         if url.startswith('/emote/') or url.startswith('/'):
             src_url = f"http://localhost:8808{url}"
 
-        try:
-            # ★ try sync first
-            cached = cache.get_url_sync(src_url, size_px=sz)
-            if cached is not None:
-                # ★ convert CTkImage → QPixmap
-                pix = _ctk_to_qpixmap(cached, sz)
-                if pix:
-                    lbl.setPixmap(pix)
-                    lbl.setStyleSheet("")
-                    lbl.setText("")
-                return
-        except Exception:
-            pass
+        # ★ download via QThread (thread-safe)
+        class _EmoteThread(QThread):
+            loaded = Signal(str, QPixmap)
+            def __init__(self, url):
+                super().__init__()
+                self.url = url
+            def run(self):
+                try:
+                    req = urllib.request.Request(self.url, headers={'User-Agent': 'BroadcastPlayroom/2.0'})
+                    with urllib.request.urlopen(req, timeout=5) as resp:
+                        data = resp.read()
+                    img = QImage()
+                    img.loadFromData(data)
+                    if not img.isNull():
+                        pix = QPixmap.fromImage(img).scaled(sz, sz, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                        QTimer.singleShot(0, lambda: self.loaded.emit(self.url, pix))
+                except Exception as e:
+                    logger.debug(f"Emote load failed {self.url}: {e}")
 
-        # ★ async fetch
-        try:
-            def _on_ready(_url, img, l=lbl, s=sz):
-                QTimer.singleShot(0, lambda: _apply_emote(l, img, s))
-            cache.fetch_url_async(src_url, _on_ready, size_px=sz)
-        except Exception as e:
-            logger.debug(f"Emote async fetch failed: {e}")
+        thread = _EmoteThread(src_url)
+        thread.loaded.connect(lambda u, p, l=lbl: self._apply_pixmap(l, p))
+        thread.start()
+        # ★ keep ref to prevent GC
+        self._emote_labels[id(lbl)] = thread
+
+    def _apply_pixmap(self, label, pixmap):
+        """apply pixmap to label"""
+        if pixmap and not pixmap.isNull():
+            label.setPixmap(pixmap)
+            label.setText("")
+            label.setStyleSheet("")
 
     def _add_sticker(self, url, size=64):
         lbl = QLabel()

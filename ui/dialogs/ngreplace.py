@@ -139,13 +139,14 @@ class NGReplaceDialog(QDialog):
         l0.addWidget(edit0)
         if src:
             btn0 = QPushButton("🔊")
-            btn0.setFixedSize(24, 24)
+            btn0.setFixedSize(28, 28)
             btn0.setToolTip("ฟังคำเดิม")
-            btn0.setStyleSheet("border: none; background: transparent; font-size: 14px;")
-            btn0.clicked.connect(lambda _, t=src: self._preview_tts_text(t))
+            btn0.setStyleSheet("border: 1px solid #2a2f45; border-radius: 4px; background: #1a1f33; font-size: 14px; color: #06b6d4;")
+            btn0.setCursor(Qt.PointingHandCursor)
+            btn0.clicked.connect(lambda _, t=src, b=btn0: self._preview_tts_with_loading(b, t))
             l0.addWidget(btn0)
         self.table.setCellWidget(row, 0, w0)
-        w0._edit = edit0  # เก็บ ref สำหรับ save
+        w0._edit = edit0
 
         # ★ column 1: display (editable)
         w1 = QWidget()
@@ -167,13 +168,27 @@ class NGReplaceDialog(QDialog):
         l2.addWidget(edit2)
         if read:
             btn2 = QPushButton("🔊")
-            btn2.setFixedSize(24, 24)
+            btn2.setFixedSize(28, 28)
             btn2.setToolTip("ฟังคำที่อ่าน")
-            btn2.setStyleSheet("border: none; background: transparent; font-size: 14px;")
-            btn2.clicked.connect(lambda _, t=read: self._preview_tts_text(t))
+            btn2.setStyleSheet("border: 1px solid #2a2f45; border-radius: 4px; background: #1a1f33; font-size: 14px; color: #06b6d4;")
+            btn2.setCursor(Qt.PointingHandCursor)
+            btn2.clicked.connect(lambda _, t=read, b=btn2: self._preview_tts_with_loading(b, t))
             l2.addWidget(btn2)
         self.table.setCellWidget(row, 2, w2)
         w2._edit = edit2
+
+    def _preview_tts_with_loading(self, btn, text):
+        """preview TTS with loading indicator (กันกดรัว)"""
+        if not text.strip():
+            return
+        if btn.text() == "⏳":
+            return  # กำลังโหลดอยู่ → ไม่ทำซ้ำ
+        btn.setText("⏳")
+        btn.setEnabled(False)
+        # ★ enqueue
+        self._preview_tts_text(text)
+        # ★ reset หลัง 3 วิ (TTS น่าจะเล่นจบแล้ว)
+        QTimer.singleShot(3000, lambda: (btn.setText("🔊"), btn.setEnabled(True)))
 
     def _preview_tts_text(self, text):
         """เล่นเสียง TTS ของ text"""

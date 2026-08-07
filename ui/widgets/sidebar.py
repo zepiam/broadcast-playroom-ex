@@ -53,8 +53,8 @@ class PlatformCard(QFrame):
 
         # ★ Connect/disconnect button
         self.btn = QPushButton("เชื่อมต่อ")
-        self.btn.setFixedHeight(26)
-        self.btn.setFixedWidth(70)
+        self.btn.setFixedHeight(30)
+        self.btn.setMinimumWidth(90)
         self.btn.setCursor(Qt.PointingHandCursor)
         self.btn.clicked.connect(self._on_btn)
         row1.addWidget(self.btn)
@@ -106,9 +106,9 @@ class PlatformCard(QFrame):
         self._connected = connected
         self.btn.setEnabled(True)
         if connected:
-            self.btn.setText("หยุด")
+            self.btn.setText("หยุดเชื่อมต่อ")
             self.btn.setObjectName("Danger")
-            self.status_label.setText("เชื่อมต่อแล้ว")
+            self.status_label.setText("✅ เชื่อมต่อแล้ว")
             self.status_label.setStyleSheet("font-size: 11px; color: #10b981;")
         else:
             self.btn.setText("เชื่อมต่อ")

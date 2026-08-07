@@ -40,10 +40,11 @@ class EventsPanel(QFrame):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # ★ Header (clickable to toggle collapse)
+        # ★ Header (clickable to toggle collapse) — มีลูกศร ▼/▶
         self.header = QPushButton("📊 Events")
         self.header.setObjectName("IconButton")
         self.header.setFixedHeight(36)
+        self.header.setCursor(Qt.PointingHandCursor)
         self.header.setStyleSheet(f"""
             QPushButton {{
                 background-color: {COLOR_CARD};
@@ -74,8 +75,8 @@ class EventsPanel(QFrame):
 
     def toggle_collapse(self):
         self._collapsed = not self._collapsed
+        count = self.container_layout.count() - 1  # -1 for stretch
         if self._collapsed:
-            self.setFixedWidth(38)
             self.setMinimumWidth(38)
             self.setMaximumWidth(38)
             self.header.setText("📊")
@@ -83,8 +84,7 @@ class EventsPanel(QFrame):
         else:
             self.setMinimumWidth(180)
             self.setMaximumWidth(260)
-            self.setMaximumWidth(16777215)  # clear max
-            self.header.setText("📊 Events")
+            self.header.setText(f"📊 Events ({count})")
             self.scroll.setVisible(True)
 
     def add_event(self, event_type, text):

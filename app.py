@@ -917,15 +917,29 @@ class TTSForLivestreamApp(QMainWindow):
     def _discover_voices(self):
         """ค้นหา RVC voices ที่ติดตั้งแล้ว + edge-tts default"""
         voices = ["Premwadee (edge-tts)"]
-        try:
-            models_dir = os.path.join(os.path.expanduser("~"), ".tts-for-livestream", "rvc_models")
-            if os.path.isdir(models_dir):
+        import os
+        # ★ หาในหลายที่ (v1 folder + user home + current dir)
+        search_dirs = [
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "rvc_models"),
+            os.path.join(os.path.expanduser("~"), ".tts-for-livestream", "rvc_models"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "rvc_models"),  # current dir
+        ]
+        # ★ หาจาก parent dir ด้วย (กรณี ver2 อยู่ข้าง v1)
+        parent = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        search_dirs.append(os.path.join(parent, "tts-for-livestream", "rvc_models"))
+
+        seen = set()
+        for models_dir in search_dirs:
+            if not os.path.isdir(models_dir):
+                continue
+            try:
                 for f in sorted(os.listdir(models_dir)):
-                    if f.endswith('.pth'):
+                    if f.endswith('.pth') and f not in seen:
                         name = os.path.splitext(f)[0]
                         voices.append(f"{name} (RVC)")
-        except Exception:
-            pass
+                        seen.add(f)
+            except Exception:
+                pass
         return voices
 
     def _refresh_voice_combo(self):
@@ -952,19 +966,36 @@ class TTSForLivestreamApp(QMainWindow):
             self.settings.voice_id = voice_id
             if self.pipeline:
                 self.pipeline.config.voice = voice_id
+            # ★ หา model path จากหลายที่
+            import os
+            search_dirs = [
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), "rvc_models"),
+                os.path.join(os.path.expanduser("~"), ".tts-for-livestream", "rvc_models"),
+                os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tts-for-livestream", "rvc_models"),
+            ]
+            pth_path = None
+            for d in search_dirs:
+                p = os.path.join(d, f"{voice_id}.pth")
+                if os.path.exists(p):
+                    pth_path = p
+                    break
+            if not pth_path:
+                self.status_bar.set_status(f"❌ ไม่พบ {voice_id}.pth")
+                return
+            # index path (optional)
+            index_path = pth_path.replace('.pth', '.index')
+            if not os.path.exists(index_path):
+                index_path = ''
             try:
-                from rvc_engine import RVCEngine
-                models_dir = os.path.join(os.path.expanduser("~"), ".tts-for-livestream", "rvc_models")
-                pth_path = os.path.join(models_dir, f"{voice_id}.pth")
-                if os.path.exists(pth_path):
-                    index_path = pth_path.replace('.pth', '.index')
-                    if not os.path.exists(index_path):
-                        index_path = ''
-                    engine = RVCEngine()
-                    engine.load_model(pth_path, index_path)
-                    if self.pipeline:
-                        self.pipeline.set_rvc(engine, voice_id, index_path)
-                    self.status_bar.set_status(f"🎤 เสียง: {voice_id} (RVC)")
+                from rvc_engine import RVCEngine, RVCParams
+                engine = RVCEngine()
+                engine.load(pth_path)
+                if self.pipeline:
+                    pitch = getattr(self.settings, 'rvc_pitch', 0)
+                    f0method = getattr(self.settings, 'rvc_f0method', 'rmvpe')
+                    params = RVCParams(f0up_key=pitch, f0method=f0method, index_path=index_path)
+                    self.pipeline.set_rvc(engine, voice_id, index_path)
+                self.status_bar.set_status(f"🎤 เสียง: {voice_id} (RVC)")
             except Exception as e:
                 logger.error(f"Failed to load RVC voice: {e}")
                 self.status_bar.set_status(f"❌ โหลด RVC ไม่ได้: {e}")

@@ -128,8 +128,8 @@ class Sidebar(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("Sidebar")
-        self.setMinimumWidth(280)
-        self.setMaximumWidth(320)
+        self.setMinimumWidth(240)
+        self.setMaximumWidth(340)
         self._build_ui()
 
     def _build_ui(self):
@@ -160,9 +160,10 @@ class Sidebar(QFrame):
         # ★ Settings gear for platform selection
         self.gear_btn = QPushButton("⚙")
         self.gear_btn.setObjectName("IconButton")
-        self.gear_btn.setFixedSize(24, 24)
+        self.gear_btn.setFixedSize(32, 32)
         self.gear_btn.setCursor(Qt.PointingHandCursor)
         self.gear_btn.setToolTip("ตั้งค่าแพลตฟอร์ม")
+        self.gear_btn.setStyleSheet("font-size: 18px;")
         ph.addWidget(self.gear_btn)
         clayout.addLayout(ph)
 

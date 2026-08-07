@@ -1013,28 +1013,31 @@ class TTSForLivestreamApp(QMainWindow):
         from ui.dialogs.popout import PopoutWindow
         self._popout_window = PopoutWindow(self)
         self._popout_window.show()
-        # ★ ซ่อน chat panel หลัก + แสดง overlay
-        self.chat_panel.setVisible(False)
+        # ★ แสดง overlay ทับ chat panel (แทนที่จะซ่อน)
         if not hasattr(self, '_popout_overlay'):
             self._popout_overlay = QLabel("💬 แชทถูกแยกออกไปแล้ว (Popout)\n\nกดปุ่ม ↗ อีกครั้งเพื่อกลับมา")
             self._popout_overlay.setAlignment(Qt.AlignCenter)
-            self._popout_overlay.setStyleSheet("color: #9ca3af; font-size: 16px; background-color: #0a0e1a;")
-        # ★ แทนที่ chat panel ด้วย overlay (ใน splitter)
-        parent = self.chat_panel.parentWidget()
-        if parent:
-            layout = parent.layout()
-            if layout:
-                layout.insertWidget(layout.indexOf(self.chat_panel) + 1, self._popout_overlay)
+            self._popout_overlay.setStyleSheet("color: #9ca3af; font-size: 16px; background-color: #0a0e1a; border: none;")
+        # ★ วาง overlay บน chat panel (raise ขึ้นบน)
+        self._popout_overlay.setParent(self.chat_panel)
+        self._popout_overlay.setGeometry(self.chat_panel.rect())
+        self._popout_overlay.show()
+        self._popout_overlay.raise_()
 
     def _close_popout(self):
         """ปิด popout + คืน chat panel หลัก"""
         if hasattr(self, '_popout_window') and self._popout_window:
             self._popout_window.close()
             self._popout_window = None
-        self.chat_panel.setVisible(True)
         if hasattr(self, '_popout_overlay'):
             self._popout_overlay.setParent(None)
             self._popout_overlay.hide()
+
+    def resizeEvent(self, event):
+        """resize overlay ตาม chat panel"""
+        super().resizeEvent(event)
+        if hasattr(self, '_popout_overlay') and self._popout_overlay and self._popout_overlay.isVisible():
+            self._popout_overlay.setGeometry(self.chat_panel.rect())
 
     def _toggle_translate(self):
         """เปิด/ปิดการแปลอัตโนมัติ (#6)"""

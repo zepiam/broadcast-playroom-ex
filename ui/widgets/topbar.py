@@ -113,14 +113,15 @@ class TopBar(QFrame):
     def add_platform_status(self, platform, color="#6b7280"):
         """เพิ่ม status indicator สำหรับแพลตฟอร์ม"""
         widget = QWidget()
+        widget.setStyleSheet("background: transparent;")
         wlayout = QHBoxLayout(widget)
         wlayout.setContentsMargins(0, 0, 0, 0)
         wlayout.setSpacing(4)
-        dot = QFrame()
-        dot.setFixedSize(8, 8)
-        dot.setStyleSheet(f"background-color: {color}; border-radius: 4px;")
+        dot = QLabel()
+        dot.setFixedSize(10, 10)
+        dot.setStyleSheet(f"background-color: {color}; border-radius: 5px; border: none;")
         name = QLabel(platform)
-        name.setStyleSheet("color: #9ca3af; font-size: 12px;")
+        name.setStyleSheet("color: #9ca3af; font-size: 12px; background: transparent; border: none;")
         wlayout.addWidget(dot)
         wlayout.addWidget(name)
         widget.dot = dot
@@ -130,4 +131,4 @@ class TopBar(QFrame):
     def update_platform_status(self, platform_widget, connected):
         """อัปเดตสี dot"""
         color = "#10b981" if connected else "#6b7280"
-        platform_widget.dot.setStyleSheet(f"background-color: {color}; border-radius: 4px;")
+        platform_widget.dot.setStyleSheet(f"background-color: {color}; border-radius: 5px; border: none;")

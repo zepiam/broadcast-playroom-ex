@@ -1,0 +1,7 @@
+name: "เวลา"
+trigger: "!time"
+description: "บอกเวลาปัจจุบัน"
+response_type: "text"
+response: "ตอนนี้เวลา {time} ครับ"
+cooldown: 5
+enabled: true

@@ -1,0 +1,7 @@
+name: "ต้อนรับ"
+trigger: "!hi"
+description: "ทักทายผู้ชมที่พิมพ์คำสั่งนี้"
+response_type: "text"
+response: "สวัสดีครับ {author} ยินดีต้อนรับสู่ช่อง!"
+cooldown: 10
+enabled: true

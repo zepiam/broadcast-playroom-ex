@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Playroom — TTS for Livestream</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    background: transparent;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    font-family: "Kanit", "Leelawadee UI", "Segoe UI", Tahoma, sans-serif;
+  }
+  /* ── media player เต็มจอกลางจอ (video + image) ── */
+  #player, #imgplayer {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.85);
+    max-width: 95vw;
+    max-height: 95vh;
+    object-fit: contain;        /* ไม่บิดเบือน */
+    opacity: 0;
+    transition: opacity 0.3s ease, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: none;
+    /* ★ ไม่ใส่ border-radius + box-shadow — กันเงาดำบังฉากหลังโปร่งใส */
+  }
+  #player.show, #imgplayer.show {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  /* fadeout ตอนจบ — ช้ากว่า fade in (0.6s vs 0.3s) + scale ลงเล็กน้อย */
+  #player.fading, #imgplayer.fading {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.92);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  /* ── status text (ตอน idle / error) ── */
+  #status {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 14px;
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.5s;
+  }
+  #status.show { opacity: 1; }
+  /* ── color key canvas (ซ้อนเหนือ media — แสดงผลหลังประมวลผล) ── */
+  #ckcanvas {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(1);
+    max-width: 95vw;
+    max-height: 95vh;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+    z-index: 10;
+  }
+  #ckcanvas.show { opacity: 1; }
+  #ckcanvas.fading {
+    opacity: 0;
+    transition: opacity 0.6s ease;
+  }
+</style>
+</head>
+<body>
+  <video id="player" playsinline muted preload="auto" style="display:none;"></video>
+  <img id="imgplayer" style="display:none;" alt="">
+  <canvas id="ckcanvas" style="display:none;"></canvas>
+  <div id="status">🎮 Playroom — รอคำสั่ง...</div>
+
+<script>
+const video = document.getElementById('player');
+const imgEl = document.getElementById('imgplayer');
+const statusEl = document.getElementById('status');
+const ckCanvas = document.getElementById('ckcanvas');
+const ckCtx = ckCanvas.getContext('2d', { willReadFrequently: true });
+let hideTimer = null;
+
+// ── Color Key config (อ่านจาก URL params) ──
+const _ckParams = new URLSearchParams(location.search);
+const CK_ENABLED = _ckParams.get('ck') === '1';
+const CK_COLOR = _ckParams.get('ck_color') || '#00ff00';
+const CK_SIMILARITY = parseFloat(_ckParams.get('ck_sim') || '50');
+const CK_SMOOTHNESS = parseFloat(_ckParams.get('ck_smooth') || '30');
+// ★ pre-compute color key params
+let _ckTarget = { r: 0, g: 255, b: 0 };
+let _ckThreshold = 221;  // 50% of 442
+let _ckSmoothRange = 88;
+function _ckInit() {
+  if (!CK_ENABLED) return;
+  const h = CK_COLOR.replace('#', '');
+  _ckTarget = {
+    r: parseInt(h.slice(0, 2), 16) || 0,
+    g: parseInt(h.slice(2, 4), 16) || 255,
+    b: parseInt(h.slice(4, 6), 16) || 0,
+  };
+  _ckThreshold = (CK_SIMILARITY / 100) * 442;
+  _ckSmoothRange = (CK_SMOOTHNESS / 100) * Math.max(_ckThreshold * 0.4, 20);
+}
+_ckInit();
+let _ckRafId = null;
+let _ckCurrentMedia = null;  // 'video' | 'image' | null
+
+// ★ process one frame → canvas (ตัดสีตาม threshold)
+function _ckProcessFrame() {
+  if (!_ckCurrentMedia) return;
+  const media = _ckCurrentMedia;
+  // ★ ตั้งขนาด canvas ตามขนาด media
+  const vw = media.videoWidth || media.naturalWidth || media.clientWidth || 640;
+  const vh = media.videoHeight || media.naturalHeight || media.clientHeight || 360;
+  if (ckCanvas.width !== vw) ckCanvas.width = vw;
+  if (ckCanvas.height !== vh) ckCanvas.height = vh;
+  if (ckCanvas.width < 1 || ckCanvas.height < 1) return;
+  // draw media → canvas
+  ckCtx.drawImage(media, 0, 0, ckCanvas.width, ckCanvas.height);
+  // ★ pixel processing
+  const imageData = ckCtx.getImageData(0, 0, ckCanvas.width, ckCanvas.height);
+  const data = imageData.data;
+  const tr = _ckTarget.r, tg = _ckTarget.g, tb = _ckTarget.b;
+  const thr = _ckThreshold;
+  const sr = _ckSmoothRange;
+  for (let i = 0; i < data.length; i += 4) {
+    const dr = data[i] - tr;
+    const dg = data[i + 1] - tg;
+    const db = data[i + 2] - tb;
+    const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+    if (dist < thr - sr) {
+      data[i + 3] = 0;
+    } else if (dist < thr) {
+      data[i + 3] = Math.round(((dist - (thr - sr)) / sr) * 255);
+    }
+  }
+  ckCtx.putImageData(imageData, 0, 0);
+}
+
+// ★ start/stop canvas loop
+function _ckStartLoop() {
+  if (!CK_ENABLED) return;
+  if (_ckRafId) cancelAnimationFrame(_ckRafId);
+  function loop() {
+    _ckProcessFrame();
+    _ckRafId = requestAnimationFrame(loop);
+  }
+  loop();
+}
+function _ckStopLoop() {
+  if (_ckRafId) { cancelAnimationFrame(_ckRafId); _ckRafId = null; }
+  _ckCurrentMedia = null;
+}
+
+// นามสกุลภาพ — ใช้ตัดสินใจว่าใช้ <img> หรือ <video>
+const IMG_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg'];
+function isImage(url) {
+  const m = (url || '').toLowerCase().match(/(\.[^.?#]+)([?#].*)?$/);
+  return m ? IMG_EXTS.includes(m[1]) : false;
+}
+
+// ระยะเวลาแสดงภาพ (ms) — ภาพไม่มี onended เหมือนวิดีโอ → ใช้ timer
+const IMAGE_DURATION = 5000;
+
+// ── Queue คลิป — เก็บคลิปที่รอเล่น (FIFO) กันซ้อนกัน ──
+let clipQueue = [];        // [{url, name}]
+let isPlaying = false;     // กำลังเล่นอยู่หรือไม่
+const MAX_QUEUE = 5;       // ถ้าคิวเต็ม → drop ของใหม่ (กัน spam ยาวๆ)
+
+// ── WebSocket connect (auto-reconnect) ──
+// ★ อ่าน widget id จาก URL (?id=...) เพื่อใช้ใน WS hello (per-widget triggers)
+const _prParams = new URLSearchParams(location.search);
+const _prWidgetId = _prParams.get('id') || '';
+function connectWs() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(proto + '//' + location.host + '/ws');
+  // ★ ส่ง hello ทันทีเพื่อบอก server ว่าเป็น playroom client (รับเฉพาะ type:"clip")
+  // ★ แนบ widget_id เพื่อให้ server จับกลุ่มตาม widget (ใช้สำหรับ per-widget triggers)
+  ws.onopen = () => {
+    try { ws.send(JSON.stringify({type:'hello', client:'playroom', widget_id: _prWidgetId})); } catch(e) {}
+  };
+  ws.onmessage = (ev) => {
+    const data = JSON.parse(ev.data);
+    if (data.type === 'clip') enqueueClip(data.url, data.name);
+  };
+  ws.onclose = () => setTimeout(connectWs, 1500);
+  ws.onerror = () => ws.close();
+}
+
+// ── เพิ่มคลิปเข้าคิว — ถ้ากำลังเล่นอยู่ → รอ, ถ้าไม่ → เล่นเลย ──
+function enqueueClip(url, name) {
+  // กันคิวยาวเกินไป (spam) → drop ถ้าเต็ม
+  if (clipQueue.length >= MAX_QUEUE) return;
+  clipQueue.push({ url, name });
+  // ถ้าไม่ได้เล่นอยู่ → เริ่มเล่นเลย
+  if (!isPlaying) playNext();
+}
+
+// ── เล่นคลิปถัดไปจากคิว ──
+function playNext() {
+  if (clipQueue.length === 0) {
+    isPlaying = false;
+    return;
+  }
+  const { url, name } = clipQueue.shift();
+  isPlaying = true;
+
+  // ซ่อน status
+  statusEl.classList.remove('show');
+
+  // ── branch: ภาพ vs วิดีโอ ──
+  if (isImage(url)) {
+    playImage(url);
+  } else {
+    playVideo(url);
+  }
+}
+
+// ── เล่นวิดีโอ ──
+function playVideo(url) {
+  // ซ่อน img ถ้ากำลังแสดงอยู่
+  imgEl.style.display = 'none';
+  imgEl.classList.remove('show', 'fading');
+  imgEl.removeAttribute('src');
+  // แสดง video
+  video.style.display = '';
+
+  // clear event handlers เดิมก่อน
+  video.oncanplay = null;
+  video.onloadeddata = null;
+  video.onended = null;
+  video.onerror = null;
+
+  // ตั้ง src + load
+  video.src = url;
+  video.load();
+
+  // ── เริ่มเล่นทันทีที่พร้อม (หลายทางเพื่อความน่าเชื่อถือ) ──
+  let started = false;
+  function startPlayback() {
+    if (started) return;
+    started = true;
+    // ★ color key: ซ่อน video ต้นฉบับ + แสดง canvas + เริ่ม loop
+    if (CK_ENABLED) {
+      video.style.opacity = '0';
+      ckCanvas.style.display = '';
+      ckCanvas.classList.add('show');
+      _ckCurrentMedia = video;
+      _ckStartLoop();
+    } else {
+      video.classList.add('show');
+    }
+    video.play().then(() => {
+      // เล่นสำเร็จ — ลบ timeout fallback
+      if (startFallback) { clearTimeout(startFallback); startFallback = null; }
+    }).catch((err) => {
+      console.log('play() failed:', err);
+      // retry: unmute ไม่ได้ (autoplay policy) → ลองอีกครั้งหลัง 200ms
+      setTimeout(() => video.play().catch(() => {}), 200);
+    });
+  }
+  // event หลัก: loadeddata (น่าเชื่อถือกว่า canplay)
+  video.onloadeddata = startPlayback;
+  // fallback: canplay ถ้า loadeddata ไม่ยิง
+  video.oncanplay = startPlayback;
+  // fallback timeout: ถ้าผ่าน 3 วินาที ยังไม่เริ่ม → force play
+  let startFallback = setTimeout(startPlayback, 3000);
+
+  video.onended = () => {
+    hidePlayer(() => playNext());  // หายไปแล้ว → เล่นคลิปถัดไป
+  };
+
+  video.onerror = () => {
+    console.log('video error:', video.error);
+    hidePlayer(() => playNext());  // error → ข้ามไปคลิปถัดไป
+  };
+
+  // safety: ซ่อนหลัง 60 วินาที (กันค้าง — วิดีโอยาวสุด 13s) แล้วเล่นคลิปถัดไป
+  if (hideTimer) clearTimeout(hideTimer);
+  hideTimer = setTimeout(() => hidePlayer(() => playNext()), 60000);
+}
+
+// ── แสดงภาพ (ใช้ <img>) — แสดงตามระยะเวลา IMAGE_DURATION แล้วซ่อน ──
+function playImage(url) {
+  // ซ่อน video ถ้ากำลังแสดงอยู่
+  video.pause();
+  video.classList.remove('show', 'fading');
+  video.removeAttribute('src');
+  video.style.display = 'none';
+  // แสดง img
+  imgEl.style.display = '';
+  imgEl.classList.remove('show', 'fading');
+
+  imgEl.onload = () => {
+    // ★ color key: ซ่อน img ต้นฉบับ + แสดง canvas + process ครั้งเดียว (ภาพนิ่ง)
+    if (CK_ENABLED) {
+      imgEl.style.opacity = '0';
+      ckCanvas.style.display = '';
+      ckCanvas.classList.add('show');
+      _ckCurrentMedia = imgEl;
+      _ckProcessFrame();  // process ครั้งเดียว (ไม่ต้อง loop เพราะภาพนิ่ง)
+    } else {
+      imgEl.classList.add('show');
+    }
+    // แสดงตามระยะเวลาที่กำหนด แล้วซ่อน → เล่นคลิปถัดไป
+    if (hideTimer) clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => hidePlayer(() => playNext()), IMAGE_DURATION);
+  };
+  imgEl.onerror = () => {
+    console.log('image error:', url);
+    hidePlayer(() => playNext());
+  };
+  imgEl.src = url;
+  // safety: ซ่อนหลัง IMAGE_DURATION + 2s ถ้า onload ไม่ยิง
+  if (hideTimer) clearTimeout(hideTimer);
+  hideTimer = setTimeout(() => hidePlayer(() => playNext()), IMAGE_DURATION + 2000);
+}
+
+// ── ซ่อน player — fadeout 0.6s แล้ว clear src + callback ──
+// จัดการทั้ง video + img + canvas
+function hidePlayer(onDone) {
+  if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+  // ★ หยุด color key loop
+  _ckStopLoop();
+  // fadeout video
+  video.classList.remove('show');
+  video.classList.add('fading');
+  // fadeout img
+  imgEl.classList.remove('show');
+  imgEl.classList.add('fading');
+  // fadeout canvas
+  ckCanvas.classList.remove('show');
+  ckCanvas.classList.add('fading');
+  // รอ fadeout transition จบ (0.6s) แล้ว clear src + เรียก callback
+  setTimeout(() => {
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+    video.classList.remove('fading');
+    video.style.opacity = '';
+    imgEl.removeAttribute('src');
+    imgEl.classList.remove('fading');
+    imgEl.style.opacity = '';
+    ckCanvas.classList.remove('fading');
+    ckCanvas.style.display = 'none';
+    if (onDone) onDone();
+  }, 600);
+}
+
+// ── เริ่มต้น ──
+// แสดง status สักครู่ตอนเปิด แล้วซ่อน
+statusEl.classList.add('show');
+setTimeout(() => statusEl.classList.remove('show'), 3000);
+
+connectWs();
+</script>
+</body>
+</html>

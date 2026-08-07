@@ -1,0 +1,1188 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>TTS Overlay</title>
+<style>
+/* ════════════════════════════════════════════════════════════════
+   Chat Overlay Pro สำหรับ OBS Browser Source
+   - CSS custom properties driven (เปลี่ยน config แบบสด)
+   - Google Fonts (dynamic inject)
+   - อนิเมชั่น 16 แบบ (เข้า) + 6 แบบ (ออก)
+   - text stroke / shadow / box glow
+   ════════════════════════════════════════════════════════════════ */
+:root {
+  --font-size: 18px;
+  --emote-size: 28px;
+  --font-family: "Kanit", "Leelawadee UI", "Segoe UI", Tahoma, sans-serif;
+  --font-weight: 500;
+  --text-color: #ffffff;
+  --text-stroke: 0 transparent;
+  --text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+  --box-bg: rgba(10,14,26,0.55);
+  --box-radius: 8px;
+  --box-border: none;
+  --box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  --box-blur: 0;
+  --box-glow: transparent;
+  --box-width: fit-content;
+  --msg-gap: 4px;
+  --balloon-bg-opacity: 0.95;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  background: transparent;
+  font-family: var(--font-family);
+  font-weight: var(--font-weight);
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+}
+#chat {
+  padding: 12px;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+#chat.direction-top { justify-content: flex-start; }
+
+.msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 10px;
+  margin-bottom: var(--msg-gap);
+  width: var(--box-width);
+  max-width: 100%;
+  flex-shrink: 0;  /* ★ ห้ามบีบ — ข้อความต้องคงความสูงเดิม */
+  border-radius: var(--box-radius);
+  background: var(--box-bg);
+  border: var(--box-border);
+  box-shadow: var(--box-shadow), 0 0 var(--box-glow);
+  font-size: var(--font-size);
+  color: var(--text-color);
+  animation-fill-mode: both;
+  animation-duration: 0.45s;
+  will-change: transform, opacity;
+}
+/* box-glow: ใช้ ::after pseudo-element แยกออกจาก animation property ของ .msg
+   (เดิมใช้ animation shorthand บน .msg → ทับ entry/exit animation ทำให้ไม่แสดง) */
+.msg.box-glow-on::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+  animation: box-glow-pulse 2.4s ease-in-out infinite;
+}
+.msg { position: relative; }
+@keyframes box-glow-pulse {
+  0%, 100% { box-shadow: 0 0 6px var(--box-glow); }
+  50% { box-shadow: 0 0 22px var(--box-glow); }
+}
+.msg .logo {
+  width: 1.4em; height: 1.4em;
+  flex-shrink: 0;
+  object-fit: contain;
+  align-self: flex-start;
+  margin-top: 0.1em;
+}
+.msg .author {
+  font-weight: 700;
+  flex-shrink: 0;
+  -webkit-text-stroke: var(--text-stroke);
+  text-shadow: var(--text-shadow);
+  paint-order: stroke fill;
+}
+.msg .badge { margin-right: 2px; }
+.msg .sep { opacity: 0.5; flex-shrink: 0; }
+.msg .text {
+  flex: 1; min-width: 0; word-break: break-word;
+  -webkit-text-stroke: var(--text-stroke);
+  text-shadow: var(--text-shadow);
+  paint-order: stroke fill;
+}
+.msg .text img.emote {
+  display: inline-block; vertical-align: middle; margin: 0 1px;
+}
+.msg .text img.sticker {
+  display: block; margin: 4px 0; border-radius: 6px;
+}
+.msg .time {
+  opacity: 0.55; font-size: 0.78em; flex-shrink: 0;
+  margin-left: auto; padding-left: 8px;
+  -webkit-text-stroke: 0;
+}
+
+/* ═══ Layout: สองบรรทัด (ชื่อบน / ข้อความล่าง) ═══
+   เมื่อ .msg.layout-stacked → แบ่งเป็น 2 แถว
+   แถวบน: [logo] author : [time]
+   แถวล่าง: ข้อความเต็มความกว้าง */
+.msg.layout-stacked {
+  flex-direction: column;
+  gap: 2px;
+}
+.msg.layout-stacked .stack-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+.msg.layout-stacked .stack-body {
+  width: 100%;
+  margin-left: 0;
+}
+.msg.layout-stacked .text { flex: none; }
+
+/* ═══ Balloon mode — chat balloon สีขาว สุ่มตำแหน่ง ลอยขึ้น ═══
+   โหมดนี้: ไม่ใช้ flex stack, แต่ใช้ absolute positioning สุ่ม
+   พื้นหลังเป็นกล่องคำพูดสีขาว มีหางเล็กๆ ด้านล่าง */
+#chat.mode-balloon {
+  position: relative;
+  display: block;        /* ไม่ใช้ flex */
+}
+#chat.mode-balloon .msg {
+  position: absolute;
+  background: rgba(255,255,255, var(--balloon-bg-opacity));
+  color: var(--text-color, #1a1a2e);  /* ใช้ text_color ที่ผู้ใช้ตั้ง */
+  border-radius: 18px;
+  padding: 10px 16px;
+  max-width: 320px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  border: none;          /* ทับ box-border */
+  animation-name: a-balloon-float;
+  animation-duration: 0.6s;
+  animation-fill-mode: both;
+  -webkit-text-stroke: 0 transparent !important;   /* ทับ text-stroke */
+  text-shadow: none !important;                     /* ทับ text-shadow */
+}
+/* หางบอลลูน (เครื่องหมายพูด) ด้านล่างซ้าย */
+#chat.mode-balloon .msg::after {
+  content: "";
+  position: absolute;
+  bottom: -8px;
+  left: 20px;
+  width: 0; height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: 10px solid rgba(255,255,255, var(--balloon-bg-opacity));
+}
+#chat.mode-balloon .msg .author,
+#chat.mode-balloon .msg .logo,
+#chat.mode-balloon .msg .sep,
+#chat.mode-balloon .msg .time {
+  display: none;         /* balloon = แค่ข้อความ */
+}
+#chat.mode-balloon .msg .text {
+  color: var(--text-color, #1a1a2e);  /* ใช้ text_color ที่ผู้ใช้ตั้ง */
+  font-size: var(--font-size);
+  font-weight: 600;
+}
+/* exit animation สำหรับ balloon */
+#chat.mode-balloon .msg.exiting {
+  animation-name: e-balloon-pop !important;
+  animation-duration: 0.4s !important;
+  animation-fill-mode: both !important;
+}
+@keyframes a-balloon-float {
+  0%   { opacity: 0; transform: translateY(40px) scale(0.6); }
+  60%  { opacity: 1; transform: translateY(-6px) scale(1.05); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes e-balloon-pop {
+  0%   { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.4) translateY(-20px); }
+}
+
+/* ═══ Character Talk mode — ตัวละครยืนเรียง + บอลลูนเหนือหัว ═══ */
+#chat.mode-character {
+  position: relative;
+  display: block;
+  padding: 0;
+}
+#chat.mode-character .char-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  flex-shrink: 0;
+  animation: char-enter 0.4s ease-out;
+}
+#chat.mode-character .char-slot.exiting {
+  animation: char-exit 0.3s ease-in forwards;
+}
+@keyframes char-enter {
+  0%   { opacity: 0; transform: translateY(30px) scale(0.7); }
+  60%  { transform: translateY(-4px) scale(1.05); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes char-exit {
+  0%   { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.5) translateY(20px); }
+}
+#chat.mode-character .char-img {
+  display: block;
+  height: var(--char-size, 120px);
+  width: auto;
+  object-fit: contain;
+  -webkit-user-drag: none;
+}
+#chat.mode-character .char-name {
+  font-size: var(--char-name-size, 11px);
+  color: var(--text-color);
+  text-shadow: var(--char-name-shadow, 0 1px 2px #000);
+  -webkit-text-stroke: var(--char-name-stroke, 1px #000);
+  paint-order: stroke fill;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+#chat.mode-character .char-bubble {
+  position: absolute;
+  bottom: calc(var(--char-size, 120px) + 20px);
+  /* left/transform จะถูก override โดย JS เพื่อกันล้นขอบจอ */
+  background: rgba(255,255,255,0.95);
+  color: #1a1a2e;
+  border-radius: 12px;
+  padding: 8px 14px;
+  /* shrink-to-fit: ข้อความสั้น = กรอบเล็ก, ข้อความยาว = ขยายจนสุด --bubble-width */
+  width: max-content;
+  max-width: var(--bubble-width, 500px);
+  min-width: 60px;
+  box-sizing: border-box;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  font-size: calc(var(--font-size, 14px) * 0.85);
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: normal;
+  word-break: break-word;
+  overflow: hidden;
+  animation: bubble-pop 0.3s ease-out;
+  z-index: 10;
+}
+#chat.mode-character .char-bubble::after {
+  content: "";
+  position: absolute;
+  bottom: -8px;
+  left: var(--arrow-left, 50%);
+  transform: translateX(-50%);
+  width: 0; height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 9px solid rgba(255,255,255,0.95);
+}
+@keyframes bubble-pop {
+  0%   { opacity: 0; transform: scale(0.5); }
+  60%  { transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
+}
+/* ข้อความในบอลลูน — จำกัด 3 บรรทัด + ตัดด้วย ... (ellipsis) */
+/* ใช้ line-clamp แทน scroll เพราะ scroll มีปัญหานับบรรทัดผิดกับภาษาไทย (สระบน/ล่าง) */
+#chat.mode-character .char-bubble .bubble-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+#chat.mode-character > .msg { display: none !important; }
+/* ═══ Niconico-style status scroll (ขวา→ซ้าย) ═══ */
+#status-marquee {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 40px;
+  z-index: 9999;
+  pointer-events: none;
+  overflow: visible;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+#status-marquee.visible { opacity: 1; }
+#status-marquee .marquee-item {
+  position: absolute;
+  white-space: nowrap;
+  font-size: var(--font-size, 14px);
+  font-weight: 700;
+  color: var(--text-color);
+  -webkit-text-stroke: var(--text-stroke);
+  text-shadow: var(--text-shadow);
+  paint-order: stroke fill;
+  padding: 4px 12px;
+  background: rgba(0,0,0,0.5);
+  border-radius: 6px;
+  animation: marquee-scroll linear forwards;
+}
+@keyframes marquee-scroll {
+  from { transform: translateX(100vw); }
+  to   { transform: translateX(-100%); }
+}
+
+/* ═══ Entry animations (16) ═══ */
+@keyframes a-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes a-slide-left { from { opacity: 0; transform: translateX(80px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes a-slide-up { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes a-zoom { from { opacity: 0; transform: scale(2.2); } to { opacity: 1; transform: scale(1); } }
+@keyframes a-bounce {
+  0% { opacity: 0; transform: scale(0.3) translateY(-50px); }
+  55% { opacity: 1; transform: scale(1.12) translateY(8px); }
+  75% { transform: scale(0.94) translateY(-4px); }
+  100% { transform: scale(1) translateY(0); }
+}
+@keyframes a-pop { from { opacity: 0; transform: scale(0.4); } to { opacity: 1; transform: scale(1); } }
+@keyframes a-flip {
+  from { opacity: 0; transform: perspective(500px) rotateY(95deg); }
+  to { opacity: 1; transform: perspective(500px) rotateY(0); }
+}
+@keyframes a-glow-in {
+  0% { opacity: 0; box-shadow: 0 0 0 rgba(124,58,237,0); }
+  45% { opacity: 1; box-shadow: 0 0 30px rgba(124,58,237,0.9); }
+  100% { box-shadow: var(--box-shadow), 0 0 14px rgba(124,58,237,0.5); }
+}
+/* ทันสมัย */
+@keyframes a-slide-pop {
+  0% { opacity: 0; transform: translateX(60px) scale(0.7); }
+  60% { opacity: 1; transform: translateX(-6px) scale(1.08); }
+  100% { transform: translateX(0) scale(1); }
+}
+@keyframes a-card-flip {
+  0% { opacity: 0; transform: perspective(600px) rotateY(90deg) translateZ(-40px); }
+  50% { opacity: 1; }
+  100% { transform: perspective(600px) rotateY(0) translateZ(0); }
+}
+@keyframes a-liquid {
+  0% { opacity: 0; clip-path: polygon(0 0, 0 0, 0 100%, 0 100%); transform: scaleY(0.6); }
+  60% { opacity: 1; }
+  100% { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%); transform: scaleY(1); }
+}
+@keyframes a-neon-pulse {
+  0% { opacity: 0; filter: brightness(2.5) drop-shadow(0 0 12px var(--box-glow)); }
+  50% { opacity: 1; }
+  100% { filter: brightness(1) drop-shadow(0 0 3px var(--box-glow)); }
+}
+@keyframes a-glassy {
+  0% { opacity: 0; transform: translateY(-12px) scale(0.95); backdrop-filter: blur(0); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes a-elastic {
+  0% { opacity: 0; transform: scale(0); }
+  55% { opacity: 1; transform: scale(1.25); }
+  70% { transform: scale(0.88); }
+  82% { transform: scale(1.08); }
+  91% { transform: scale(0.97); }
+  100% { transform: scale(1); }
+}
+
+.anim-fade { animation-name: a-fade; }
+.anim-slide-left { animation-name: a-slide-left; }
+.anim-slide-up { animation-name: a-slide-up; }
+.anim-zoom { animation-name: a-zoom; }
+.anim-bounce { animation-name: a-bounce; animation-duration: 0.65s; }
+.anim-pop { animation-name: a-pop; }
+.anim-flip { animation-name: a-flip; animation-duration: 0.55s; }
+.anim-glow { animation-name: a-glow-in; animation-duration: 0.6s; }
+.anim-slide-pop { animation-name: a-slide-pop; }
+.anim-card-flip { animation-name: a-card-flip; animation-duration: 0.6s; }
+.anim-liquid { animation-name: a-liquid; animation-duration: 0.55s; }
+.anim-neon-pulse { animation-name: a-neon-pulse; animation-duration: 0.7s; }
+.anim-glassy { animation-name: a-glassy; animation-duration: 0.5s; }
+.anim-elastic { animation-name: a-elastic; animation-duration: 0.8s; }
+.anim-minimal { animation-name: none; }
+
+/* ═══ Exit animations (6) ═══ */
+@keyframes e-fade_out { to { opacity: 0; } }
+@keyframes e-slide_right { to { opacity: 0; transform: translateX(80px); } }
+@keyframes e-slide_down { to { opacity: 0; transform: translateY(40px); } }
+@keyframes e-shrink { to { opacity: 0; transform: scale(0.3); } }
+@keyframes e-blur_out { to { opacity: 0; filter: blur(8px); } }
+@keyframes e-dissolve { to { opacity: 0; transform: scale(1.1); filter: blur(4px); } }
+.msg.exiting { animation-duration: 0.4s !important; animation-fill-mode: forwards; max-height: 200px; overflow: hidden; }
+.exit-fade_out { animation-name: e-fade_out !important; }
+.exit-slide_right { animation-name: e-slide_right !important; }
+.exit-slide_down { animation-name: e-slide_down !important; }
+.exit-shrink { animation-name: e-shrink !important; }
+.exit-blur_out { animation-name: e-blur_out !important; }
+.exit-dissolve { animation-name: e-dissolve !important; }
+
+/* Translator — ต้นฉบับ [xxx] ในวงเล็บ (สีอ่อน ขนาดเล็ก) */
+.orig-text {
+  opacity: 0.65;
+  font-size: 0.85em;
+  font-style: italic;
+}
+/* Channel Points redemption badge */
+.reward-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(168, 85, 247, 0.18);
+  vertical-align: middle;
+}
+.reward-icon {
+  width: 1em;
+  height: 1em;
+  vertical-align: middle;
+  display: inline-block;
+}
+.reward-title {
+  color: #c084fc;
+  font-weight: bold;
+}
+.reward-cost {
+  color: #a855f7;
+  font-size: 0.85em;
+}
+
+/* Scrollbar styles */
+.scrollbar-right::-webkit-scrollbar { width: var(--scrollbar-width); }
+.scrollbar-right::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-right::-webkit-scrollbar-thumb { background: var(--scrollbar-color); border-radius: 3px; }
+.scrollbar-left::-webkit-scrollbar { width: var(--scrollbar-width); }
+.scrollbar-left { direction: rtl; }
+.scrollbar-left > * { direction: ltr; }
+.scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ════════════════════════════════════════════════════════════════
+   Edit Mode (Setup mode) — แสดงเฉพาะตอน body.setup
+   ════════════════════════════════════════════════════════════════ */
+#edit-bar {
+  position: fixed; top: 0; left: 0; right: 0; height: 28px;
+  background: rgba(0,0,0,0.85); color: #fff; z-index: 1000;
+  display: none; align-items: center; padding: 0 8px;
+  font-family: 'Segoe UI', sans-serif; font-size: 12px;
+  border-bottom: 2px solid #ef4444;
+  -webkit-app-region: drag; user-select: none;
+}
+body.setup #edit-bar { display: flex; }
+#edit-bar .title { flex: 1; padding-left: 8px; color: #fbbf24; font-weight: 600; }
+#edit-bar .drag-hint { color: #9ca3af; font-size: 11px; }
+#edit-bar button {
+  background: #374151; color: #fff; border: 0; padding: 4px 10px;
+  margin-left: 4px; cursor: pointer; border-radius: 4px; font-size: 12px;
+  -webkit-app-region: no-drag;
+}
+#edit-bar button:hover { background: #4b5563; }
+#edit-bar button.close-btn:hover { background: #ef4444; }
+#edit-bar button.gear-btn:hover { background: #7c3aed; }
+
+/* resize grip — มุมขวาล่าง (เฉพาะ setup mode) */
+#resize-grip {
+  position: fixed; bottom: 0; right: 0; width: 16px; height: 16px;
+  background: linear-gradient(135deg, transparent 50%, #ef4444 50%);
+  cursor: nwse-resize; z-index: 1000; display: none;
+}
+body.setup #resize-grip { display: block; }
+
+/* ขอบปรับตำแหน่ง (setup mode) — ทำให้เห็นขอบ window ชัด */
+body.setup #chat { padding-top: 36px; }
+body.setup { outline: 2px dashed #ef4444; outline-offset: -2px; }
+</style>
+
+<!-- ═══ Theme CSS (inject จาก Python ผ่าน /theme endpoint) ═══ -->
+<style id="theme-css"></style>
+<!-- ═══ Custom CSS (inject เมื่อ theme=custom) ═══ -->
+<style id="user-css"></style>
+</head>
+<body>
+<div id="edit-bar">
+  <span class="title">✏ Game Overlay — Edit Mode</span>
+  <span class="drag-hint">⋮⋮ ลากย้ายตรงนี้</span>
+  <button class="gear-btn" onclick="fetch('qt://api/open_settings').catch(()=>{})">⚙</button>
+  <button class="close-btn" onclick="fetch('qt://api/exit_edit').catch(()=>{})">✓ ยืนยัน</button>
+</div>
+<div id="resize-grip"></div>
+<div id="chat"></div>
+<div id="status-marquee"></div>
+<script>
+const chatEl = document.getElementById('chat');
+let config = {
+  theme: 'default', theme_css: '', custom_css: '',
+  font_size: 18, emote_size: 28, animation: 'fade', exit_animation: 'fade_out',
+  max_messages: 20, direction: 'bottom', show_logo: true, show_timestamp: false,
+  auto_hide: false, hide_after: 10,
+  font_family: 'Kanit', font_weight: '500', text_color: '#ffffff',
+  text_stroke: false, text_stroke_color: '#000000', text_stroke_width: 2,
+  text_shadow: true, text_shadow_color: '#000000', text_shadow_blur: 3,
+  box_bg_color: '#0a0e1a', box_bg_opacity: 0.55, box_radius: 8,
+  box_border: false, box_border_color: '#7c3aed', box_border_width: 1,
+  box_shadow: true, box_blur: false, box_glow: false, box_glow_color: '#7c3aed',
+  box_width: 'fit', msg_spacing: 4,
+  msg_only: false, balloon_mode: false, balloon_hide_after: 5,
+  character_mode: false, character_hide_after: 6, character_size: 120,
+  character_max_on_screen: 8, character_jobs: [], character_bubble_width: 500,
+  show_original: true,  // Translator — แสดงต้นฉบับ [xxx] ในวงเล็บ
+  show_redeem: true,    // Channel Points — แสดง reward redemption
+};
+let loadedFont = '';
+// balloon mode: เก็บตำแหน่งบอลลูนที่กำลังแสดงอยู่ (เพื่อหลีกทับกัน)
+let balloonSlots = [];  // [{el, x, y, w, h}]
+
+async function loadConfig() {
+  try { const r = await fetch('/config'); applyConfig(await r.json()); }
+  catch (e) { console.warn('config load failed', e); }
+}
+
+function applyConfig(c) {
+  console.log('[overlay] applyConfig: theme=', c.theme, 'theme_css len=', (c.theme_css || '').length);
+  // เก็บค่าเก่าก่อน override เพื่อตรวจการเปลี่ยนแปลง (auto-hide retroactive + glow retroactive)
+  const oldAutoHide = config.auto_hide;
+  const oldHideAfter = config.hide_after;
+  const oldBalloonHideAfter = config.balloon_hide_after;
+  const oldGlow = config.box_glow;
+  config = Object.assign(config, c);
+  // ── apply theme + custom CSS ทันที ──
+  // สำคัญ: ใช้ remove + re-create style element (บังคับ browser re-evaluate CSS)
+  if (config.theme_css !== undefined) {
+    const old = document.getElementById('theme-css');
+    if (old) old.remove();
+    const t = document.createElement('style');
+    t.id = 'theme-css';
+    t.textContent = config.theme_css;
+    document.head.appendChild(t);
+    console.log('[overlay] re-created theme-css, len=', config.theme_css.length);
+  }
+  if (config.custom_css !== undefined) {
+    const oldU = document.getElementById('user-css');
+    if (oldU) oldU.remove();
+    const u = document.createElement('style');
+    u.id = 'user-css';
+    u.textContent = (config.theme === 'custom') ? config.custom_css : '';
+    document.head.appendChild(u);
+  }
+  const root = document.documentElement.style;
+  root.setProperty('--font-size', config.font_size + 'px');
+  root.setProperty('--emote-size', config.emote_size + 'px');
+  root.setProperty('--font-weight', config.font_weight);
+  root.setProperty('--text-color', config.text_color);
+  // text stroke
+  root.setProperty('--text-stroke', config.text_stroke
+    ? `${config.text_stroke_width}px ${config.text_stroke_color}` : '0 transparent');
+  // text shadow
+  root.setProperty('--text-shadow', config.text_shadow
+    ? `0 1px ${config.text_shadow_blur}px ${config.text_shadow_color}` : 'none');
+  // box
+  // สำคัญ: ถ้า theme != "default" → ห้าม override box-bg/border/shadow/glow/blur
+  // (ให้ Theme CSS เป็นคนกำหนด — กันทับ theme style)
+  const themeActive = config.theme && config.theme !== 'default';
+  if (config.box_enabled === false && !themeActive) {
+    // ปิดกล่อง → เหลือแต่ตัวอักษร (ไม่มี bg/border/shadow/blur/glow)
+    root.setProperty('--box-bg', 'transparent');
+    root.setProperty('--box-radius', '0px');
+    root.setProperty('--box-border', 'none');
+    root.setProperty('--box-shadow', 'none');
+    root.setProperty('--box-blur', '0');
+    root.setProperty('--box-glow', 'transparent');
+  } else if (!themeActive) {
+    // theme = default → apply box settings ปกติ
+    const bgRgb = hexToRgb(config.box_bg_color);
+    root.setProperty('--box-bg', bgRgb
+      ? `rgba(${bgRgb.r},${bgRgb.g},${bgRgb.b},${config.box_bg_opacity})` : config.box_bg_color);
+    root.setProperty('--box-radius', config.box_radius + 'px');
+    root.setProperty('--box-border', config.box_border
+      ? `${config.box_border_width}px solid ${config.box_border_color}` : 'none');
+    root.setProperty('--box-shadow', config.box_shadow ? '0 2px 8px rgba(0,0,0,0.35)' : 'none');
+    root.setProperty('--box-blur', (config.box_blur > 0 ? config.box_blur : 0) + 'px');
+    root.setProperty('--box-glow', config.box_glow ? config.box_glow_color : 'transparent');
+  }
+  // else: theme active → skip box overrides (Theme CSS controls)
+  // box width: fit (ชิดข้อความ) หรือ wide (กว้างเต็ม)
+  root.setProperty('--box-width', config.box_width === 'wide' ? '100%' : 'fit-content');
+  root.setProperty('--msg-gap', (config.msg_spacing || 4) + 'px');
+  // font family (dynamic Google Font load)
+  loadFont(config.font_family);
+  document.body.style.fontFamily = `"${config.font_family}","Leelawadee UI","Segoe UI",Tahoma,sans-serif`;
+  // direction
+  chatEl.classList.toggle('direction-top', config.direction === 'top');
+  // balloon mode toggle
+  chatEl.classList.toggle('mode-balloon', config.balloon_mode === true);
+  chatEl.classList.toggle('mode-character', config.character_mode === true);
+  root.setProperty('--char-size', (config.character_size || 120) + 'px');
+  // character name style
+  root.setProperty('--char-name-size', (config.character_name_size || 11) + 'px');
+  root.setProperty('--char-name-stroke', config.character_name_stroke
+    ? `${config.character_name_stroke_width || 1}px ${config.character_name_stroke_color || '#000000'}` : '0 transparent');
+  root.setProperty('--char-name-shadow', config.character_name_shadow
+    ? `0 1px ${config.character_name_shadow_blur || 2}px ${config.character_name_shadow_color || '#000000'}` : 'none');
+  root.setProperty('--bubble-width', (config.character_bubble_width || 500) + 'px');
+  // balloon opacity (แยกจาก Default mode — set ใคร set มัน)
+  root.setProperty('--balloon-bg-opacity', config.balloon_bg_opacity ?? 0.95);
+  // auto-hide retroactive: ถ้า auto_hide/hide_after/balloon_hide_after เปลี่ยน → re-schedule
+  const autoChanged = (oldAutoHide !== config.auto_hide)
+                   || (oldHideAfter !== config.hide_after)
+                   || (oldBalloonHideAfter !== config.balloon_hide_after);
+  if (autoChanged) {
+    // balloon mode ใช้ timer ของตัวเองเสมอ (โผล่แล้วหาย) — เลย reschedule เสมอเมื่อ balloon on
+    if (config.balloon_mode || config.auto_hide) rescheduleAllAutoHide();
+    else clearAllAutoHide();
+  }
+  // glow retroactive: ถ้า box_glow toggle → apply/remove class บนข้อความที่แสดงอยู่ทั้งหมด
+  // (เดิม .box-glow-on ใส่เฉพาะข้อความใหม่ → toggle ไม่มีผลกับข้อความเดิม)
+  if (oldGlow !== config.box_glow) {
+    chatEl.querySelectorAll('.msg:not(.exiting)').forEach(el => {
+      el.classList.toggle('box-glow-on', !!config.box_glow);
+    });
+  }
+}
+
+// auto-hide timer management — เก็บ timer ref บน element
+function rescheduleAllAutoHide() {
+  // ทุกข้อความที่แสดงอยู่ → clear เก่า + ตั้งใหม่ตาม hide_after ปัจจุบัน
+  // balloon mode: ใช้ balloon_hide_after (แยกจาก auto_hide ทั่วไป)
+  chatEl.querySelectorAll('.msg:not(.exiting)').forEach(el => {
+    if (el._hideTimer) clearTimeout(el._hideTimer);
+    let ms;
+    if (config.balloon_mode) {
+      ms = (config.balloon_hide_after || 5) * 1000;
+    } else if (config.auto_hide) {
+      ms = (config.hide_after || 10) * 1000;
+    } else {
+      return; // ไม่มี auto-hide → ข้าม
+    }
+    el._hideTimer = setTimeout(() => removeMessage(el), ms);
+  });
+}
+function clearAllAutoHide() {
+  chatEl.querySelectorAll('.msg:not(.exiting)').forEach(el => {
+    if (el._hideTimer) { clearTimeout(el._hideTimer); el._hideTimer = null; }
+  });
+}
+
+function loadFont(family) {
+  if (family === loadedFont) return;
+  loadedFont = family;
+  // remove old
+  document.querySelectorAll('link[data-gfont]').forEach(l => l.remove());
+  if (!family) return;
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.setAttribute('data-gfont', family);
+  // โหลดหลายน้ำหนัก (300,400,500,600,700)
+  const q = family.replace(/ /g, '+');
+  link.href = `https://fonts.googleapis.com/css2?family=${q}:wght@300;400;500;600;700&display=swap`;
+  document.head.appendChild(link);
+}
+
+function hexToRgb(hex) {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '');
+  return m ? { r: parseInt(m[1],16), g: parseInt(m[2],16), b: parseInt(m[3],16) } : null;
+}
+
+// WebSocket
+let ws = null;
+function connectWs() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(proto + '//' + location.host + '/ws');
+  ws.onmessage = (ev) => {
+    try {
+      const data = JSON.parse(ev.data);
+      console.log('[overlay] WS msg:', data.type, data.config ? 'theme=' + data.config.theme : '');
+      if (data.type === 'config') applyConfig(data.config);
+      else if (data.type === 'message') {
+        // system status → niconico scroll เสมอ (ไม่เข้า balloon/chat)
+        if (data.event === 'system') {
+          console.log('[GO] system msg:', data.system_text || data.text);
+          addStatusMarquee(data.system_text || data.text || '');
+        } else {
+          if (config.character_mode) addCharacterMessage(data);
+          else addMessage(data);
+        }
+      }
+      else if (data.type === 'eval_js') { try { eval(data.js); } catch(e){ console.warn('eval_js error', e); } }
+      else if (data.type === 'clear') { chatEl.innerHTML = ''; }
+      else if (data.type === 'reload_emotes') reloadEmoteImages();
+    } catch (e) { console.error('[overlay] WS msg error', e); }
+  };
+  ws.onclose = () => { setTimeout(connectWs, 1500); };
+  ws.onerror = () => { try { ws.close(); } catch(e){} };
+}
+
+function addMessage(msg) {
+  const el = document.createElement('div');
+  el.className = 'msg anim-' + (config.animation || 'fade').replace(/_/g, '-');
+  if (config.box_glow) el.classList.add('box-glow-on');
+  // layout: stacked สองบรรทัด
+  const layout = config.layout || 'inline';
+  if (layout === 'stacked' || layout === 'stacked_no_logo') el.classList.add('layout-stacked');
+
+  // ── balloon mode: สุ่มตำแหน่ง + จำกัด 80 ตัวอักษร ──
+  const isBalloon = config.balloon_mode;
+  // ── max_msg_length: จำกัดความยาวข้อความ (0 = ไม่จำกัด) ──
+  // ใช้กับทุกโหมดที่ไม่ใช่ balloon (balloon slice 80 อยู่แล้วด้านล่าง)
+  if (!isBalloon && config.max_msg_length && config.max_msg_length > 0) {
+    const plain = msg.text || msg.system_text || '';
+    if (plain.length > config.max_msg_length) {
+      const truncated = plain.slice(0, config.max_msg_length) + '...';
+      msg = Object.assign({}, msg, { text: truncated, system_text: truncated });
+    }
+  }
+  if (isBalloon) {
+    const plain = msg.text || msg.system_text || '';
+    if (plain.length > 80) {
+      msg = Object.assign({}, msg, { text: plain.slice(0, 80) + '...' });
+    }
+  }
+
+  // ── layout rendering decisions ──
+  // hideMeta = ซ่อนชื่อ + โลโก้ + separator (แสดงแค่ข้อความ)
+  // events พิเศษ → force hideMeta (msg.text มี author อยู่แล้ว → แสดง 1 บรรทัด)
+  const isEvent = msg.event && msg.event !== 'message' && msg.event !== 'system';
+  const hideMeta = layout === 'message_only' || isBalloon || isEvent;
+  // hideLogo = ซ่อนแค่โลโก้ (แต่ยังแสดงชื่อ)
+  const hideLogo = hideMeta || layout === 'inline_no_logo' || layout === 'stacked_no_logo' || !config.show_logo;
+  // useStack = สองบรรทัด
+  const useStack = (layout === 'stacked' || layout === 'stacked_no_logo') && !isBalloon;
+
+  const header = useStack ? document.createElement('div') : null;
+  if (header) { header.className = 'stack-header'; el.appendChild(header); }
+  const parent0 = header || el;
+
+  if (!hideLogo) {
+    const img = document.createElement('img');
+    img.className = 'logo';
+    img.src = '/logo/' + encodeURIComponent(msg.platform || '');
+    img.onerror = () => img.remove();
+    parent0.appendChild(img);
+  }
+
+  if (!hideMeta) {
+    const author = document.createElement('span');
+    author.className = 'author';
+    const badge = msg.badge ? `<span class="badge">${esc(msg.badge)}</span>` : '';
+    const amount = msg.amount ? ` [${esc(String(msg.amount))}]` : '';
+    author.innerHTML = badge + esc(msg.author) + amount;
+    author.style.color = msg.color || platformColor(msg.platform);
+    parent0.appendChild(author);
+  }
+
+  const hasText = msg.text || msg.system_text || msg.segments?.length || msg.twitch_emotes?.length || msg.sticker_url;
+  if (!hideMeta && hasText) {
+    const sep = document.createElement('span');
+    sep.className = 'sep'; sep.textContent = ':';
+    parent0.appendChild(sep);
+  }
+
+  const textEl = document.createElement('span');
+  textEl.className = 'text';
+  renderContent(textEl, msg);
+  // Channel Points redemption → เพิ่ม reward badge ก่อนข้อความ (ถ้าเปิด show_redeem)
+  if (msg.event === 'redeem' && config.show_redeem) {
+    const rb = makeRewardBadge(msg);
+    if (rb) el.insertBefore(rb, el.firstChild);
+  }
+  if (useStack) {
+    const body = document.createElement('div');
+    body.className = 'stack-body';
+    body.appendChild(textEl);
+    el.appendChild(body);
+  } else {
+    el.appendChild(textEl);
+  }
+
+  if (!hideMeta && config.show_timestamp && msg.timestamp) {
+    const t = document.createElement('span');
+    t.className = 'time'; t.textContent = msg.timestamp;
+    parent0.appendChild(t);
+  }
+
+  // ── balloon mode: หาที่ว่าง (ไม่ทับบอลลูนอื่น) ถ้าไม่มีค่อยทับ ──
+  if (isBalloon) {
+    // ล้าง slots ของบอลลูนที่ถูกลบไปแล้ว (ไม่อยู่ใน DOM แล้ว)
+    balloonSlots = balloonSlots.filter(s => s.el.isConnected);
+    requestAnimationFrame(() => {
+      const w = el.offsetWidth || 200;
+      const h = el.offsetHeight || 40;
+      const margin = 12;
+      const maxX = Math.max(0, window.innerWidth - w - margin * 2);
+      const maxY = Math.max(0, window.innerHeight - h - margin * 2);
+
+      // ลองหาที่ว่างแบบสุ่ม — พยายาม 30 ครั้ง
+      let bestX = null, bestY = null;
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const x = Math.floor(Math.random() * (maxX + 1)) + margin;
+        const y = Math.floor(Math.random() * (maxY + 1)) + margin;
+        // เช็ค collision กับบอลลูนอื่น (เผื่อ padding 8px)
+        const pad = 8;
+        const overlaps = balloonSlots.some(s =>
+          x < s.x + s.w + pad &&
+          x + w + pad > s.x &&
+          y < s.y + s.h + pad &&
+          y + h + pad > s.y
+        );
+        if (!overlaps) {
+          bestX = x; bestY = y;
+          break;
+        }
+      }
+      // ถ้าหาที่ว่างไม่ได้ใน 30 ครั้ง → สุ่มที่ไหนก็ได้ (ยอมทับ)
+      if (bestX === null) {
+        bestX = Math.floor(Math.random() * (maxX + 1)) + margin;
+        bestY = Math.floor(Math.random() * (maxY + 1)) + margin;
+      }
+      el.style.left = bestX + 'px';
+      el.style.top = bestY + 'px';
+      // จดตำแหน่งลง slots เพื่อให้บอลลูนถัดไปหลีกได้
+      balloonSlots.push({ el, x: bestX, y: bestY, w, h });
+    });
+  }
+
+  if (config.direction === 'top') chatEl.insertBefore(el, chatEl.firstChild);
+  else chatEl.appendChild(el);
+  capMessages();
+
+  if (config.animation === 'typewriter') typewriter(el, textEl);
+
+  // ── auto-hide ──
+  // โหมดบอลลูน: ใช้ balloon_hide_after ของตัวเอง (โผล่แล้วหาย) — แยกจาก auto_hide ทั่วไป
+  // โหมดปกติ: ใช้ auto_hide + hide_after (global)
+  if (isBalloon) {
+    const bms = (config.balloon_hide_after || 5) * 1000;
+    el._hideTimer = setTimeout(() => removeMessage(el), bms);
+  } else if (config.auto_hide && config.hide_after > 0) {
+    el._hideTimer = setTimeout(() => removeMessage(el), config.hide_after * 1000);
+  }
+}
+
+function renderContent(textEl, msg) {
+  const es = config.emote_size;
+  // segments (MyLive/YouTube/TikTok/KICK) — แสดงตาม segment
+  // แต่ถ้าแปลแล้ว → ข้าม (segment content เป็นต้นฉบับ ไม่ใช่คำแปล)
+  if (msg.segments && msg.segments.length && !msg.is_translated) {
+    for (const s of msg.segments) {
+      if (s.type === 'text') textEl.appendChild(document.createTextNode(s.content));
+      else if (s.type === 'emoji') textEl.appendChild(document.createTextNode(s.char));
+      else if (s.type === 'emote' && s.url) textEl.appendChild(makeImg(s.url, 'emote', es));
+    }
+    appendOriginalText(textEl, msg);
+    return;
+  }
+  // twitch emotes — ถ้าแปลแล้ว emote offset ผิด (อ้าง text ต้นฉบับ) → ข้าม emote, แสดงคำแปลอย่างเดียว
+  if (msg.twitch_emotes && msg.twitch_emotes.length && msg.raw_text && !msg.is_translated) {
+    const text = msg.raw_text;
+    const ems = [...msg.twitch_emotes].sort((a,b) => a.start - b.start);
+    let cur = 0;
+    for (const em of ems) {
+      if (em.start > cur) textEl.appendChild(document.createTextNode(text.slice(cur, em.start)));
+      textEl.appendChild(makeImg(em.url, 'emote', es, em.name));
+      cur = em.end + 1;
+    }
+    if (cur < text.length) textEl.appendChild(document.createTextNode(text.slice(cur)));
+    return;
+  }
+  if (msg.sticker_url) { textEl.appendChild(makeImg(msg.sticker_url, 'sticker', es * 2)); return; }
+  textEl.textContent = msg.text || msg.system_text || '';
+  // กรณี plain text — แสดง [original] ด้วย
+  if (msg.is_translated && config.show_original && msg.original_text) {
+    textEl.textContent = msg.text + ' ';
+    const orig = document.createElement('span');
+    orig.className = 'orig-text';
+    orig.textContent = '[' + msg.original_text + ']';
+    textEl.appendChild(orig);
+  }
+}
+
+function appendOriginalText(textEl, msg) {
+  // เพิ่ม [original] ต่อท้าย (inline) ถ้าเป็นข้อความแปล + เปิด show_original
+  if (msg.is_translated && config.show_original && msg.original_text) {
+    textEl.appendChild(document.createTextNode(' '));
+    const orig = document.createElement('span');
+    orig.className = 'orig-text';
+    orig.textContent = '[' + msg.original_text + ']';
+    textEl.appendChild(orig);
+  }
+}
+
+function makeRewardBadge(msg) {
+  // สร้าง badge แสดง Channel Point redemption: [icon] title · cost
+  if (!msg.reward_title && !msg.reward_icon) return null;
+  const badge = document.createElement('span');
+  badge.className = 'reward-badge';
+  if (msg.reward_icon) {
+    const img = document.createElement('img');
+    img.src = msg.reward_icon;
+    img.className = 'reward-icon';
+    img.onerror = () => { img.style.display = 'none'; };
+    badge.appendChild(img);
+  } else {
+    const ic = document.createElement('span');
+    ic.textContent = '🎯';
+    badge.appendChild(ic);
+  }
+  if (msg.reward_title) {
+    const t = document.createElement('span');
+    t.className = 'reward-title';
+    t.textContent = ' ' + msg.reward_title;
+    badge.appendChild(t);
+  }
+  if (msg.reward_cost) {
+    const c = document.createElement('span');
+    c.className = 'reward-cost';
+    c.textContent = ' · ' + msg.reward_cost + ' pts';
+    badge.appendChild(c);
+  }
+  return badge;
+}
+
+function makeImg(url, cls, size, alt) {
+  const img = document.createElement('img');
+  img.className = cls; img.src = url;
+  img.style.width = size + 'px'; img.style.height = size + 'px';
+  img.style.verticalAlign = 'middle';
+  img.style.display = 'inline-block';
+  if (alt) { img.alt = alt; img.title = alt; }
+  // onerror → แสดงชื่อ emote เป็น text แทน (ชัดเจน ไม่ใช่ช่องว่าง)
+  img.onerror = () => {
+    const fallbackText = alt || url.split('/').pop() || '[emote]';
+    const s = document.createElement('span');
+    s.textContent = fallbackText;
+    s.style.color = 'var(--text-color)';
+    s.style.fontSize = 'var(--font-size)';
+    s.style.verticalAlign = 'middle';
+    img.replaceWith(s);
+  };
+  return img;
+}
+
+// reload ทุก emote image — เพิ่ม cache-busting query param (toggle animate/static)
+function reloadEmoteImages() {
+  const bust = '?t=' + Date.now();
+  document.querySelectorAll('img.emote').forEach(img => {
+    const src = img.getAttribute('src') || '';
+    const cleanSrc = src.split('?')[0];
+    img.src = cleanSrc + bust;
+  });
+}
+
+function typewriter(msgEl, textEl) {
+  const full = textEl.innerHTML;
+  textEl.innerHTML = '';
+  const plain = msgEl.dataset.ft || (msgEl.dataset.ft = stripHtml(full));
+  let i = 0;
+  const timer = setInterval(() => {
+    if (i >= plain.length) { clearInterval(timer); textEl.innerHTML = full; return; }
+    textEl.textContent = plain.slice(0, ++i) + '▌';
+  }, 28);
+}
+function stripHtml(h) { const d = document.createElement('div'); d.innerHTML = h; return d.textContent || ''; }
+
+function capMessages() {
+  const msgs = chatEl.querySelectorAll('.msg:not(.exiting)');
+  while (msgs.length > config.max_messages) {
+    const old = config.direction === 'top' ? msgs[msgs.length - 1] : msgs[0];
+    removeMessage(old);
+    break;
+  }
+}
+
+// ═══ Character Talk — ตัวละครยืนเรียง + บอลลูนเหนือหัว ═══
+let charSlots = [];
+
+function addCharacterMessage(msg) {
+  if (!config.character_mode) return;
+  const author = msg.author || '?';
+  const job = msg.job || 'default';
+  const text = msg.text || msg.system_text || '';
+  if (!text.trim()) return;
+  // ★ หา slot ของ author ที่ยังแสดงอยู่ (อยู่ใน DOM + ไม่ exiting)
+  let slot = charSlots.find(s => s.author === author && s.el.isConnected && !s.el.classList.contains('exiting'));
+  if (slot) {
+    // คนเดิมโพสซ้ำขณะยังแสดงอยู่ → เปลี่ยนแค่ balloon (อย่าย้ายตำแหน่ง)
+    updateCharBubble(slot.el, text, author);
+  } else {
+    // คนใหม่ หรือคนเดิมที่หมดเวลาไปแล้ว → สร้าง slot ใหม่ + สุ่มตำแหน่งใหม่เสมอ
+    slot = createCharSlot(author, job);
+    updateCharBubble(slot.el, text, author);
+    chatEl.appendChild(slot.el);
+    charSlots.push(slot);
+    // ★ สุ่มตำแหน่งแนวนอน — หลีกตัวละครอื่นที่กำลังแสดงอยู่
+    if (config.character_random_pos) {
+      randomizeCharPosition(slot);
+    }
+  }
+  capCharacterSlots();
+  if (slot.timer) clearTimeout(slot.timer);
+  const hideMs = (config.character_hide_after || 6) * 1000;
+  slot.timer = setTimeout(() => removeCharSlot(slot), hideMs);
+}
+
+function randomizeCharPosition(slot) {
+  const el = slot.el;
+  const screenW = window.innerWidth;
+  // ★ ใช้ค่าจาก config ล้วน — ไม่ใช้ offsetWidth (เพราะรวม bubble ทำให้วัดผิด)
+  const charH = config.character_size || 120;
+  const charW = Math.max(60, Math.round(charH * 0.7));
+  const margin = 16;
+  const usableW = screenW - margin * 2;
+  // ดูตำแหน่งของตัวละครอื่นที่กำลังแสดงอยู่ (เว้นตัวเองออก)
+  const usedLefts = charSlots
+    .filter(s => s !== slot && s.el.isConnected && !s.el.classList.contains('exiting'))
+    .map(s => parseInt(s.el.style.left || '0'));
+  // ★ แบ่งจอเป็นช่อง (grid slots) แล้วเลือกช่องว่าง — กระจายสม่ำเสมอกว่า random
+  const slotW = charW + 20; // แต่ละช่อง = ตัวละคร + gap เล็ก
+  const totalSlots = Math.max(1, Math.floor(usableW / slotW));
+  // หาช่องที่ว่าง (ไม่มีตัวละครอื่นอยู่)
+  let availableSlots = [];
+  for (let i = 0; i < totalSlots; i++) {
+    const slotCenter = margin + i * slotW + slotW / 2;
+    // ★ occupied: ตำแหน่งตัวละครอื่นใกล้กับกลางช่องนี้ไหม (ระยะ < ครึ่งช่อง = ซ้อน)
+    const occupied = usedLefts.some(ul => Math.abs(ul + charW / 2 - slotCenter) < slotW / 2);
+    if (!occupied) availableSlots.push(i);
+  }
+  // ถ้าไม่มีช่องว่าง → ใช้ทุกช่อง (ยอมใกล้กัน)
+  if (availableSlots.length === 0) {
+    for (let i = 0; i < totalSlots; i++) availableSlots.push(i);
+  }
+  // สุ่มเลือกช่องจากที่ว่าง
+  const chosen = availableSlots[Math.floor(Math.random() * availableSlots.length)];
+  // วางตรงกลางช่อง + jitter เล็กน้อย (ดูเป็นธรรมชาติ ไม่ตรงเส้นทุกตัว)
+  const slotStart = margin + chosen * slotW;
+  let bestLeft = slotStart + (slotW - charW) / 2;
+  const jitter = (Math.random() - 0.5) * Math.max(0, slotW - charW) * 0.3;
+  bestLeft += jitter;
+  bestLeft = Math.max(margin, Math.min(screenW - charW - margin, bestLeft));
+  el.style.position = 'absolute';
+  el.style.bottom = '0';
+  el.style.left = bestLeft + 'px';
+}
+
+function createCharSlot(author, job) {
+  const el = document.createElement('div');
+  el.className = 'char-slot';
+  const img = document.createElement('img');
+  img.className = 'char-img';
+  img.src = '/character/' + encodeURIComponent(job || 'default') + '?t=' + Date.now();
+  img.onerror = () => { img.style.opacity = '0.3'; };
+  el.appendChild(img);
+  const nameEl = document.createElement('div');
+  nameEl.className = 'char-name';
+  nameEl.textContent = author;
+  el.appendChild(nameEl);
+  return { el, author, timer: null };
+}
+
+function updateCharBubble(slotEl, text, author) {
+  const old = slotEl.querySelector('.char-bubble');
+  if (old) old.remove();
+  const bubble = document.createElement('div');
+  bubble.className = 'char-bubble';
+  const textEl = document.createElement('div');
+  textEl.className = 'bubble-text';
+  textEl.textContent = text;
+  bubble.appendChild(textEl);
+  slotEl.insertBefore(bubble, slotEl.firstChild);
+  // ★ จัดตำแหน่งกันล้นจอ: วัดหลัง render, ปรับ left ให้ bubble อยู่ในจอ
+  //    ข้อความยาวเกิน 3 บรรทัด → CSS line-clamp ตัดด้วย ... อัตโนมัติ (ไม่ต้อง scroll)
+  requestAnimationFrame(() => {
+    positionCharBubble(slotEl, bubble);
+  });
+}
+
+// จัดตำแหน่ง bubble เหนือตัวละคร แต่กันล้นขอบจอซ้าย/ขวา
+// slotEl อาจเป็น absolute (random pos) หรือ relative (เรียงแนวนอน)
+function positionCharBubble(slotEl, bubble) {
+  const slotRect = slotEl.getBoundingClientRect();
+  const bw = bubble.offsetWidth;
+  const vw = window.innerWidth;
+  const margin = 12;
+  // จุดศูนย์กลางของตัวละคร (สัมพัทธ์กับ viewport)
+  const charCenterX = slotRect.left + slotRect.width / 2;
+  // ฝั่งซ้ายของ bubble ถ้าวางตรงกลางเหนือตัวละคร
+  let bubbleLeft = charCenterX - bw / 2;
+  // clamp กันล้นซ้าย/ขวา
+  if (bubbleLeft < margin) bubbleLeft = margin;
+  if (bubbleLeft + bw > vw - margin) bubbleLeft = vw - bw - margin;
+  // แปลงเป็นพิกัดสัมพัทธ์กับ slotEl (เพราะ bubble เป็น child ของ slotEl)
+  const slotLeft = slotRect.left;
+  bubble.style.left = (bubbleLeft - slotLeft) + 'px';
+  bubble.style.transform = 'none';
+  // ปรับหาง bubble ให้ตามตำแหน่งจริง (ชี้ลงมาที่ตัวละคร)
+  const arrowOffset = charCenterX - bubbleLeft; // ระยะจากขอบซ้าย bubble ถึงตัวละคร
+  const arrowClamped = Math.max(14, Math.min(bw - 14, arrowOffset));
+  bubble.style.setProperty('--arrow-left', arrowClamped + 'px');
+}
+
+function capCharacterSlots() {
+  const max = config.character_max_on_screen || 8;
+  while (charSlots.length > max) {
+    const oldest = charSlots.shift();
+    removeCharSlot(oldest);
+  }
+}
+
+function removeCharSlot(slot) {
+  if (!slot || !slot.el || !slot.el.parentNode) return;
+  if (slot.timer) clearTimeout(slot.timer);
+  slot.el.classList.add('exiting');
+  setTimeout(() => { if (slot.el.parentNode) slot.el.remove(); }, 300);
+  charSlots = charSlots.filter(s => s !== slot);
+}
+
+function removeMessage(el) {
+  if (!el || !el.parentNode || el.classList.contains('exiting')) return;
+  el.classList.add('exiting', 'exit-' + (config.exit_animation || 'fade_out'));
+  el.addEventListener('animationend', () => el.remove(), { once: true });
+  // safety: remove after 1s ถ้า animationend ไม่ยิง
+  setTimeout(() => { if (el.parentNode) el.remove(); }, 1000);
+}
+
+function platformColor(p) {
+  return { twitch: '#a855f7', youtube: '#ef4444', mylive: '#60a5fa' }[p] || '#e5e7eb';
+}
+function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+
+// ────────────────────────────────────────────────────────────
+// Theme + Custom CSS injection (โหลดจาก /theme + /custom_css)
+// ────────────────────────────────────────────────────────────
+async function loadTheme() {
+  try {
+    const [tRes, cRes] = await Promise.all([
+      fetch('/theme'), fetch('/custom_css'),
+    ]);
+    const tData = await tRes.json();
+    const cData = await cRes.json();
+    if (tData.css) document.getElementById('theme-css').textContent = tData.css;
+    if (cData.css) document.getElementById('user-css').textContent = cData.css;
+  } catch (e) { console.warn('theme load failed', e); }
+}
+window.applyTheme = function(themeCss, customCss) {
+  // เรียกจาก Python (runJavaScript) เพื่อ live update
+  if (themeCss !== undefined) document.getElementById('theme-css').textContent = themeCss;
+  if (customCss !== undefined) document.getElementById('user-css').textContent = customCss;
+};
+
+// ────────────────────────────────────────────────────────────
+// Edit mode (setup) — drag + resize ทำใน Python (Qt mouse events)
+// ────────────────────────────────────────────────────────────
+window.setEditMode = function(on) {
+  document.body.classList.toggle('setup', on);
+};
+
+// ═══ Niconico-style status marquee (ขวา→ซ้าย) — ไม่ซ้อนกัน ═══
+function addStatusMarquee(text) {
+  if (!text || !text.trim()) return;
+  const marquee = document.getElementById('status-marquee');
+  if (!marquee) return;
+  marquee.classList.add('visible');
+  // นับข้อความที่กำลังแสดงอยู่ → เลื่อน top ของข้อความใหม่ลงไป (กันซ้อน)
+  const existing = marquee.querySelectorAll('.marquee-item');
+  const row = existing.length;
+  const item = document.createElement('div');
+  item.className = 'marquee-item';
+  item.textContent = text;
+  item.style.top = (row * 36) + 'px';  // แต่ละแถวห่าง 36px
+  const duration = Math.max(4, text.length * 0.3);
+  item.style.animationDuration = duration + 's';
+  marquee.appendChild(item);
+  item.addEventListener('animationend', () => item.remove(), { once: true });
+  setTimeout(() => { if (item.parentNode) item.remove(); }, 30000);
+}
+
+loadConfig().then(() => { loadTheme(); connectWs(); });
+</script>
+</body>
+</html>

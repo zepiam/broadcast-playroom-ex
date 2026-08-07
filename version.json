@@ -1,0 +1,14 @@
+{
+  "version": "1.12.1",
+  "changelog": "🔧 v1.12.1 — Bug Fix\n\n• แก้บั๊ก Layer Panel ลากย้ายไม่ได้ (ย้อนกลับไปตำแหน่งเดิม)\n• แก้ Emote Party มีคำว่า 'Emote Party' ค้างกลาง widget\n• แก้ Character Talk ไม่แสดง emote ของ MyLive/YouTube/TikTok\n• แก้ Now Playing หายตอน refresh หน้า Composer\n• แก้ MyLive อ่านข้อความเก่าใน history ตอนเชื่อมต่อ (ตอนนี้อ่านเฉพาะของใหม่)\n• แก้ปุ่มทดสอบ Playroom เล่นคลิปกระจายไปทุก widget (ตอนนี้เล่นเฉพาะ widget ที่กด)\n• กันกระพริบดำตอน restore จาก minimize",
+  "lite": {
+    "type": "patch",
+    "url": "https://github.com/zepiam/broadcast-playroom/releases/download/latest/patch_lite.zip",
+    "size": 10285694
+  },
+  "full": {
+    "type": "patch",
+    "url": "https://github.com/zepiam/broadcast-playroom/releases/download/latest/patch_full.zip",
+    "size": 35810402
+  }
+}

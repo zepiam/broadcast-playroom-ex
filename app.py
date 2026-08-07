@@ -874,21 +874,28 @@ class TTSForLivestreamApp(QMainWindow):
 
     def _on_msg_translated(self, msg):
         """re-render chat row เมื่อข้อความถูกแปลแล้ว (แสดงคำแปล + ต้นฉบับ)"""
-        # ★ หา row ที่ msg เดียวกัน (object identity)
+        # ★ main chat
         for row in self.chat_panel._rows:
             if getattr(row, 'msg', None) is msg:
                 row.update_translation(msg)
-                return
-        # ★ fallback: หาด้วย author + original_text (ถ้า object identity ไม่ตรง)
-        extra = getattr(msg, 'extra', {}) or {}
-        original = extra.get('original_text', '')
-        for row in self.chat_panel._rows:
-            row_msg = getattr(row, 'msg', None)
-            if row_msg and getattr(row_msg, 'author', '') == getattr(msg, 'author', ''):
-                row_extra = getattr(row_msg, 'extra', {}) or {}
-                if not row_extra.get('translated') and original:
+                break
+        else:
+            # fallback: หาด้วย author + original_text
+            extra = getattr(msg, 'extra', {}) or {}
+            original = extra.get('original_text', '')
+            for row in self.chat_panel._rows:
+                row_msg = getattr(row, 'msg', None)
+                if row_msg and getattr(row_msg, 'author', '') == getattr(msg, 'author', ''):
+                    row_extra = getattr(row_msg, 'extra', {}) or {}
+                    if not row_extra.get('translated') and original:
+                        row.update_translation(msg)
+                        break
+        # ★ popout (ถ้าเปิดอยู่)
+        if hasattr(self, '_popout_window') and self._popout_window:
+            for row in self._popout_window._rows:
+                if getattr(row, 'msg', None) is msg:
                     row.update_translation(msg)
-                    return
+                    break
 
     # ════════════════════════════════════════════════════════════
     # Voice / TTS controls (#3 RVC + #7 Voice test)
@@ -1136,6 +1143,8 @@ class TTSForLivestreamApp(QMainWindow):
         size = base + scale
         # ★ เก็บขนาดปัจจุบัน → message ใหม่จะได้ใช้ขนาดนี้
         self.chat_panel._current_font_size = size
+        if hasattr(self, '_popout_window') and self._popout_window:
+            self._popout_window._current_font_size = size
         # ★ re-render ทุก row (ล้างเก่า + สร้างใหม่ด้วยขนาดใหม่)
         msgs = []
         for row in self.chat_panel._rows:
@@ -1143,9 +1152,14 @@ class TTSForLivestreamApp(QMainWindow):
                 msgs.append(row.msg)
         self.chat_panel.clear_messages()
         for msg in msgs:
-            row = ChatRow(msg, self.chat_panel.container, size)
-            self.chat_panel.container_layout.insertWidget(0, row)
-            self.chat_panel._rows.append(row)
+            self.chat_panel.add_message(msg, size)
+        # ★ re-render popout ด้วย
+        if hasattr(self, '_popout_window') and self._popout_window:
+            popout = self._popout_window
+            popout_msgs = [row.msg for row in popout._rows if hasattr(row, 'msg')]
+            popout.clear_messages()
+            for msg in popout_msgs:
+                popout.add_message(msg, size)
         self.status_bar.set_status(f"🔤 Font: {size}px")
 
     def _toggle_overlay(self):

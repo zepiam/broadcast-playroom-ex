@@ -57,9 +57,10 @@ class PopoutWindow(QDialog):
         self.scroll.setWidget(self.container)
         layout.addWidget(self.scroll, 1)
 
-    def add_message(self, msg):
+    def add_message(self, msg, font_size=None):
         """เพิ่มข้อความเข้า popout — ใหม่สุดอยู่บน"""
-        row = ChatRow(msg, self.container)
+        fs = font_size or getattr(self, '_current_font_size', 14)
+        row = ChatRow(msg, self.container, fs)
         self.container_layout.insertWidget(0, row)
         self._rows.append(row)
         # cap 60

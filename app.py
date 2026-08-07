@@ -28,6 +28,13 @@ from ui.widgets.status_bar import StatusBar
 
 logger = logging.getLogger("app")
 
+
+# ★ Helper class for system status messages (routed through _chat_message signal)
+class _SystemMsg:
+    def __init__(self, text):
+        self.text = text
+
+
 # ═══ Platform Registry (คัดลอกจาก v1 — แบบย่อ) ═══
 PLATFORM_ORDER = ["twitch", "youtube", "mylive", "tiktok", "kick"]
 PLATFORM_LABELS = {
@@ -49,11 +56,23 @@ PLATFORM_ICONS = {
 class TTSForLivestreamApp(QMainWindow):
     """Main application window — Broadcast Playroom v2 (PySide6)"""
 
+    # ★ Signals for cross-thread communication
+    _connect_result = Signal(str, object, bool)  # platform, client, ok
+    _chat_message = Signal(object)  # ChatMessage
+    _platform_error = Signal(str, str)  # platform, error_msg
+    _viewer_update = Signal()
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Broadcast Playroom by MeN9CH")
         self.setGeometry(100, 100, 1080, 720)
         self.setMinimumSize(960, 640)
+
+        # ═══ Connect cross-thread signals ═══
+        self._connect_result.connect(self._on_connect_result)
+        self._chat_message.connect(self._on_chat_message)
+        self._platform_error.connect(self._on_platform_error_signal)
+        self._viewer_update.connect(self._update_viewer_ui)
 
         # ═══ State ═══
         self._closing = False
@@ -88,11 +107,6 @@ class TTSForLivestreamApp(QMainWindow):
 
         # ═══ Build UI ═══
         self._build_ui()
-
-        # ═══ Start poll timer (flush message buffer → chat feed) ═══
-        self._poll_timer = QTimer(self)
-        self._poll_timer.timeout.connect(self._poll_messages)
-        self._poll_timer.start(100)
 
         # ═══ Start reconnect watcher (every 1s) ═══
         self._reconnect_timer = QTimer(self)
@@ -233,12 +247,13 @@ class TTSForLivestreamApp(QMainWindow):
             self._post_system_message(f"❌ ยังเชื่อมต่อ {label} ไม่ได้ จะลองใหม่ใน {int(backoff)} วิ")
 
     def _post_system_message(self, text):
-        """แทรกข้อความระบบเข้า chat feed"""
+        """แทรกข้อความระบบเข้า chat feed (main thread only)"""
         try:
             from chat_twitch import ChatMessage
             msg = ChatMessage(platform='system', author='', text=text, event='system')
-            with self._msg_buffer_lock:
-                self._msg_buffer.append(msg)
+            self.chat_panel.add_message(msg)
+            if hasattr(self, '_popout_window') and self._popout_window:
+                self._popout_window.add_message(msg)
         except Exception:
             pass
 
@@ -567,6 +582,9 @@ class TTSForLivestreamApp(QMainWindow):
         self.chat_panel.popout_requested.connect(self._open_popout)
         self.chat_panel.clear_requested.connect(self._clear_chat)
 
+        # ═══ Events panel toggle ═══
+        self.events_panel.header.clicked.connect(self.events_panel.toggle_collapse)
+
     def _build_platform_cards(self):
         """สร้าง card สำหรับแต่ละแพลตฟอร์ม + เชื่อม connect signal"""
         # ★ อ่านว่าแสดงแพลตฟอร์มไหนบ้าง (default = ทั้งหมด)
@@ -582,9 +600,26 @@ class TTSForLivestreamApp(QMainWindow):
             card = self.sidebar.add_platform(plat, label, icon)
             card.connect_requested.connect(self._connect_platform)
             card.disconnect_requested.connect(self._disconnect_platform)
+            card.mute_toggled.connect(self._on_platform_mute)
+            card.volume_changed.connect(self._on_platform_volume)
             self._platform_cards[plat] = card
             # ★ เพิ่ม status dot ใน topbar
             card._topbar_widget = self.topbar.add_platform_status(label)
+
+    def _on_platform_mute(self, platform, muted):
+        """ปิด/เปิดเสียง TTS ของแพลตฟอร์ม"""
+        if self.settings:
+            muted_key = f'tts_muted_{platform}'
+            setattr(self.settings, muted_key, muted)
+        label = PLATFORM_LABELS.get(platform, platform)
+        state = "ปิด" if muted else "เปิด"
+        self.status_bar.set_status(f"🔊 {label}: {state}")
+
+    def _on_platform_volume(self, platform, volume):
+        """ปรับ volume ของแพลตฟอร์ม"""
+        if self.settings:
+            vol_key = f'tts_volume_{platform}'
+            setattr(self.settings, vol_key, volume)
 
     # ════════════════════════════════════════════════════════════
     # Platform connect/disconnect
@@ -613,10 +648,13 @@ class TTSForLivestreamApp(QMainWindow):
         # ★ set UI to "connecting"
         card = self._platform_cards.get(platform)
         if card:
-            card.btn.setText("...")
-            card.btn.setEnabled(False)
+            card.set_connecting()
 
-        # ★ save target + clear manual disconnect (เริ่มใหม่)
+        label = PLATFORM_LABELS.get(platform, platform)
+        self._post_system_message(f"🔌 กำลังเชื่อมต่อ {label}...")
+        self.status_bar.set_status(f"🔌 กำลังเชื่อมต่อ {label}...")
+
+        # ★ save target + clear manual disconnect
         st = self._reconnect_state.get(platform)
         if st:
             st['target'] = target
@@ -624,22 +662,21 @@ class TTSForLivestreamApp(QMainWindow):
             st['attempts'] = 0
             st['last_attempt'] = None
 
-        # ★ connect in background thread
+        # ★ connect in background thread (result → QMetaObject.invokeMethod via signal)
         def _bg_connect():
             try:
                 client = self._create_client(platform)
                 if client:
                     ok = client.connect(target)
-                    if ok:
-                        self.chat_clients[platform] = client
-                        QTimer.singleShot(0, lambda: self._on_platform_connected(platform))
-                    else:
-                        QTimer.singleShot(0, lambda: self._on_platform_connect_failed(platform, "connect returned False"))
                 else:
-                    QTimer.singleShot(0, lambda: self._on_platform_connect_failed(platform, "unsupported platform"))
+                    ok = False
+                    client = None
             except Exception as e:
                 logger.error(f"Connect {platform} failed: {e}")
-                QTimer.singleShot(0, lambda e=e: self._on_platform_connect_failed(platform, str(e)))
+                ok = False
+                client = None
+            # ★ use signal to marshal back to main thread
+            self._connect_result.emit(platform, client, ok)
 
         threading.Thread(target=_bg_connect, name=f"Connect-{platform}", daemon=True).start()
 
@@ -648,7 +685,7 @@ class TTSForLivestreamApp(QMainWindow):
         on_message, on_status, on_error = self._make_callbacks(platform)
         def on_viewer_count(plat, count):
             self._viewer_counts[plat] = count
-            QTimer.singleShot(0, self._update_viewer_ui)
+            self._viewer_update.emit()  # thread-safe signal
 
         # ★ text_filter (สำหรับ Twitch)
         text_filter = None
@@ -681,33 +718,82 @@ class TTSForLivestreamApp(QMainWindow):
     def _make_callbacks(self, platform):
         """สร้าง callbacks สำหรับ chat client"""
         def on_message(msg):
-            with self._msg_buffer_lock:
-                self._msg_buffer.append(msg)
-            # ★ record message history
-            if self.message_history:
-                try:
-                    self.message_history.record(msg)
-                except Exception:
-                    pass
-            # ★ record events (sub/bits/raid)
-            if getattr(msg, 'event', 'message') != 'message':
-                self._record_event(msg, platform)
-            # ★ ส่งเข้า pipeline (TTS queue)
-            if self.pipeline and getattr(msg, 'event', 'message') == 'message':
-                try:
-                    self.pipeline.enqueue(msg)
-                except Exception:
-                    pass
-            # ★ forward to composer (overlay)
-            self._composer_push_message(msg)
+            # ★ emit signal (thread-safe)
+            self._chat_message.emit(msg)
 
         def on_status(msg_text):
-            QTimer.singleShot(0, lambda: self.status_bar.set_status(f"[{platform}] {msg_text}"))
+            self._chat_message.emit(_SystemMsg(f"[{platform}] {msg_text}"))
 
         def on_error(msg_text):
-            QTimer.singleShot(0, lambda: self._on_platform_error(platform, msg_text))
+            self._platform_error.emit(platform, msg_text)
 
         return on_message, on_status, on_error
+
+    def _on_chat_message(self, msg):
+        """รับ message จาก signal (main thread) — render + pipeline + forward"""
+        # ★ system status message
+        if isinstance(msg, _SystemMsg):
+            self.status_bar.set_status(msg.text)
+            return
+        # ★ record message history
+        if self.message_history:
+            try:
+                self.message_history.record(msg)
+            except Exception:
+                pass
+        # ★ record events
+        if getattr(msg, 'event', 'message') != 'message':
+            self._record_event(msg, getattr(msg, 'platform', ''))
+        # ★ push to chat feed
+        self.chat_panel.add_message(msg)
+        if hasattr(self, '_popout_window') and self._popout_window:
+            self._popout_window.add_message(msg)
+        # ★ system message → status bar
+        if getattr(msg, 'event', '') == 'system':
+            self.status_bar.set_status(msg.text or msg.system_text or '')
+        # ★ pipeline (TTS queue)
+        if self.pipeline and getattr(msg, 'event', 'message') == 'message':
+            try:
+                self.pipeline.enqueue(msg)
+            except Exception:
+                pass
+        # ★ forward to composer (overlay)
+        self._composer_push_message(msg)
+
+    def _on_connect_result(self, platform, client, ok):
+        """รับผล connect จาก signal (main thread)"""
+        label = PLATFORM_LABELS.get(platform, platform)
+        card = self._platform_cards.get(platform)
+        if ok and client:
+            self.chat_clients[platform] = client
+            if card:
+                card.set_connected(True)
+            # ★ update topbar dot
+            if card and hasattr(card, '_topbar_widget'):
+                self.topbar.update_platform_status(card._topbar_widget, True)
+            self._post_system_message(f"✅ {label} เชื่อมต่อแล้ว")
+            self.status_bar.set_status(f"✅ {label} เชื่อมต่อแล้ว")
+        else:
+            if card:
+                card.set_connected(False)
+            self._post_system_message(f"❌ {label} เชื่อมต่อไม่ได้")
+            self.status_bar.set_status(f"❌ {label} เชื่อมต่อไม่ได้")
+
+    def _on_platform_error_signal(self, platform, error_msg):
+        """รับ error จาก signal (main thread)"""
+        card = self._platform_cards.get(platform)
+        if card:
+            card.set_connected(False)
+            if hasattr(card, '_topbar_widget'):
+                self.topbar.update_platform_status(card._topbar_widget, False)
+        label = PLATFORM_LABELS.get(platform, platform)
+        self._post_system_message(f"⚠️ {label}: {error_msg}")
+        self.status_bar.set_status(f"⚠️ {label}: {error_msg}")
+        # ★ mark for reconnect
+        st = self._reconnect_state.get(platform)
+        if st and not st.get('manual_disconnect'):
+            if 'ปิด' in error_msg or 'หลุด' in error_msg:
+                st['last_attempt'] = time.time()
 
     def _record_event(self, msg, platform):
         """บันทึก event (sub/bits/raid) → event_log + events panel + donate"""
@@ -738,37 +824,6 @@ class TTSForLivestreamApp(QMainWindow):
             text += f" ({amount})"
         QTimer.singleShot(0, lambda t=event_type, a=text: self.events_panel.add_event(t, a))
 
-    def _on_platform_connected(self, platform):
-        """เรียกเมื่อเชื่อมต่อสำเร็จ"""
-        card = self._platform_cards.get(platform)
-        if card:
-            card.set_connected(True)
-            card.btn.setEnabled(True)
-        label = PLATFORM_LABELS.get(platform, platform)
-        self.status_bar.set_status(f"✅ {label} เชื่อมต่อแล้ว")
-
-    def _on_platform_connect_failed(self, platform, error):
-        """เรียกเมื่อเชื่อมต่อล้มเหลว"""
-        card = self._platform_cards.get(platform)
-        if card:
-            card.set_connected(False)
-            card.btn.setEnabled(True)
-        label = PLATFORM_LABELS.get(platform, platform)
-        self.status_bar.set_status(f"❌ {label} เชื่อมต่อไม่ได้: {error}")
-
-    def _on_platform_error(self, platform, error_msg):
-        """เรียกเมื่อ chat client ส่ง error (หลุด/ปิด)"""
-        card = self._platform_cards.get(platform)
-        if card:
-            card.set_connected(False)
-        label = PLATFORM_LABELS.get(platform, platform)
-        self.status_bar.set_status(f"⚠️ {label}: {error_msg}")
-        # ★ mark for reconnect (unless manual disconnect)
-        st = self._reconnect_state.get(platform)
-        if st and not st.get('manual_disconnect'):
-            if 'ปิด' in error_msg or 'หลุด' in error_msg:
-                st['last_attempt'] = time.time()
-
     def _disconnect_platform(self, platform):
         """ยุติการเชื่อมต่อ"""
         client = self.chat_clients.pop(platform, None)
@@ -790,24 +845,8 @@ class TTSForLivestreamApp(QMainWindow):
             st['attempts'] = 0
 
     # ════════════════════════════════════════════════════════════
-    # Chat feed (poll message buffer)
+    # Chat feed (event-driven via signals — ไม่ต้อง poll)
     # ════════════════════════════════════════════════════════════
-    def _poll_messages(self):
-        """flush message buffer → chat feed (เรียกทุก 100ms ผ่าน QTimer)"""
-        if self._closing:
-            return
-        with self._msg_buffer_lock:
-            msgs = self._msg_buffer[:]
-            self._msg_buffer.clear()
-        for msg in msgs:
-            self.chat_panel.add_message(msg)
-            # ★ sync to popout (ถ้าเปิดอยู่)
-            if hasattr(self, '_popout_window') and self._popout_window:
-                self._popout_window.add_message(msg)
-            # ★ system message → status bar
-            if getattr(msg, 'event', '') == 'system':
-                self.status_bar.set_status(msg.text or msg.system_text or '')
-
     def _clear_chat(self):
         """ล้าง chat feed"""
         self.chat_panel.clear_messages()

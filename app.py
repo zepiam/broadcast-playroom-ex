@@ -478,6 +478,8 @@ class TTSForLivestreamApp(QMainWindow):
             if self.settings:
                 self.pipeline.set_filter(self.settings.to_text_filter())
             self.pipeline.on_status = lambda msg: self._safe_status(msg)
+            # ★ start the pipeline worker thread (สำคัญ — ถ้าไม่ start TTS จะไม่อ่าน!)
+            self.pipeline.start()
         except Exception as e:
             logger.error(f"Failed to init pipeline: {e}")
             self.pipeline = None
@@ -1006,12 +1008,33 @@ class TTSForLivestreamApp(QMainWindow):
 
     def _open_popout(self):
         if hasattr(self, '_popout_window') and self._popout_window:
-            self._popout_window.close()
-            self._popout_window = None
+            self._close_popout()
             return
         from ui.dialogs.popout import PopoutWindow
         self._popout_window = PopoutWindow(self)
         self._popout_window.show()
+        # ★ ซ่อน chat panel หลัก + แสดง overlay
+        self.chat_panel.setVisible(False)
+        if not hasattr(self, '_popout_overlay'):
+            self._popout_overlay = QLabel("💬 แชทถูกแยกออกไปแล้ว (Popout)\n\nกดปุ่ม ↗ อีกครั้งเพื่อกลับมา")
+            self._popout_overlay.setAlignment(Qt.AlignCenter)
+            self._popout_overlay.setStyleSheet("color: #9ca3af; font-size: 16px; background-color: #0a0e1a;")
+        # ★ แทนที่ chat panel ด้วย overlay (ใน splitter)
+        parent = self.chat_panel.parentWidget()
+        if parent:
+            layout = parent.layout()
+            if layout:
+                layout.insertWidget(layout.indexOf(self.chat_panel) + 1, self._popout_overlay)
+
+    def _close_popout(self):
+        """ปิด popout + คืน chat panel หลัก"""
+        if hasattr(self, '_popout_window') and self._popout_window:
+            self._popout_window.close()
+            self._popout_window = None
+        self.chat_panel.setVisible(True)
+        if hasattr(self, '_popout_overlay'):
+            self._popout_overlay.setParent(None)
+            self._popout_overlay.hide()
 
     def _toggle_translate(self):
         """เปิด/ปิดการแปลอัตโนมัติ (#6)"""
@@ -1067,21 +1090,21 @@ class TTSForLivestreamApp(QMainWindow):
     def _increase_chat_font(self):
         """เพิ่มขนาด font แชท (#8)"""
         scale = getattr(self, '_chat_font_scale', 0)
-        scale = min(scale + 1, 5)
+        scale = min(scale + 2, 10)
         self._chat_font_scale = scale
         self._apply_chat_font()
 
     def _decrease_chat_font(self):
         """ลดขนาด font แชท"""
         scale = getattr(self, '_chat_font_scale', 0)
-        scale = max(scale - 1, -3)
+        scale = max(scale - 2, -4)
         self._chat_font_scale = scale
         self._apply_chat_font()
 
     def _apply_chat_font(self):
         """apply font scale ไปยัง chat rows — re-render ทั้งหมด"""
         scale = getattr(self, '_chat_font_scale', 0)
-        base = 13
+        base = 14
         size = base + scale
         # ★ re-render ทุก row (ล้างเก่า + สร้างใหม่ด้วยขนาดใหม่)
         msgs = []
@@ -1155,7 +1178,12 @@ class TTSForLivestreamApp(QMainWindow):
                 client.disconnect()
             except Exception:
                 pass
-        # ★ หยุด TTS engine
+        # ★ หยุด TTS engine + pipeline
+        if self.pipeline:
+            try:
+                self.pipeline.stop()
+            except Exception:
+                pass
         if self.tts_engine:
             try:
                 self.tts_engine.stop()

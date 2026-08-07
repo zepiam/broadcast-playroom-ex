@@ -57,20 +57,21 @@ QSS = """
 /* ═══ Global ═══ */
 * {
     font-family: 'Kanit', 'Segoe UI', sans-serif;
-    font-size: 13px;
     color: __TEXT__;
     outline: none;
 }
 
 QWidget {
     background-color: __BG__;
+    font-size: 14px;
 }
 
 /* ★ label — ไม่ตัดความสูง */
 QLabel {
     background-color: transparent;
     color: __TEXT__;
-    min-height: 16px;
+    min-height: 18px;
+    font-size: 14px;
 }
 
 /* ═══ Windows ═══ */
@@ -109,11 +110,13 @@ QFrame#Card {
 /* ═══ Buttons ═══ */
 QPushButton {
     background-color: __CARD_HI__;
-    border: 1px solid __BORDER__;
+    border: 2px solid __BORDER_LIGHT__;
     border-radius: 6px;
     padding: 8px 16px;
     color: __TEXT__;
-    font-weight: 500;
+    font-weight: 600;
+    font-size: 14px;
+    min-height: 20px;
 }
 QPushButton:hover {
     background-color: __CARD_HOVER__;
@@ -125,12 +128,13 @@ QPushButton:pressed {
 QPushButton:disabled {
     color: __TEXT_FAINT__;
     background-color: __CARD__;
+    border-color: __BORDER__;
 }
 
 /* Primary button (accent) */
 QPushButton#Primary {
     background-color: __ACCENT__;
-    border: none;
+    border: 2px solid __ACCENT_HOVER__;
     color: white;
     font-weight: 600;
 }
@@ -141,11 +145,13 @@ QPushButton#Primary:hover {
 /* Danger button */
 QPushButton#Danger {
     background-color: __DANGER__;
-    border: none;
+    border: 2px solid __DANGER_HOVER__;
     color: white;
+    font-weight: 600;
 }
 QPushButton#Danger:hover {
     background-color: __DANGER_HOVER__;
+    border-color: #fca5a5;
 }
 
 /* Success button */

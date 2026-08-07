@@ -329,13 +329,6 @@ class NGReplaceDialog(QDialog):
                 self._add_row_data(src, entry.get('display', ''), entry.get('read', ''))
                 existing.add(src)
                 added += 1
-                # conflict → ถามรวมกัน (เก็บค่าเดิม)
-                conflicts += 1
-            else:
-                # คำใหม่ → เพิ่ม
-                self._add_row_data(src, entry.get('display', ''), entry.get('read', ''))
-                existing[src] = entry
-                added += 1
 
         self._update_count()
         msg = f"✅ เพิ่ม {added} คำใหม่"

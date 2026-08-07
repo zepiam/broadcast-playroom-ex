@@ -30,7 +30,8 @@ class EventsPanel(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("EventsPanel")
-        self.setFixedWidth(220)
+        self.setMinimumWidth(180)
+        self.setMaximumWidth(260)
         self._collapsed = False
         self._build_ui()
 
@@ -75,10 +76,14 @@ class EventsPanel(QFrame):
         self._collapsed = not self._collapsed
         if self._collapsed:
             self.setFixedWidth(38)
+            self.setMinimumWidth(38)
+            self.setMaximumWidth(38)
             self.header.setText("📊")
             self.scroll.setVisible(False)
         else:
-            self.setFixedWidth(220)
+            self.setMinimumWidth(180)
+            self.setMaximumWidth(260)
+            self.setMaximumWidth(16777215)  # clear max
             self.header.setText("📊 Events")
             self.scroll.setVisible(True)
 

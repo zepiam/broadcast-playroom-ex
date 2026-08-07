@@ -66,6 +66,13 @@ QWidget {
     background-color: __BG__;
 }
 
+/* ★ label — ไม่ตัดความสูง */
+QLabel {
+    background-color: transparent;
+    color: __TEXT__;
+    min-height: 16px;
+}
+
 /* ═══ Windows ═══ */
 QMainWindow, QDialog {
     background-color: __BG__;

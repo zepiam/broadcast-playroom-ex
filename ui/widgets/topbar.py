@@ -21,7 +21,8 @@ class TopBar(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("TopBar")
-        self.setFixedHeight(44)
+        self.setMinimumHeight(44)
+        self.setMaximumHeight(48)
         self._muted = False
         self._build_ui()
 

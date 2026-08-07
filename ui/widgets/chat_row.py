@@ -110,9 +110,11 @@ class ChatRow(QWidget):
 
     def _build_ui(self):
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 3, 8, 3)
+        layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(6)
         layout.setAlignment(Qt.AlignTop)
+        # ★ ใช้ SizePolicy เพื่อให้ row ขยายตามเนื้อหา (ไม่ตัดความสูง)
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
 
         event = getattr(self.msg, 'event', 'message')
 
@@ -134,10 +136,11 @@ class ChatRow(QWidget):
         # ★ apply rename if available
         display_name = author
         self.author_label.setText(f'<span style="color:{author_color}; font-weight:600;">{display_name}</span>:')
-        self.author_label.setFixedHeight(self._font_size + 6)
         font = QFont("Kanit", self._font_size)
         font.setWeight(QFont.DemiBold)
         self.author_label.setFont(font)
+        # ★ ไม่ fixed height — ให้ขยายตาม font
+        self.author_label.setMinimumHeight(self._font_size + 8)
         # click handler
         self.author_label.mousePressEvent = lambda e: self.author_clicked.emit(author)
         layout.addWidget(self.author_label)

@@ -23,7 +23,10 @@ class PlatformCard(QFrame):
         self.platform_key = platform_key
         self.setObjectName("Card")
         self._connected = False
+        self._muted = False
         self._build_ui(label, icon)
+        # ★ ใช้ minimum height แทน fixed (ให้ขยายได้ตามเนื้อหา)
+        self.setMinimumHeight(80)
 
     def _build_ui(self, label, icon):
         layout = QVBoxLayout(self)
@@ -125,7 +128,8 @@ class Sidebar(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("Sidebar")
-        self.setFixedWidth(260)
+        self.setMinimumWidth(280)
+        self.setMaximumWidth(320)
         self._build_ui()
 
     def _build_ui(self):

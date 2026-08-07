@@ -23,6 +23,7 @@ from ui.theme import (
 from ui.widgets.topbar import TopBar
 from ui.widgets.sidebar import Sidebar, PlatformCard
 from ui.widgets.chat_panel import ChatPanel
+from ui.widgets.chat_row import ChatRow
 from ui.widgets.events_panel import EventsPanel
 from ui.widgets.status_bar import StatusBar
 
@@ -1078,19 +1079,22 @@ class TTSForLivestreamApp(QMainWindow):
         self._apply_chat_font()
 
     def _apply_chat_font(self):
-        """apply font scale ไปยัง chat rows"""
+        """apply font scale ไปยัง chat rows — re-render ทั้งหมด"""
         scale = getattr(self, '_chat_font_scale', 0)
         base = 13
         size = base + scale
-        # ★ update all existing rows
+        # ★ re-render ทุก row (ล้างเก่า + สร้างใหม่ด้วยขนาดใหม่)
+        msgs = []
         for row in self.chat_panel._rows:
-            if hasattr(row, '_font_size'):
-                row._font_size = size
-                # re-render is expensive — just update labels
-                for child in row.findChildren(QLabel):
-                    font = child.font()
-                    font.setPointSize(size)
-                    child.setFont(font)
+            if hasattr(row, 'msg'):
+                msgs.append(row.msg)
+        self.chat_panel.clear_messages()
+        for msg in msgs:
+            row = ChatRow(msg, self.chat_panel.container, size)
+            self.chat_panel.container_layout.insertWidget(
+                self.chat_panel.container_layout.count() - 1, row
+            )
+            self.chat_panel._rows.append(row)
         self.status_bar.set_status(f"🔤 Font: {size}px")
 
     def _toggle_overlay(self):

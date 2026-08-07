@@ -1069,15 +1069,71 @@ class TTSForLivestreamApp(QMainWindow):
         """refresh voice combo ด้วย voices ที่ค้นพบ"""
         self.sidebar.voice_combo.blockSignals(True)
         self.sidebar.voice_combo.clear()
-        for v in self._discover_voices():
+        voices = self._discover_voices()
+        for v in voices:
             self.sidebar.voice_combo.addItem(v)
+        # ★ select current voice (จาก settings.voice_id)
         current = getattr(self.settings, 'voice_id', '') if self.settings else ''
+        found = False
         if current:
             for i in range(self.sidebar.voice_combo.count()):
                 if current in self.sidebar.voice_combo.itemText(i):
                     self.sidebar.voice_combo.setCurrentIndex(i)
+                    found = True
                     break
+        if not found:
+            self.sidebar.voice_combo.setCurrentIndex(0)  # Premwadee
         self.sidebar.voice_combo.blockSignals(False)
+        # ★ auto-load RVC ตอนเปิดโปรแกรม (ถ้ามี voice_id)
+        if current and found:
+            QTimer.singleShot(1000, lambda: self._auto_load_rvc(current))
+
+    def _auto_load_rvc(self, voice_id):
+        """auto-load RVC model ตอนเปิดโปรแกรม (ถ้ามี)"""
+        import os
+        search_dirs = [
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "rvc_models"),
+            os.path.join(os.path.expanduser("~"), ".tts-for-livestream", "rvc_models"),
+            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tts-for-livestream", "rvc_models"),
+        ]
+        pth_path = None
+        for d in search_dirs:
+            p = os.path.join(d, f"{voice_id}.pth")
+            if os.path.exists(p):
+                pth_path = p
+                break
+        if not pth_path:
+            # ★ ไม่พบ model → ย้อนกลับ Premwadee
+            self.settings.voice_id = ''
+            self.sidebar.voice_combo.blockSignals(True)
+            self.sidebar.voice_combo.setCurrentIndex(0)
+            self.sidebar.voice_combo.blockSignals(False)
+            try:
+                from settings import save_settings
+                save_settings(self.settings)
+            except Exception:
+                pass
+            self.status_bar.set_status("🎤 เสียง: Premwadee (RVC model ไม่พบ)")
+            return
+        # ★ โหลดใน background
+        index_path = pth_path.replace('.pth', '.index')
+        if not os.path.exists(index_path):
+            index_path = ''
+        self.status_bar.set_status(f"⏳ กำลังโหลด RVC: {voice_id}...")
+        self.sidebar.voice_combo.setEnabled(False)
+        _pth = pth_path
+        _vid = voice_id
+        _idx = index_path
+        def _bg():
+            try:
+                from rvc_engine import RVCEngine
+                engine = RVCEngine(model_path=_pth)
+                engine.load()
+                QTimer.singleShot(0, lambda: self._on_rvc_loaded(engine, _vid, _idx))
+            except Exception as e:
+                logger.error(f"Auto RVC load failed: {e}")
+                QTimer.singleShot(0, lambda err=str(e): self._on_rvc_load_failed(err))
+        threading.Thread(target=_bg, name="AutoRvcLoad", daemon=True).start()
 
     def _on_voice_change(self, index):
         """เปลี่ยนเสียง TTS"""

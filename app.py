@@ -70,6 +70,15 @@ class TTSForLivestreamApp(QMainWindow):
         # ═══ Load settings + engines ═══
         self._init_engines()
 
+        # ═══ State — reconnect + events + history ═══
+        self._reconnect_state = {}  # platform → {attempts, last_attempt, manual_disconnect, target}
+        self._init_reconnect_state()
+        self.event_log = None
+        self.donate_tracker = None
+        self.notification_manager = None
+        self.message_history = None
+        self._init_subsystems()
+
         # ═══ Start servers (overlay + composer + playroom) ═══
         self.overlay_server = None
         self.composer_server = None
@@ -85,10 +94,153 @@ class TTSForLivestreamApp(QMainWindow):
         self._poll_timer.timeout.connect(self._poll_messages)
         self._poll_timer.start(100)
 
+        # ═══ Start reconnect watcher (every 1s) ═══
+        self._reconnect_timer = QTimer(self)
+        self._reconnect_timer.timeout.connect(self._check_reconnect)
+        self._reconnect_timer.start(1000)
+
         # ═══ Auto-connect + timers ═══
         QTimer.singleShot(500, self._maybe_auto_connect)
 
         logger.info("Main window initialized")
+
+    # ════════════════════════════════════════════════════════════
+    # Subsystem init (events + donate + notification + history)
+    # ════════════════════════════════════════════════════════════
+    def _init_subsystems(self):
+        """เริ่ม subsystems (event_log + donate + notification + history)"""
+        try:
+            from event_log import EventLog
+            self.event_log = EventLog()
+        except Exception as e:
+            logger.warning(f"EventLog not available: {e}")
+        try:
+            from donate_tracker import DonateTracker
+            self.donate_tracker = DonateTracker()
+        except Exception as e:
+            logger.warning(f"DonateTracker not available: {e}")
+        try:
+            from notification_manager import NotificationManager
+            self.notification_manager = NotificationManager(self.settings)
+        except Exception as e:
+            logger.warning(f"NotificationManager not available: {e}")
+        try:
+            from message_history import MessageHistory
+            self.message_history = MessageHistory(enabled=getattr(self.settings, 'message_history_enabled', True))
+        except Exception as e:
+            logger.warning(f"MessageHistory not available: {e}")
+
+    def _init_reconnect_state(self):
+        """เตรียม reconnect state สำหรับทุกแพลตฟอร์ม"""
+        for plat in PLATFORM_ORDER:
+            self._reconnect_state[plat] = {
+                'attempts': 0,
+                'last_attempt': None,
+                'manual_disconnect': False,
+                'target': '',
+            }
+
+    # ════════════════════════════════════════════════════════════
+    # Auto-reconnect system (#2)
+    # ════════════════════════════════════════════════════════════
+    def _check_reconnect(self):
+        """ตรวจทุก platform ที่หลุด → reconnect ถ้าถึงเวลา"""
+        if self._closing:
+            return
+        if not getattr(self.settings, 'auto_reconnect_enabled', True):
+            return
+        now = time.time()
+        interval = getattr(self.settings, 'auto_reconnect_interval', 10.0)
+        for platform, st in list(self._reconnect_state.items()):
+            if st.get('manual_disconnect'):
+                continue
+            target = st.get('target')
+            if not target:
+                continue
+            # ตรวจว่าหลุดหรือไม่
+            disconnected = st.get('last_attempt') is not None
+            if not disconnected:
+                client = self.chat_clients.get(platform)
+                if client is not None and hasattr(client, 'is_connected'):
+                    try:
+                        if not client.is_connected():
+                            st['last_attempt'] = now
+                            disconnected = True
+                    except Exception:
+                        pass
+            if not disconnected:
+                continue
+            # รอครบ interval
+            last = st.get('last_attempt') or 0
+            if now - last < interval:
+                continue
+            # จำกัดจำนวน
+            attempts = st.get('attempts', 0)
+            if attempts >= 5:
+                label = PLATFORM_LABELS.get(platform, platform)
+                self._post_system_message(f"❌ หยุดพยายามเชื่อมต่อ {label} — เชื่อมไม่ได้ 5 ครั้งแล้ว")
+                st['manual_disconnect'] = True
+                st['attempts'] = 0
+                continue
+            st['attempts'] = attempts + 1
+            st['last_attempt'] = now
+            self._do_reconnect(platform, target)
+
+    def _do_reconnect(self, platform, target):
+        """พยายาม reconnect platform (background thread)"""
+        st = self._reconnect_state.get(platform, {})
+        label = PLATFORM_LABELS.get(platform, platform)
+        self._post_system_message(f"🔄 กำลังเชื่อมต่อ {label} ใหม่... (ครั้งที่ {st.get('attempts', 1)})")
+        old_client = self.chat_clients.pop(platform, None)
+
+        def _bg_reconnect():
+            if old_client:
+                try:
+                    old_client.disconnect()
+                except Exception:
+                    pass
+            try:
+                client = self._create_client(platform)
+                if client:
+                    ok = client.connect(target)
+                else:
+                    ok = False
+                    client = None
+            except Exception as e:
+                ok = False
+                client = None
+                logger.error(f"Reconnect {platform} failed: {e}")
+            QTimer.singleShot(0, lambda: self._on_reconnect_done(platform, client, ok, label))
+
+        threading.Thread(target=_bg_reconnect, name=f"Reconnect-{platform}", daemon=True).start()
+
+    def _on_reconnect_done(self, platform, client, ok, label):
+        """หลัง reconnect เสร็จ"""
+        st = self._reconnect_state.get(platform, {})
+        now = time.time()
+        interval = getattr(self.settings, 'auto_reconnect_interval', 10.0)
+        if ok and client:
+            self.chat_clients[platform] = client
+            card = self._platform_cards.get(platform)
+            if card:
+                card.set_connected(True)
+            st['attempts'] = 0
+            st['last_attempt'] = None
+            self._post_system_message(f"✅ เชื่อมต่อ {label} ใหม่สำเร็จ")
+        else:
+            backoff = min(st.get('attempts', 1) * interval, 60)
+            st['last_attempt'] = now + backoff - interval
+            self._post_system_message(f"❌ ยังเชื่อมต่อ {label} ไม่ได้ จะลองใหม่ใน {int(backoff)} วิ")
+
+    def _post_system_message(self, text):
+        """แทรกข้อความระบบเข้า chat feed"""
+        try:
+            from chat_twitch import ChatMessage
+            msg = ChatMessage(platform='system', author='', text=text, event='system')
+            with self._msg_buffer_lock:
+                self._msg_buffer.append(msg)
+        except Exception:
+            pass
 
     # ════════════════════════════════════════════════════════════
     # Server startup (overlay + composer + playroom + now playing)
@@ -315,7 +467,7 @@ class TTSForLivestreamApp(QMainWindow):
             self.pipeline = None
 
     def _build_pipeline_config(self):
-        """สร้าง PipelineConfig จาก settings (เหมือน v1)"""
+        """สร้าง PipelineConfig จาก settings (full config — translation + mixed voice + events)"""
         try:
             from chat_queue import PipelineConfig
             s = self.settings
@@ -327,6 +479,21 @@ class TTSForLivestreamApp(QMainWindow):
                 read_message=getattr(s, 'read_message', True),
                 rate=getattr(s, 'rate', 0),
                 volume=getattr(s, 'volume', 100),
+                # ★ translation
+                auto_translate_enabled=getattr(s, 'auto_translate_enabled', False),
+                auto_translate_provider=getattr(s, 'auto_translate_provider', 'google'),
+                auto_translate_api_key=getattr(s, 'auto_translate_api_key', ''),
+                auto_translate_host=getattr(s, 'auto_translate_host', ''),
+                auto_translate_target_lang=getattr(s, 'auto_translate_target_lang', 'th'),
+                auto_translate_langs=getattr(s, 'auto_translate_langs', ['en', 'ja', 'ko', 'zh', 'vi', 'id']),
+                # ★ mixed voice
+                mixed_voice_enabled=getattr(s, 'mixed_voice_enabled', False),
+                # ★ events
+                playroom_enabled=getattr(s, 'playroom_enabled', False),
+                playroom_triggers=list(getattr(s, 'playroom_triggers', [])),
+                # ★ secret code
+                secret_code_daily_limit=getattr(s, 'secret_code_daily_limit', 0),
+                code_sound_muted=getattr(s, 'code_sound_muted', False),
             )
         except Exception as e:
             logger.error(f"Failed to build pipeline config: {e}")
@@ -376,6 +543,12 @@ class TTSForLivestreamApp(QMainWindow):
         self.topbar.user_manager_clicked.connect(self._open_user_manager)
         self.topbar.overlay_toggle_clicked.connect(self._toggle_overlay)
         self.topbar.mute_toggle_clicked.connect(self._toggle_mute)
+        self.topbar.translate_clicked.connect(self._toggle_translate)
+        self.topbar.code_mute_clicked.connect(self._toggle_code_mute)
+        self.topbar.about_clicked.connect(self._open_about)
+        self.topbar.ngreplace_clicked.connect(self._open_ngreplace)
+        self.topbar.font_increase_clicked.connect(self._increase_chat_font)
+        self.topbar.font_decrease_clicked.connect(self._decrease_chat_font)
 
         # ═══ Build platform cards ═══
         self._platform_cards = {}
@@ -386,6 +559,9 @@ class TTSForLivestreamApp(QMainWindow):
         self.sidebar.vol_slider.valueChanged.connect(self._on_volume_change)
         self.sidebar.rate_slider.valueChanged.connect(self._on_rate_change)
         self.sidebar.voice_download_btn.clicked.connect(self._open_voice_downloader)
+        self.sidebar.voice_test_btn.clicked.connect(self._test_voice)
+        # ★ refresh voice combo
+        self._refresh_voice_combo()
 
         # ═══ Connect chat panel signals ═══
         self.chat_panel.popout_requested.connect(self._open_popout)
@@ -439,6 +615,14 @@ class TTSForLivestreamApp(QMainWindow):
         if card:
             card.btn.setText("...")
             card.btn.setEnabled(False)
+
+        # ★ save target + clear manual disconnect (เริ่มใหม่)
+        st = self._reconnect_state.get(platform)
+        if st:
+            st['target'] = target
+            st['manual_disconnect'] = False
+            st['attempts'] = 0
+            st['last_attempt'] = None
 
         # ★ connect in background thread
         def _bg_connect():
@@ -499,6 +683,15 @@ class TTSForLivestreamApp(QMainWindow):
         def on_message(msg):
             with self._msg_buffer_lock:
                 self._msg_buffer.append(msg)
+            # ★ record message history
+            if self.message_history:
+                try:
+                    self.message_history.record(msg)
+                except Exception:
+                    pass
+            # ★ record events (sub/bits/raid)
+            if getattr(msg, 'event', 'message') != 'message':
+                self._record_event(msg, platform)
             # ★ ส่งเข้า pipeline (TTS queue)
             if self.pipeline and getattr(msg, 'event', 'message') == 'message':
                 try:
@@ -515,6 +708,35 @@ class TTSForLivestreamApp(QMainWindow):
             QTimer.singleShot(0, lambda: self._on_platform_error(platform, msg_text))
 
         return on_message, on_status, on_error
+
+    def _record_event(self, msg, platform):
+        """บันทึก event (sub/bits/raid) → event_log + events panel + donate"""
+        event_type = getattr(msg, 'event', 'message')
+        author = getattr(msg, 'author', '') or ''
+        amount = getattr(msg, 'amount', None)
+        # ★ event_log
+        if self.event_log:
+            try:
+                self.event_log.record(platform, event_type, author, amount)
+            except Exception:
+                pass
+        # ★ donate tracker
+        if self.donate_tracker and event_type in ('bits', 'donate', 'tip', 'superchat'):
+            try:
+                self.donate_tracker.record_donation(author, amount or 0, platform, event_type)
+            except Exception:
+                pass
+        # ★ notification (sound)
+        if self.notification_manager:
+            try:
+                self.notification_manager.notify(event_type, author, amount)
+            except Exception:
+                pass
+        # ★ push to events panel
+        text = author
+        if amount:
+            text += f" ({amount})"
+        QTimer.singleShot(0, lambda t=event_type, a=text: self.events_panel.add_event(t, a))
 
     def _on_platform_connected(self, platform):
         """เรียกเมื่อเชื่อมต่อสำเร็จ"""
@@ -541,6 +763,11 @@ class TTSForLivestreamApp(QMainWindow):
             card.set_connected(False)
         label = PLATFORM_LABELS.get(platform, platform)
         self.status_bar.set_status(f"⚠️ {label}: {error_msg}")
+        # ★ mark for reconnect (unless manual disconnect)
+        st = self._reconnect_state.get(platform)
+        if st and not st.get('manual_disconnect'):
+            if 'ปิด' in error_msg or 'หลุด' in error_msg:
+                st['last_attempt'] = time.time()
 
     def _disconnect_platform(self, platform):
         """ยุติการเชื่อมต่อ"""
@@ -555,6 +782,12 @@ class TTSForLivestreamApp(QMainWindow):
             card.set_connected(False)
         label = PLATFORM_LABELS.get(platform, platform)
         self.status_bar.set_status(f"🛑 {label} ยุติการเชื่อมต่อแล้ว")
+        # ★ mark manual disconnect (หยุด auto-reconnect)
+        st = self._reconnect_state.get(platform)
+        if st:
+            st['manual_disconnect'] = True
+            st['last_attempt'] = None
+            st['attempts'] = 0
 
     # ════════════════════════════════════════════════════════════
     # Chat feed (poll message buffer)
@@ -591,33 +824,114 @@ class TTSForLivestreamApp(QMainWindow):
         self._composer_push_viewers(total, dict(self._viewer_counts))
 
     # ════════════════════════════════════════════════════════════
-    # Voice / TTS controls
+    # Voice / TTS controls (#3 RVC + #7 Voice test)
     # ════════════════════════════════════════════════════════════
+    def _discover_voices(self):
+        """ค้นหา RVC voices ที่ติดตั้งแล้ว + edge-tts default"""
+        voices = ["Premwadee (edge-tts)"]
+        try:
+            models_dir = os.path.join(os.path.expanduser("~"), ".tts-for-livestream", "rvc_models")
+            if os.path.isdir(models_dir):
+                for f in sorted(os.listdir(models_dir)):
+                    if f.endswith('.pth'):
+                        name = os.path.splitext(f)[0]
+                        voices.append(f"{name} (RVC)")
+        except Exception:
+            pass
+        return voices
+
+    def _refresh_voice_combo(self):
+        """refresh voice combo ด้วย voices ที่ค้นพบ"""
+        self.sidebar.voice_combo.blockSignals(True)
+        self.sidebar.voice_combo.clear()
+        for v in self._discover_voices():
+            self.sidebar.voice_combo.addItem(v)
+        current = getattr(self.settings, 'voice_id', '') if self.settings else ''
+        if current:
+            for i in range(self.sidebar.voice_combo.count()):
+                if current in self.sidebar.voice_combo.itemText(i):
+                    self.sidebar.voice_combo.setCurrentIndex(i)
+                    break
+        self.sidebar.voice_combo.blockSignals(False)
+
     def _on_voice_change(self, index):
         """เปลี่ยนเสียง TTS"""
-        # TODO: implement voice selection
+        if index < 0 or not self.settings:
+            return
+        text = self.sidebar.voice_combo.itemText(index)
+        if '(RVC)' in text:
+            voice_id = text.replace(' (RVC)', '').strip()
+            self.settings.voice_id = voice_id
+            if self.pipeline:
+                self.pipeline.config.voice = voice_id
+            try:
+                from rvc_engine import RVCEngine
+                models_dir = os.path.join(os.path.expanduser("~"), ".tts-for-livestream", "rvc_models")
+                pth_path = os.path.join(models_dir, f"{voice_id}.pth")
+                if os.path.exists(pth_path):
+                    index_path = pth_path.replace('.pth', '.index')
+                    if not os.path.exists(index_path):
+                        index_path = ''
+                    engine = RVCEngine()
+                    engine.load_model(pth_path, index_path)
+                    if self.pipeline:
+                        self.pipeline.set_rvc(engine, voice_id, index_path)
+                    self.status_bar.set_status(f"🎤 เสียง: {voice_id} (RVC)")
+            except Exception as e:
+                logger.error(f"Failed to load RVC voice: {e}")
+                self.status_bar.set_status(f"❌ โหลด RVC ไม่ได้: {e}")
+        else:
+            self.settings.voice_id = ''
+            if self.pipeline:
+                self.pipeline.config.voice = ''
+                self.pipeline.set_rvc(None, '', '')
+            self.status_bar.set_status("🎤 เสียง: Premwadee (edge-tts)")
+        try:
+            from settings import save_settings
+            save_settings(self.settings)
+        except Exception:
+            pass
 
     def _on_volume_change(self, value):
-        """ปรับ volume"""
         if self.settings:
             self.settings.volume = value
         if self.pipeline:
             self.pipeline.config.volume = value
 
     def _on_rate_change(self, value):
-        """ปรับ rate"""
         if self.settings:
             self.settings.rate = value
         if self.pipeline:
             self.pipeline.config.rate = value
 
+    def _test_voice(self):
+        """ทดสอบเสียง TTS"""
+        if not self.pipeline:
+            return
+        import random
+        phrases = [
+            "สวัสดีครับ ยินดีต้อนรับสู่ห้องสด",
+            "ขอบคุณที่เข้ามารับชมนะครับ",
+            "วันนี้อากาศดีนะ มีความสุขมาก",
+        ]
+        phrase = random.choice(phrases)
+        try:
+            from chat_twitch import ChatMessage
+            msg = ChatMessage(platform='test', author='ทดสอบ', text=phrase)
+            self.pipeline.enqueue(msg)
+            self.status_bar.set_status(f"🔊 ทดสอบ: {phrase}")
+        except Exception as e:
+            logger.error(f"Voice test failed: {e}")
+
     def _open_voice_downloader(self):
         """เปิด Voice Downloader dialog"""
-        # TODO: implement voice downloader dialog
-        self.status_bar.set_status("Voice Downloader — เร็วๆ นี้")
+        from ui.dialogs.voice_downloader import VoiceDownloaderDialog
+        dlg = VoiceDownloaderDialog(self)
+        dlg.exec()
+        self._refresh_voice_combo()
 
     # ════════════════════════════════════════════════════════════
-    # TopBar actions
+    # TopBar actions (#6 Translate + #10 OBS + #11 Secret code + #12 Viewer profile + #13 Playroom + #14 Overlay+ + #15 Menu)
     # ════════════════════════════════════════════════════════════
     def _open_settings(self):
         """เปิด Settings dialog"""
@@ -628,31 +942,29 @@ class TTSForLivestreamApp(QMainWindow):
 
     def _on_settings_changed(self):
         """เรียกเมื่อ settings เปลี่ยน"""
-        # ★ reload pipeline config
         if self.pipeline and self.settings:
             self.pipeline.set_filter(self.settings.to_text_filter())
+            # ★ rebuild pipeline config (translation + mixed voice)
+            new_config = self._build_pipeline_config()
+            self.pipeline.config = new_config
         self.status_bar.set_status("✅ บันทึกการตั้งค่าแล้ว")
 
     def _open_user_manager(self):
-        """เปิด User Manager"""
         from ui.dialogs.user_manager import UserManagerDialog
         dlg = UserManagerDialog(self)
         dlg.exec()
 
     def _open_ngreplace(self):
-        """เปิด NG-Replace editor"""
         from ui.dialogs.ngreplace import NGReplaceDialog
         dlg = NGReplaceDialog(self)
         dlg.exec()
 
     def _open_about(self):
-        """เปิด About dialog"""
         from ui.dialogs.about import AboutDialog
         dlg = AboutDialog(self)
         dlg.exec()
 
     def _open_popout(self):
-        """เปิด/ปิด Popout chat window"""
         if hasattr(self, '_popout_window') and self._popout_window:
             self._popout_window.close()
             self._popout_window = None
@@ -661,11 +973,86 @@ class TTSForLivestreamApp(QMainWindow):
         self._popout_window = PopoutWindow(self)
         self._popout_window.show()
 
-    def _open_voice_downloader(self):
-        """เปิด Voice Downloader dialog"""
-        from ui.dialogs.voice_downloader import VoiceDownloaderDialog
-        dlg = VoiceDownloaderDialog(self)
+    def _toggle_translate(self):
+        """เปิด/ปิดการแปลอัตโนมัติ (#6)"""
+        if not self.settings:
+            return
+        self.settings.auto_translate_enabled = not getattr(self.settings, 'auto_translate_enabled', False)
+        if self.pipeline:
+            self.pipeline.config.auto_translate_enabled = self.settings.auto_translate_enabled
+        state = "เปิด" if self.settings.auto_translate_enabled else "ปิด"
+        self.status_bar.set_status(f"🌐 การแปลอัตโนมัติ: {state}")
+
+    def _toggle_code_mute(self):
+        """เปิด/ปิดเสียงโค้ดลับ (#11)"""
+        if not self.settings:
+            return
+        self.settings.code_sound_muted = not getattr(self.settings, 'code_sound_muted', False)
+        if self.pipeline:
+            self.pipeline.config.code_sound_muted = self.settings.code_sound_muted
+        state = "ปิด" if self.settings.code_sound_muted else "เปิด"
+        self.status_bar.set_status(f"🔔 เสียงโค้ดลับ: {state}")
+
+    def _open_viewer_profile(self, author):
+        """เปิด viewer profile dialog (#12)"""
+        if not self.message_history:
+            self.status_bar.set_status("❌ Message history ไม่พร้อม")
+            return
+        from ui.dialogs.viewer_profile import ViewerProfileDialog
+        msgs = self.message_history.get_messages_by_author(author)
+        dlg = ViewerProfileDialog(author, msgs, self)
         dlg.exec()
+
+    def _open_playroom_settings(self):
+        """เปิด Playroom trigger editor (#13)"""
+        from ui.dialogs.playroom_trigger import PlayroomTriggerDialog
+        dlg = PlayroomTriggerDialog(self)
+        dlg.exec()
+
+    def _open_composer(self):
+        """เปิด composer editor ในเบราว์เซอร์"""
+        import webbrowser
+        port = int(getattr(self.settings, 'composer_port', 8808))
+        url = f"http://localhost:{port}/editor"
+        webbrowser.open(url)
+
+    def _copy_overlay_url(self):
+        """คัดลอก URL ของ overlay server"""
+        from PySide6.QtWidgets import QApplication
+        port = getattr(self.settings, 'overlay_port', 8765)
+        url = f"http://localhost:{port}/"
+        QApplication.clipboard().setText(url)
+        self.status_bar.set_status(f"📋 คัดลอก URL: {url}")
+
+    def _increase_chat_font(self):
+        """เพิ่มขนาด font แชท (#8)"""
+        scale = getattr(self, '_chat_font_scale', 0)
+        scale = min(scale + 1, 5)
+        self._chat_font_scale = scale
+        self._apply_chat_font()
+
+    def _decrease_chat_font(self):
+        """ลดขนาด font แชท"""
+        scale = getattr(self, '_chat_font_scale', 0)
+        scale = max(scale - 1, -3)
+        self._chat_font_scale = scale
+        self._apply_chat_font()
+
+    def _apply_chat_font(self):
+        """apply font scale ไปยัง chat rows"""
+        scale = getattr(self, '_chat_font_scale', 0)
+        base = 13
+        size = base + scale
+        # ★ update all existing rows
+        for row in self.chat_panel._rows:
+            if hasattr(row, '_font_size'):
+                row._font_size = size
+                # re-render is expensive — just update labels
+                for child in row.findChildren(QLabel):
+                    font = child.font()
+                    font.setPointSize(size)
+                    child.setFont(font)
+        self.status_bar.set_status(f"🔤 Font: {size}px")
 
     def _toggle_overlay(self):
         """เปิด/ปิด Game Overlay (subprocess)"""

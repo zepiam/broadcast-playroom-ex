@@ -5,36 +5,10 @@ from PySide6.QtWidgets import (
     QWidget, QSizePolicy,
 )
 from ui.theme import COLOR_CARD, COLOR_TEXT_DIM, COLOR_BORDER
+from ui.widgets.chat_row import ChatRow
 
 
-class ChatRow(QWidget):
-    """Single chat message row"""
-
-    def __init__(self, msg, parent=None):
-        super().__init__(parent)
-        self.msg = msg
-        self._build_ui()
-
-    def _build_ui(self):
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(6)
-
-        # ★ Author (bold, colored)
-        author = getattr(self.msg, 'author', '?') or '?'
-        platform = getattr(self.msg, 'platform', '')
-        self.author_label = QLabel(f"[{platform}] {author}:" if platform else f"{author}:")
-        self.author_label.setStyleSheet("font-weight: 600; color: #06b6d4;")
-        self.author_label.setWordWrap(False)
-        layout.addWidget(self.author_label)
-
-        # ★ Message text
-        text = getattr(self.msg, 'text', '') or getattr(self.msg, 'system_text', '')
-        self.text_label = QLabel(text)
-        self.text_label.setStyleSheet("color: #e5e7eb;")
-        self.text_label.setWordWrap(True)
-        self.text_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        layout.addWidget(self.text_label, 1)
+from ui.widgets.chat_row import ChatRow
 
 
 class ChatPanel(QFrame):

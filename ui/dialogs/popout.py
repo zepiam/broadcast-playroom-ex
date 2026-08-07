@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
 )
 from ui.theme import COLOR_CARD, COLOR_BORDER
-from ui.widgets.chat_panel import ChatRow
+from ui.widgets.chat_row import ChatRow
 
 
 class PopoutWindow(QDialog):

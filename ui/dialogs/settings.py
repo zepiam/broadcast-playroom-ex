@@ -469,7 +469,7 @@ class SettingsDialog(QDialog):
         self._current_section_layout.insertWidget(
             self._current_section_layout.count() - 1, info
         )
-        # ★ NG words (พิมพ์ + enter → ลงรายการ)
+        # ★ NG words (พิมพ์ + enter → ลงตาราง)
         ng_label = QLabel("🚫 คำต้องห้าม (พิมพ์แล้วกด Enter):")
         ng_label.setObjectName("Section")
         self._current_section_layout.insertWidget(
@@ -481,64 +481,61 @@ class SettingsDialog(QDialog):
         self._current_section_layout.insertWidget(
             self._current_section_layout.count() - 1, self.ng_input
         )
-        # ★ NG word list (tag-style)
-        from PySide6.QtWidgets import QGridLayout
-        self._ng_words_widget = QWidget()
-        self._ng_words_layout = QGridLayout(self._ng_words_widget)
-        self._ng_words_layout.setContentsMargins(0, 0, 0, 0)
-        self._ng_words_layout.setSpacing(4)
-        self._ng_chips = []
+        # ★ NG word table (สวย + มีปุ่มลบ)
+        from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView
+        self.ng_table = QTableWidget(0, 2)
+        self.ng_table.setHorizontalHeaderLabels(["คำต้องห้าม", ""])
+        self.ng_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.ng_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)
+        self.ng_table.setColumnWidth(1, 40)
+        self.ng_table.verticalHeader().setDefaultSectionSize(32)
+        self.ng_table.verticalHeader().hide()
+        self.ng_table.horizontalHeader().setFixedHeight(28)
+        self.ng_table.setMinimumHeight(80)
+        self.ng_table.setMaximumHeight(200)
+        self.ng_table.setStyleSheet("""
+            QTableWidget { background: transparent; border: 1px solid #2a2f45; border-radius: 4px; }
+            QTableWidget::item { padding: 4px; }
+            QHeaderView::section { background: #131726; color: #9ca3af; border: none; padding: 4px; font-size: 12px; }
+        """)
         self._current_section_layout.insertWidget(
-            self._current_section_layout.count() - 1, self._ng_words_widget
+            self._current_section_layout.count() - 1, self.ng_table
         )
         # load existing
         banned = getattr(self.settings, 'banned_words', []) or []
         for w in banned:
-            self._add_ng_chip(w)
+            self._add_ng_row(w)
 
     def _add_ng_word(self):
-        """เพิ่มคำต้องห้ามจาก input"""
+        """เพิ่มคำต้องห้ามจาก input → ตาราง"""
         word = self.ng_input.text().strip()
         if not word:
             return
         self.ng_input.clear()
         # check duplicate
-        existing = [c.text() for c in self._ng_chips]
-        if word in existing:
-            return
-        self._add_ng_chip(word)
+        for r in range(self.ng_table.rowCount()):
+            item = self.ng_table.item(r, 0)
+            if item and item.text().lower() == word.lower():
+                return
+        self._add_ng_row(word)
 
-    def _add_ng_chip(self, word):
-        """เพิ่ม tag chip สำหรับคำต้องห้าม"""
-        from PySide6.QtWidgets import QFrame
-        chip = QPushButton(f"{word} ✕")
-        chip.setStyleSheet("""
-            QPushButton {
-                background-color: #ef4444;
-                color: white;
-                border: none;
-                border-radius: 10px;
-                padding: 4px 10px;
-                font-size: 12px;
-                font-weight: 600;
-            }
-            QPushButton:hover { background-color: #dc2626; }
+    def _add_ng_row(self, word):
+        """เพิ่ม row ใน NG table + ปุ่มลบ (icon แดง)"""
+        from PySide6.QtWidgets import QPushButton
+        r = self.ng_table.rowCount()
+        self.ng_table.insertRow(r)
+        self.ng_table.setItem(r, 0, QTableWidgetItem(word))
+        # ★ ปุ่มลบ (icon แดง ด้านขวา)
+        btn_del = QPushButton("✕")
+        btn_del.setFixedSize(28, 24)
+        btn_del.setToolTip("ลบ")
+        btn_del.setStyleSheet("""
+            QPushButton { background: transparent; border: none; color: #ef4444; font-size: 14px; font-weight: bold; }
+            QPushButton:hover { color: #fca5a5; }
         """)
-        chip.setCursor(Qt.PointingHandCursor)
-        chip.clicked.connect(lambda _, c=chip, w=word: self._remove_ng_chip(c, w))
-        chip.text_val = word
-        count = len(self._ng_chips)
-        self._ng_words_layout.addWidget(chip, count // 3, count % 3)
-        self._ng_chips.append(chip)
-
-    def _remove_ng_chip(self, chip, word):
-        """ลบ tag chip"""
-        chip.deleteLater()
-        self._ng_chips.remove(chip)
-        # re-layout remaining
-        for i, c in enumerate(self._ng_chips):
-            self._ng_words_layout.removeWidget(c)
-            self._ng_words_layout.addWidget(c, i // 3, i % 3)
+        btn_del.setCursor(Qt.PointingHandCursor)
+        btn_del.clicked.connect(lambda _, row=r: self.ng_table.removeRow(row))
+        self.ng_table.setCellWidget(r, 1, btn_del)
 
     def _build_spam_section(self):
         self._add_section("spam", "🛡️ Spam & Block", "บล็อกผู้ใช้ + จำกัด rate + ตั้งค่า anti-spam")
@@ -735,8 +732,13 @@ class SettingsDialog(QDialog):
         s.auto_translate_host = self.at_host.text().strip()
         s.auto_translate_langs = [c for c, cb in self._lang_checks.items() if cb.isChecked()]
         s.multilang_langs = [c for c, cb in self._ml_lang_checks.items() if cb.isChecked()]
-        # banned words + blocked users
-        s.banned_words = [c.text_val for c in self._ng_chips] if hasattr(self, '_ng_chips') else []
+        # banned words (จาก NG table)
+        s.banned_words = []
+        if hasattr(self, 'ng_table'):
+            for r in range(self.ng_table.rowCount()):
+                item = self.ng_table.item(r, 0)
+                if item and item.text().strip():
+                    s.banned_words.append(item.text().strip())
         blocked_text = self.blocked_users.text().strip() if hasattr(self, 'blocked_users') else ''
         # ★ อ่านจาก block_table
         blocked = []

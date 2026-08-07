@@ -57,12 +57,15 @@ class NGReplaceDialog(QDialog):
         hlayout.addWidget(btn_add)
         layout.addWidget(header)
 
-        # ★ Table (3 columns: source / display+🔊 / read+🔊)
+        # ★ Table (3 columns: source+🔊 / display / read+🔊)
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["คำเดิม", "คำที่แสดง", "คำที่อ่าน TTS"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        # ★ แถวสูงพอให้พิมพ์เห็นชัด
+        self.table.verticalHeader().setDefaultSectionSize(36)
+        self.table.verticalHeader().setMinimumSectionSize(36)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setStyleSheet("""
             QTableWidget {
@@ -120,27 +123,50 @@ class NGReplaceDialog(QDialog):
         self._update_count()
 
     def _add_row_data(self, src='', display='', read=''):
-        """เพิ่ม row ลง table — ปุ่ม 🔊 อยู่ใน cell เดียวกับ text (ชิดขวา)"""
+        """เพิ่ม row — text แก้ไขได้ + 🔊 icon ชิดขวาใน cell"""
+        from PySide6.QtWidgets import QHBoxLayout, QWidget
         row = self.table.rowCount()
         self.table.insertRow(row)
-        self.table.setItem(row, 0, QTableWidgetItem(src))
-        self.table.setItem(row, 1, QTableWidgetItem(display))
-        self.table.setItem(row, 2, QTableWidgetItem(read))
-        # ★ TTS preview buttons (cell widget แยก — ทับที่ชิดขวา)
+
+        # ★ column 0: source + TTS button (in container widget)
+        w0 = QWidget()
+        l0 = QHBoxLayout(w0)
+        l0.setContentsMargins(4, 0, 4, 0)
+        l0.setSpacing(4)
+        item0 = QTableWidgetItem(src)
+        # ★ แก้ไขได้ (double-click)
+        self.table.setItem(row, 0, item0)
         if src:
-            btn_orig = QPushButton("🔊")
-            btn_orig.setFixedSize(24, 24)
-            btn_orig.setToolTip("ฟังเสียงคำเดิม")
-            btn_orig.setStyleSheet("border: none; background: transparent; font-size: 14px;")
-            btn_orig.clicked.connect(lambda _, t=src: self._preview_tts_text(t))
-            self.table.setCellWidget(row, 0, btn_orig)
+            btn0 = QPushButton("🔊")
+            btn0.setFixedSize(24, 24)
+            btn0.setToolTip("ฟังคำเดิม")
+            btn0.setStyleSheet("border: none; background: transparent; font-size: 14px;")
+            btn0.clicked.connect(lambda _, t=src: self._preview_tts_text(t))
+            l0.addStretch()
+            l0.addWidget(btn0)
+            self.table.setCellWidget(row, 0, w0)
+
+        # ★ column 1: display (editable)
+        self.table.setItem(row, 1, QTableWidgetItem(display))
+
+        # ★ column 2: read + TTS button
+        w2 = QWidget()
+        l2 = QHBoxLayout(w2)
+        l2.setContentsMargins(4, 0, 4, 0)
+        l2.setSpacing(4)
+        self.table.setItem(row, 2, QTableWidgetItem(read))
         if read:
-            btn_read = QPushButton("🔊")
-            btn_read.setFixedSize(24, 24)
-            btn_read.setToolTip("ฟังเสียงคำที่อ่าน")
-            btn_read.setStyleSheet("border: none; background: transparent; font-size: 14px;")
-            btn_read.clicked.connect(lambda _, t=read: self._preview_tts_text(t))
-            self.table.setCellWidget(row, 2, btn_read)
+            btn2 = QPushButton("🔊")
+            btn2.setFixedSize(24, 24)
+            btn2.setToolTip("ฟังคำที่อ่าน")
+            btn2.setStyleSheet("border: none; background: transparent; font-size: 14px;")
+            btn2.clicked.connect(lambda _, t=read: self._preview_tts_text(t))
+            l2.addStretch()
+            l2.addWidget(btn2)
+            self.table.setCellWidget(row, 2, w2)
+
+        # ★ edit button (ด้านขวาของแถว — ใช้ header section)
+        # ไม่ต้องมี edit button — table editable อยู่แล้ว (double-click to edit)
 
     def _preview_tts_text(self, text):
         """เล่นเสียง TTS ของ text"""

@@ -597,6 +597,7 @@ class TTSForLivestreamApp(QMainWindow):
         self.chat_panel.popout_requested.connect(self._open_popout)
         self.chat_panel.clear_requested.connect(self._clear_chat)
         self.chat_panel.block_user_requested.connect(self._block_user_from_chat)
+        self.chat_panel.author_clicked.connect(self._open_author_modal)
 
         # ═══ Events panel toggle ═══
         self.events_panel.header.clicked.connect(self.events_panel.toggle_collapse)
@@ -1137,7 +1138,12 @@ class TTSForLivestreamApp(QMainWindow):
             return
         from ui.dialogs.popout import PopoutWindow
         self._popout_window = PopoutWindow(self)
-        # ★ ตอนปิด popout (กด X หรือ close) → คืน chat panel หลัก
+        # ★ copy existing messages to popout
+        for row in self.chat_panel._rows:
+            if hasattr(row, 'msg'):
+                fs = getattr(self, '_chat_font_scale', 0) + 14
+                self._popout_window.add_message(row.msg, fs)
+        # ★ finished signal → restore chat panel
         self._popout_window.finished.connect(self._close_popout)
         self._popout_window.show()
         # ★ แสดง overlay ทับ chat panel (แทนที่จะซ่อน)
@@ -1186,15 +1192,152 @@ class TTSForLivestreamApp(QMainWindow):
         state = "ปิด" if self.settings.code_sound_muted else "เปิด"
         self.status_bar.set_status(f"🔔 เสียงโค้ดลับ: {state}")
 
-    def _open_viewer_profile(self, author):
-        """เปิด viewer profile dialog (#12)"""
-        if not self.message_history:
-            self.status_bar.set_status("❌ Message history ไม่พร้อม")
-            return
-        from ui.dialogs.viewer_profile import ViewerProfileDialog
-        msgs = self.message_history.get_messages_by_author(author)
-        dlg = ViewerProfileDialog(author, msgs, self)
+    def _open_author_modal(self, author):
+        """เปิด modal ของผู้ใช้ — แก้ชื่อ / บล็อก / ประวัติข้อความ"""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit, QScrollArea, QWidget, QFrame
+        from PySide6.QtCore import Qt
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"👤 {author}")
+        dlg.setGeometry(200, 150, 500, 500)
+        dlg.setMinimumSize(400, 360)
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # ★ Header
+        header = QFrame()
+        header.setFixedHeight(50)
+        header.setStyleSheet("background: #131726; border-bottom: 1px solid #2a2f45;")
+        hlayout = QHBoxLayout(header)
+        hlayout.setContentsMargins(16, 0, 16, 0)
+        title = QLabel(f"👤 {author}")
+        title.setStyleSheet("font-size: 16px; font-weight: 700; color: #f59e0b;")
+        hlayout.addWidget(title)
+        hlayout.addStretch()
+        layout.addWidget(header)
+
+        # ★ Action buttons
+        actions = QFrame()
+        actions_layout = QHBoxLayout(actions)
+        actions_layout.setContentsMargins(16, 8, 16, 8)
+        actions_layout.setSpacing(6)
+
+        # ★ Rename
+        renames = getattr(self.settings, 'user_renames', {}) or {}
+        current_display = renames.get(author.lower(), author)
+        rename_entry = QLineEdit(current_display)
+        rename_entry.setPlaceholderText("ชื่อที่แสดง")
+        actions_layout.addWidget(QLabel("ชื่อ:"))
+        actions_layout.addWidget(rename_entry, 1)
+
+        btn_save_name = QPushButton("💾")
+        btn_save_name.setObjectName("Primary")
+        btn_save_name.setFixedWidth(36)
+        def _save_name():
+            new_name = rename_entry.text().strip()
+            if not self.settings:
+                return
+            renames = dict(getattr(self.settings, 'user_renames', {}) or {})
+            if new_name and new_name != author:
+                renames[author.lower()] = new_name
+            else:
+                renames.pop(author.lower(), None)
+            self.settings.user_renames = renames
+            try:
+                from settings import save_settings
+                save_settings(self.settings)
+            except Exception:
+                pass
+            self._post_system_message(f"✏️ เปลี่ยนชื่อ {author} → {new_name}")
+        btn_save_name.clicked.connect(_save_name)
+        actions_layout.addWidget(btn_save_name)
+        layout.addWidget(actions)
+
+        # ★ Block buttons
+        block_row = QHBoxLayout()
+        block_row.setContentsMargins(16, 0, 16, 8)
+        btn_block_all = QPushButton("🚫 บล็อกทุกอย่าง")
+        btn_block_all.setObjectName("Danger")
+        btn_block_tts = QPushButton("🔇 บล็อก TTS เท่านั้น")
+        btn_unblock = QPushButton("✅ ปลดบล็อก")
+        btn_block_all.clicked.connect(lambda: (self._block_user_from_chat(author), dlg.accept()))
+        btn_block_tts.clicked.connect(lambda: (self._block_user_from_chat(author + "||tts_only"), dlg.accept()))
+        btn_unblock.clicked.connect(lambda: self._unblock_user(author))
+        block_row.addWidget(btn_block_all)
+        block_row.addWidget(btn_block_tts)
+        block_row.addWidget(btn_unblock)
+        layout.addLayout(block_row)
+
+        # ★ Message history
+        hist_label = QLabel("💬 ข้อความล่าสุด:")
+        hist_label.setStyleSheet("color: #9ca3af; padding: 8px 16px 4px; font-weight: 600;")
+        layout.addWidget(hist_label)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        container = QWidget()
+        clayout = QVBoxLayout(container)
+        clayout.setContentsMargins(12, 4, 12, 12)
+        clayout.setSpacing(4)
+        clayout.setAlignment(Qt.AlignTop)
+
+        # ★ ดึงข้อความจาก message_history + chat rows
+        msgs = []
+        if self.message_history:
+            try:
+                msgs = self.message_history.get_messages_by_author(author) or []
+            except Exception:
+                pass
+        # fallback: ดึงจาก chat rows ปัจจุบัน
+        if not msgs:
+            for row in self.chat_panel._rows:
+                if getattr(row, 'msg', None) and getattr(row.msg, 'author', '') == author:
+                    msgs.append(row.msg)
+
+        if not msgs:
+            empty = QLabel("ยังไม่มีข้อความ")
+            empty.setStyleSheet("color: #6b7280; padding: 16px;")
+            empty.setAlignment(Qt.AlignCenter)
+            clayout.addWidget(empty)
+        else:
+            for msg in msgs[-50:]:
+                text = getattr(msg, 'text', '') or ''
+                platform = getattr(msg, 'platform', '')
+                row_label = QLabel(f"[{platform}] {text}")
+                row_label.setStyleSheet("color: #e5e7eb; padding: 4px; border-bottom: 1px solid rgba(42,47,69,0.3);")
+                row_label.setWordWrap(True)
+                clayout.addWidget(row_label)
+
+        scroll.setWidget(container)
+        layout.addWidget(scroll, 1)
+
+        # ★ Close
+        btn_close = QPushButton("ปิด")
+        btn_close.setFixedWidth(80)
+        btn_row = QHBoxLayout()
+        btn_row.setContentsMargins(16, 8, 16, 8)
+        btn_row.addStretch()
+        btn_row.addWidget(btn_close)
+        layout.addLayout(btn_row)
+        btn_close.clicked.connect(dlg.accept)
+
         dlg.exec()
+
+    def _unblock_user(self, author):
+        """ปลดบล็อกผู้ใช้"""
+        if not self.settings:
+            return
+        blocked = list(getattr(self.settings, 'blocked_users', []) or [])
+        if author in blocked:
+            blocked.remove(author)
+            self.settings.blocked_users = blocked
+            try:
+                from settings import save_settings
+                save_settings(self.settings)
+            except Exception:
+                pass
+        self._post_system_message(f"✅ ปลดบล็อก {author}")
 
     def _open_playroom_settings(self):
         """เปิด Playroom trigger editor (#13)"""

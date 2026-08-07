@@ -17,6 +17,7 @@ class ChatPanel(QFrame):
     popout_requested = Signal()  # emit เมื่อกดปุ่ม popout
     clear_requested = Signal()   # emit เมื่อกด clear
     block_user_requested = Signal(str)  # emit author for blocking
+    author_clicked = Signal(str)  # emit author name for profile/modal
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -84,6 +85,7 @@ class ChatPanel(QFrame):
         # ★ connect row signals
         row.delete_requested.connect(self._delete_row)
         row.block_user_requested.connect(self.block_user_requested.emit)
+        row.author_clicked.connect(self.author_clicked.emit)
         self.container_layout.insertWidget(0, row)
         self._rows.append(row)
 

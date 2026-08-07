@@ -137,7 +137,20 @@ class ChatRow(QWidget):
     def _render_content(self, extra, platform):
         """Render message content"""
         segments = extra.get('segments', [])
+        # ★ อ่าน emotes จากทั้ง 2 formats: raw 'emotes' (from chat client) + 'twitch_emotes' (serialized)
+        raw_emotes = extra.get('emotes', []) or []
         twitch_emotes = extra.get('twitch_emotes', []) or []
+        # ★ normalize raw emotes → twitch_emotes format (มี url)
+        if raw_emotes and not twitch_emotes:
+            for em in raw_emotes:
+                eid = em.get('id')
+                url = em.get('url', '')
+                if url:
+                    twitch_emotes.append({'name': em.get('name', ''), 'url': url,
+                                          'start': em.get('start', 0), 'end': em.get('end', 0)})
+                elif eid is not None:
+                    twitch_emotes.append({'name': em.get('name', ''), 'url': f'/emote/{eid}',
+                                          'start': em.get('start', 0), 'end': em.get('end', 0)})
         sticker_url = extra.get('sticker_url', '')
         raw_text = extra.get('raw_text', '') or getattr(self.msg, 'text', '')
         is_translated = bool(extra.get('translated'))

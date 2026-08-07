@@ -636,7 +636,6 @@ class TTSForLivestreamApp(QMainWindow):
         self.sidebar.vol_slider.valueChanged.connect(self._on_volume_change)
         self.sidebar.rate_slider.valueChanged.connect(self._on_rate_change)
         self.sidebar.pitch_slider.valueChanged.connect(self._on_pitch_change)
-        self.sidebar.f0_combo.currentIndexChanged.connect(self._on_f0method_change)
         self.sidebar.voice_download_btn.clicked.connect(self._open_voice_downloader)
         self.sidebar.voice_test_btn.clicked.connect(self._test_voice)
         # ★ refresh voice combo
@@ -1278,11 +1277,8 @@ class TTSForLivestreamApp(QMainWindow):
         self.sidebar.voice_combo.setEnabled(True)
         if self.pipeline:
             pitch = getattr(self.settings, 'rvc_pitch', 0)
-            methods = ['rmvpe', 'fc', 'pm', 'harvest', 'crepe']
-            f0_idx = self.sidebar.f0_combo.currentIndex()
-            f0method = methods[f0_idx] if f0_idx < len(methods) else 'rmvpe'
             from rvc_engine import RVCParams
-            params = RVCParams(f0up_key=pitch, f0method=f0method, index_path=index_path)
+            params = RVCParams(f0up_key=pitch, f0method='rmvpe', index_path=index_path)
             self.pipeline.set_rvc(engine, voice_id, index_path)
         self.status_bar.set_status(f"🎤 เสียง: {voice_id} (RVC)")
         self.sidebar.rvc_status.setText(f"✅ {voice_id} (RVC)")
@@ -1323,15 +1319,6 @@ class TTSForLivestreamApp(QMainWindow):
         if self.pipeline:
             self.pipeline.config.rvc_pitch = value
 
-    def _on_f0method_change(self, index):
-        """เปลี่ยน f0method (RVC)"""
-        methods = ['rmvpe', 'fc', 'pm', 'harvest', 'crepe']
-        method = methods[index] if index < len(methods) else 'rmvpe'
-        if self.settings:
-            self.settings.rvc_f0method = method
-        if self.pipeline:
-            self.pipeline.config.rvc_f0method = method
-
     def _test_voice(self):
         """ทดสอบเสียง TTS"""
         if not self.pipeline:
@@ -1367,8 +1354,10 @@ class TTSForLivestreamApp(QMainWindow):
         QTimer.singleShot(ms, callback)
 
     def _open_game_overlay_settings(self):
-        """game_overlay.py อ้าง — เปิด settings"""
-        self._open_settings()
+        """เปิด Game Overlay settings dialog"""
+        from ui.dialogs.game_overlay_settings import GameOverlaySettingsDialog
+        dlg = GameOverlaySettingsDialog(self)
+        dlg.exec()
 
     def _update_game_overlay_btn(self):
         """game_overlay.py อ้าง — update button state (no-op ใน v2)"""

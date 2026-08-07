@@ -1,8 +1,12 @@
-# 🎙️ Broadcast Playroom
+# 🎙️ Broadcast Playroom v2 (PySide6)
 
 โปรแกรม TTS สำหรับอ่านแชทสดจาก Twitch / YouTube / MyLive / TikTok / KICK ด้วย edge-tts และ RVC voice conversion
 
-> **สำหรับผู้ใช้ทั่วไป** — ดาวน์โหลดเวอร์ชันล่าสุดได้ที่ https://men9ch.com/broadcast-playroom/
+> ⚠️ **v2.0.0-dev** — เวอร์ชันพัฒนา (PySide6 migration)
+> UI framework เปลี่ยนจาก customtkinter → PySide6 (Qt for Python)
+> Logic เดิมทั้งหมด (TTS/RVC/chat/translation/overlay) ใช้ได้เหมือนเดิม
+
+> **สำหรับผู้ใช้ทั่วไป** — ดาวน์โหลดเวอร์ชันเสถียรได้ที่ https://men9ch.com/broadcast-playroom/
 
 ---
 

@@ -1083,6 +1083,8 @@ class TTSForLivestreamApp(QMainWindow):
             return
         from ui.dialogs.popout import PopoutWindow
         self._popout_window = PopoutWindow(self)
+        # ★ ตอนปิด popout (กด X หรือ close) → คืน chat panel หลัก
+        self._popout_window.finished.connect(self._close_popout)
         self._popout_window.show()
         # ★ แสดง overlay ทับ chat panel (แทนที่จะซ่อน)
         if not hasattr(self, '_popout_overlay'):

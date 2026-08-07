@@ -66,6 +66,7 @@ class TTSForLivestreamApp(QMainWindow):
     _overlay_started_sig = Signal(bool, int)  # ok, ov_id
     _rvc_loaded_sig = Signal(object, str, str)  # engine, voice_id, index_path
     _rvc_failed_sig = Signal(str)  # error
+    _game_overlay_cmd_sig = Signal(str)  # command from Qt overlay (toggle_demo, open_settings, etc.)
 
     def __init__(self):
         super().__init__()
@@ -82,6 +83,7 @@ class TTSForLivestreamApp(QMainWindow):
         self._overlay_started_sig.connect(self._on_overlay_started_sig)
         self._rvc_loaded_sig.connect(self._on_rvc_loaded)
         self._rvc_failed_sig.connect(self._on_rvc_load_failed)
+        self._game_overlay_cmd_sig.connect(self._on_game_overlay_cmd)
 
         # ═══ State ═══
         self._closing = False
@@ -1351,7 +1353,25 @@ class TTSForLivestreamApp(QMainWindow):
 
     def after(self, ms, callback):
         """Tk compatibility shim — game_overlay.py อ้าง parent_app.after"""
+        # ★ ถ้า callback คือ method reference → ใช้ signal แทน (thread-safe)
         QTimer.singleShot(ms, callback)
+
+    def _on_game_overlay_cmd(self, cmd):
+        """จัดการ command จาก Qt overlay (signal — main thread)"""
+        go = getattr(self, '_game_overlay', None)
+        if not go or not go.is_running:
+            return
+        if cmd == 'toggle_demo':
+            try:
+                go.toggle_demo()
+            except Exception as e:
+                logger.error(f"toggle_demo failed: {e}")
+        elif cmd == 'open_settings':
+            self._open_game_overlay_settings()
+        elif cmd == 'exit_edit':
+            go._edit_mode = False
+            go._send_cmd("edit_off")
+            self._safe_status("✅ Game Overlay: ปิด Edit Mode")
 
     def _open_game_overlay_settings(self):
         """เปิด Game Overlay settings dialog"""
@@ -1746,7 +1766,9 @@ class TTSForLivestreamApp(QMainWindow):
             if auto and plat in self._platform_cards:
                 target = self._get_platform_target(plat)
                 if target:
+                    self.status_bar.set_status(f"🔌 Auto-connect {plat}...")
                     self._connect_platform(plat)
+                    return  # ★ connect ทีละตัว (กัน race condition)
 
     def closeEvent(self, event):
         """cleanup on close"""

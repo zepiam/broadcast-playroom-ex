@@ -1,3 +1,10 @@
-{"cmd": "ready", "hwnd": 42468836}
+{"cmd": "ready", "hwnd": 43386340}
+{"cmd": "open_settings"}
+{"cmd": "open_settings"}
 {"cmd": "toggle_demo"}
+{"cmd": "clear_msgs"}
+{"cmd": "open_settings"}
+{"cmd": "toggle_demo"}
+{"cmd": "clear_msgs"}
+{"cmd": "open_settings"}
 {"cmd": "open_settings"}

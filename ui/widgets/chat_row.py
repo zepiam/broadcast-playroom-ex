@@ -169,12 +169,13 @@ class ChatRow(QWidget):
         inline.setSpacing(2)
 
         if segments and not is_translated:
-            self._render_segments_inline(inline, segments)
+            self._render_segments_wrap(segments)
         elif twitch_emotes and raw_text and not is_translated:
-            self._render_twitch_emotes_inline(inline, raw_text, twitch_emotes)
+            self._render_twitch_emotes_wrap(raw_text, twitch_emotes)
         else:
-            text = getattr(self.msg, 'text', '') or raw_text
-            lbl = self._make_wrap_label(text)
+            # plain text — แสดงเสมอ (กัน message หายเงียบ)
+            text = getattr(self.msg, 'text', '') or raw_text or ''
+            lbl = self._make_wrap_label(text if text else '(ไม่มีข้อความ)')
             inline.addWidget(lbl, 1)
 
         self.content_layout.addLayout(inline)
@@ -233,10 +234,10 @@ class ChatRow(QWidget):
                 self._add_emote_to_layout(layout, url)
 
     def _render_twitch_emotes_inline(self, layout, text, emotes):
-        """Render Twitch emotes — text wrap + emotes inline"""
+        """Render Twitch emotes — text + emotes inline"""
         sorted_emotes = sorted(emotes, key=lambda e: e.get('start', 0))
         text_parts = []
-        emote_data = []
+        emote_urls = []
         cur = 0
         for em in sorted_emotes:
             start = em.get('start', 0)
@@ -246,15 +247,23 @@ class ChatRow(QWidget):
             if start > cur:
                 text_parts.append(text[cur:start])
             if url:
-                emote_data.append(('url', url, name))
+                emote_urls.append((url, name))
             cur = end + 1
         if cur < len(text):
             text_parts.append(text[cur:])
+        # ★ render text (ถ้ามี — ถ้าไม่มี text เลย เช่น "Kappa" = emote ล้วน → ข้าม)
         if text_parts:
-            lbl = self._make_wrap_label(''.join(text_parts))
+            full_text = ''.join(text_parts).strip()
+            if full_text:
+                lbl = self._make_wrap_label(full_text)
+                layout.addWidget(lbl)
+        # ★ render emotes inline
+        for url, name in emote_urls:
+            self._add_emote_to_layout(layout, url, name)
+        # ★ ถ้าไม่มีทั้ง text และ emote → แสดง text เดิม (กันหาย)
+        if not text_parts and not emote_urls:
+            lbl = self._make_wrap_label(text)
             layout.addWidget(lbl)
-        for kind, val, name in emote_data:
-            self._add_emote_to_layout(layout, val, name)
 
     def _add_emote_to_layout(self, layout, url, name=''):
         """Add emote — download directly via urllib (EmoteCache returns CTkImage which can't convert to QPixmap)"""

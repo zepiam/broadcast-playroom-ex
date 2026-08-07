@@ -537,16 +537,19 @@ class GameOverlay:
                 pass
         elif cmd == "open_settings":
             try:
-                self.parent_app.after(0, self.parent_app._open_game_overlay_settings)
+                self.parent_app._game_overlay_cmd_sig.emit("open_settings")
             except Exception:
                 pass
         elif cmd == "exit_edit":
             self._edit_mode = False
             self._send_cmd("edit_off")
-            self.parent_app._safe_status("✅ Game Overlay: ปิด Edit Mode แล้ว")
+            try:
+                self.parent_app._game_overlay_cmd_sig.emit("exit_edit")
+            except Exception:
+                pass
         elif cmd == "toggle_demo":
             try:
-                self.parent_app.after(0, self.toggle_demo)
+                self.parent_app._game_overlay_cmd_sig.emit("toggle_demo")
             except Exception:
                 pass
         elif cmd == "stop_demo":

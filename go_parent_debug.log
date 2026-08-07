@@ -4,3 +4,5 @@ _send_cmd: quit
 _send_cmd_json ERROR: Expecting value: line 1 column 1 (char 0)
 _send_cmd: quit
 _send_cmd_json ERROR: Expecting value: line 1 column 1 (char 0)
+_send_cmd: quit
+_send_cmd_json ERROR: Expecting value: line 1 column 1 (char 0)

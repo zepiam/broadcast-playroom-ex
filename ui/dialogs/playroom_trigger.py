@@ -113,18 +113,85 @@ class PlayroomTriggerDialog(QDialog):
         top.addWidget(btn_del)
         row_layout.addLayout(top)
 
-        # ★ Clips
-        clip_text = ", ".join(c.get('name', '') for c in clips if isinstance(c, dict))
-        clips_label = QLabel(f"📦 Clips: {clip_text or '(ไม่มี)'}")
+        # ★ Clips section — list + add + browse + weight
+        from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView
+        clips_label = QLabel(f"📦 Clips ({len(clips)}):")
         clips_label.setStyleSheet("color: #9ca3af; font-size: 12px;")
         row_layout.addWidget(clips_label)
+
+        clips_table = QTableWidget(0, 3)
+        clips_table.setHorizontalHeaderLabels(["ชื่อ", "ไฟล์", "น้ำหนัก (%)"])
+        clips_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        clips_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        clips_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
+        clips_table.setColumnWidth(2, 80)
+        clips_table.setMinimumHeight(80)
+        clips_table.setMaximumHeight(140)
+        row_layout.addWidget(clips_table)
+
+        # load existing clips
+        for clip in clips:
+            if isinstance(clip, dict):
+                r = clips_table.rowCount()
+                clips_table.insertRow(r)
+                clips_table.setItem(r, 0, QTableWidgetItem(clip.get('name', '')))
+                clips_table.setItem(r, 1, QTableWidgetItem(clip.get('path', '')))
+                clips_table.setItem(r, 2, QTableWidgetItem(str(clip.get('weight', 50))))
+
+        # ★ Add clip buttons
+        clip_btns = QHBoxLayout()
+        btn_add_clip = QPushButton("➕ เพิ่ม Clip")
+        btn_add_clip.clicked.connect(lambda: self._add_clip_row(clips_table))
+        clip_btns.addWidget(btn_add_clip)
+        btn_browse = QPushButton("📁 เลือกไฟล์")
+        btn_browse.clicked.connect(lambda: self._browse_clip(clips_table))
+        clip_btns.addWidget(btn_browse)
+        btn_del_clip = QPushButton("🗑 ลบ Clip ที่เลือก")
+        btn_del_clip.clicked.connect(lambda: self._delete_clip(clips_table))
+        clip_btns.addWidget(btn_del_clip)
+        row_layout.addLayout(clip_btns)
 
         # ★ Store data for save
         row.code_entry = code_entry
         row.limit_spin = limit_spin
+        row.clips_table = clips_table
         row._orig_trigger = trig
 
         self.container_layout.insertWidget(self.container_layout.count() - 1, row)
+
+    def _add_clip_row(self, table):
+        """เพิ่มแถว clip ว่าง"""
+        r = table.rowCount()
+        table.insertRow(r)
+        table.setItem(r, 0, QTableWidgetItem(''))
+        table.setItem(r, 1, QTableWidgetItem(''))
+        table.setItem(r, 2, QTableWidgetItem('50'))
+
+    def _browse_clip(self, table):
+        """เลือกไฟล์ clip (วิดีโอ/รูป)"""
+        from PySide6.QtWidgets import QFileDialog
+        files, _ = QFileDialog.getOpenFileNames(
+            self, "เลือกไฟล์ Clip",
+            "", "Media Files (*.mp4 *.webm *.mov *.png *.jpg *.jpeg *.gif *.webp);;All Files (*.*)"
+        )
+        if not files:
+            return
+        import os
+        for fpath in files:
+            name = os.path.splitext(os.path.basename(fpath))[0]
+            r = table.rowCount()
+            table.insertRow(r)
+            table.setItem(r, 0, QTableWidgetItem(name))
+            table.setItem(r, 1, QTableWidgetItem(fpath))
+            table.setItem(r, 2, QTableWidgetItem('50'))
+
+    def _delete_clip(self, table):
+        """ลบ clip ที่เลือก"""
+        rows = set()
+        for item in table.selectedItems():
+            rows.add(item.row())
+        for r in sorted(rows, reverse=True):
+            table.removeRow(r)
 
     def _add_trigger(self):
         """เพิ่ม trigger ใหม่ (ว่าง)"""
@@ -143,11 +210,24 @@ class PlayroomTriggerDialog(QDialog):
                 code = row.code_entry.text().strip()
                 if not code:
                     continue
+                # ★ read clips from table
+                clips = []
+                clips_table = row.clips_table
+                for cr in range(clips_table.rowCount()):
+                    name_item = clips_table.item(cr, 0)
+                    path_item = clips_table.item(cr, 1)
+                    weight_item = clips_table.item(cr, 2)
+                    if name_item and path_item:
+                        clips.append({
+                            'name': name_item.text().strip(),
+                            'path': path_item.text().strip(),
+                            'weight': int(weight_item.text()) if weight_item and weight_item.text().isdigit() else 50,
+                        })
                 orig = getattr(row, '_orig_trigger', {})
                 triggers.append({
                     'code': code,
                     'daily_limit': row.limit_spin.value(),
-                    'clips': orig.get('clips', []),
+                    'clips': clips,
                     'widget_ids': orig.get('widget_ids', []),
                 })
         self.settings.playroom_triggers = triggers

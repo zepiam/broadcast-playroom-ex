@@ -253,6 +253,28 @@ QCheckBox::indicator:hover {
     border-color: __ACCENT__;
 }
 
+/* ═══ RadioButton ═══ */
+QRadioButton {
+    spacing: 8px;
+    color: __TEXT__;
+    font-size: 14px;
+    padding: 4px;
+}
+QRadioButton::indicator {
+    width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    border: 2px solid __BORDER_LIGHT__;
+    background-color: __CARD__;
+}
+QRadioButton::indicator:checked {
+    background-color: __ACCENT__;
+    border-color: __ACCENT__;
+}
+QRadioButton::indicator:hover {
+    border-color: __ACCENT__;
+}
+
 /* ═══ Slider ═══ */
 QSlider::groove:horizontal {
     height: 6px;

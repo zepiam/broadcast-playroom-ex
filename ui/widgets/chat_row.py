@@ -100,13 +100,37 @@ class ChatRow(QWidget):
     """Single chat message row — full rendering with emotes/segments/stickers"""
 
     author_clicked = Signal(str)  # emit author name on click
+    delete_requested = Signal(object)  # emit self (row) for deletion
+    block_user_requested = Signal(str)  # emit author for blocking
 
-    def __init__(self, msg, parent=None, font_size=13):
+    def __init__(self, msg, parent=None, font_size=14):
         super().__init__(parent)
         self.msg = msg
         self._font_size = font_size
-        self._emote_labels = {}  # url → QLabel (for updating when loaded)
+        self._emote_labels = {}
+        # ★ context menu (right-click)
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_context_menu)
         self._build_ui()
+
+    def _show_context_menu(self, pos):
+        """context menu — ลบข้อความ / บล็อกผู้ใช้"""
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self)
+        menu.setStyleSheet("QMenu { background: #131726; border: 1px solid #2a2f45; border-radius: 8px; padding: 4px; } QMenu::item { padding: 8px 24px; border-radius: 4px; color: #e5e7eb; } QMenu::item:selected { background: #7c3aed; }")
+        author = getattr(self.msg, 'author', '') or ''
+        act_delete = menu.addAction("🗑 ลบข้อความนี้")
+        if author:
+            menu.addSeparator()
+            act_block_all = menu.addAction("🚫 บล็อกผู้ใช้ (ทุกอย่าง)")
+            act_block_tts = menu.addAction("🔇 บล็อก TTS (ไม่อ่าน)")
+        action = menu.exec(self.mapToGlobal(pos))
+        if action == act_delete:
+            self.delete_requested.emit(self)
+        elif author and action == act_block_all:
+            self.block_user_requested.emit(author)
+        elif author and action == act_block_tts:
+            self.block_user_requested.emit(author + "||tts_only")
 
     def _build_ui(self):
         layout = QVBoxLayout(self)

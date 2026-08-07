@@ -359,13 +359,8 @@ class SettingsDialog(QDialog):
             self._current_section_layout.count() - 1, self._multilang_settings
         )
 
-        # ★ Mixed Voice
-        self.mv_enabled = QCheckBox("Mixed Voice (อ่านสลับหลายเสียงในประโยคเดียว)")
-        self._current_section_layout.insertWidget(
-            self._current_section_layout.count() - 1, self.mv_enabled
-        )
-
-        # ★ initial state
+        # ★ Mixed Voice — ลบแล้ว (อ่านหลายภาษาครอบคลุมอยู่แล้ว)
+        # initial state
         self._translate_settings.setVisible(False)
         self._multilang_settings.setVisible(False)
         self._on_translate_provider_change("google")
@@ -456,7 +451,7 @@ class SettingsDialog(QDialog):
     def _build_ngreplace_section(self):
         self._add_section("ngreplace", "🚫 NG-Replace", "คำต้องห้าม + คำแทนที่ (3 ฟิลด์)")
         # ★ open editor button
-        btn_edit = QPushButton("🚫 จัดการคำต้องห้าม")
+        btn_edit = QPushButton("🚫 จัดการคำต้องห้าม (Replace)")
         btn_edit.setObjectName("Primary")
         btn_edit.setMinimumHeight(36)
         def _open_ng():
@@ -469,24 +464,81 @@ class SettingsDialog(QDialog):
         )
         # ★ show count
         words = getattr(self.settings, 'replace_words', {}) or {}
-        info = QLabel(f"📋 มี {len(words)} คำต้องห้าม/แทนที่")
+        info = QLabel(f"📋 มี {len(words)} คำแทนที่")
         info.setObjectName("Dim")
         self._current_section_layout.insertWidget(
             self._current_section_layout.count() - 1, info
         )
-        # ★ banned words (simple list)
-        ban_label = QLabel("🚫 คำต้องห้าม (ซ่อนข้อความ + ไม่อ่าน):")
-        ban_label.setObjectName("Dim")
+        # ★ NG words (พิมพ์ + enter → ลงรายการ)
+        ng_label = QLabel("🚫 คำต้องห้าม (พิมพ์แล้วกด Enter):")
+        ng_label.setObjectName("Section")
         self._current_section_layout.insertWidget(
-            self._current_section_layout.count() - 1, ban_label
+            self._current_section_layout.count() - 1, ng_label
         )
-        self.banned_words = QLineEdit()
-        self.banned_words.setPlaceholderText("คำ1, คำ2, คำ3 (คั่นด้วยจุลภาค)")
+        self.ng_input = QLineEdit()
+        self.ng_input.setPlaceholderText("พิมพ์คำที่ต้องการห้าม แล้วกด Enter...")
+        self.ng_input.returnPressed.connect(self._add_ng_word)
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, self.ng_input
+        )
+        # ★ NG word list (tag-style)
+        from PySide6.QtWidgets import QGridLayout
+        self._ng_words_widget = QWidget()
+        self._ng_words_layout = QGridLayout(self._ng_words_widget)
+        self._ng_words_layout.setContentsMargins(0, 0, 0, 0)
+        self._ng_words_layout.setSpacing(4)
+        self._ng_chips = []
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, self._ng_words_widget
+        )
+        # load existing
         banned = getattr(self.settings, 'banned_words', []) or []
-        self.banned_words.setText(', '.join(banned))
-        self._current_section_layout.insertWidget(
-            self._current_section_layout.count() - 1, self.banned_words
-        )
+        for w in banned:
+            self._add_ng_chip(w)
+
+    def _add_ng_word(self):
+        """เพิ่มคำต้องห้ามจาก input"""
+        word = self.ng_input.text().strip()
+        if not word:
+            return
+        self.ng_input.clear()
+        # check duplicate
+        existing = [c.text() for c in self._ng_chips]
+        if word in existing:
+            return
+        self._add_ng_chip(word)
+
+    def _add_ng_chip(self, word):
+        """เพิ่ม tag chip สำหรับคำต้องห้าม"""
+        from PySide6.QtWidgets import QFrame
+        chip = QPushButton(f"{word} ✕")
+        chip.setStyleSheet("""
+            QPushButton {
+                background-color: #ef4444;
+                color: white;
+                border: none;
+                border-radius: 10px;
+                padding: 4px 10px;
+                font-size: 12px;
+                font-weight: 600;
+            }
+            QPushButton:hover { background-color: #dc2626; }
+        """)
+        chip.setCursor(Qt.PointingHandCursor)
+        chip.clicked.connect(lambda _, c=chip, w=word: self._remove_ng_chip(c, w))
+        chip.text_val = word
+        count = len(self._ng_chips)
+        self._ng_words_layout.addWidget(chip, count // 3, count % 3)
+        self._ng_chips.append(chip)
+
+    def _remove_ng_chip(self, chip, word):
+        """ลบ tag chip"""
+        chip.deleteLater()
+        self._ng_chips.remove(chip)
+        # re-layout remaining
+        for i, c in enumerate(self._ng_chips):
+            self._ng_words_layout.removeWidget(c)
+            self._ng_words_layout.addWidget(c, i // 3, i % 3)
 
     def _build_spam_section(self):
         self._add_section("spam", "🛡️ Spam & Block", "บล็อกผู้ใช้ + จำกัด rate + ตั้งค่า anti-spam")
@@ -502,16 +554,42 @@ class SettingsDialog(QDialog):
         self._current_section_layout.insertWidget(
             self._current_section_layout.count() - 1, btn_users
         )
-        # ★ blocked users count
-        blocked = getattr(self.settings, 'blocked_users', []) or []
-        info = QLabel(f"🚫 บล็อก {len(blocked)} ผู้ใช้")
-        info.setObjectName("Dim")
+        # ★ block user input (พิมพ์ชื่อ + Enter)
+        block_label = QLabel("🚫 บล็อกผู้ใช้ (พิมพ์ชื่อแล้วกด Enter):")
+        block_label.setObjectName("Section")
         self._current_section_layout.insertWidget(
-            self._current_section_layout.count() - 1, info
+            self._current_section_layout.count() - 1, block_label
+        )
+        self.block_input = QLineEdit()
+        self.block_input.setPlaceholderText("พิมพ์ชื่อผู้ใช้ที่ต้องการบล็อก แล้วกด Enter...")
+        self.block_input.returnPressed.connect(self._add_blocked_user)
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, self.block_input
+        )
+        # ★ blocked users table
+        from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView, QComboBox
+        self.block_table = QTableWidget(0, 2)
+        self.block_table.setHorizontalHeaderLabels(["ชื่อผู้ใช้", "ประเภทการบล็อก"])
+        self.block_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.block_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)
+        self.block_table.setColumnWidth(1, 180)
+        self.block_table.setMinimumHeight(120)
+        self.block_table.setStyleSheet("""
+            QTableWidget { background: transparent; border: 1px solid #2a2f45; border-radius: 4px; }
+            QTableWidget::item { padding: 4px; }
+            QHeaderView::section { background: #131726; color: #9ca3af; border: none; padding: 6px; }
+        """)
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, self.block_table
+        )
+        # ★ delete blocked user button
+        btn_unblock = QPushButton("🗑 ลบที่เลือก")
+        btn_unblock.clicked.connect(self._remove_blocked_user)
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, btn_unblock
         )
         # ★ max message length
-        from PySide6.QtWidgets import QSpinBox
-        max_len_label = QLabel("ความยาวข้อความสูงสุด (ตัวอักษร):")
+        max_len_label = QLabel("ความยาวข้อความสูงสุด:")
         max_len_label.setObjectName("Dim")
         self._current_section_layout.insertWidget(
             self._current_section_layout.count() - 1, max_len_label
@@ -523,18 +601,43 @@ class SettingsDialog(QDialog):
         self._current_section_layout.insertWidget(
             self._current_section_layout.count() - 1, self.max_msg_length
         )
-        # ★ blocked users (manual edit)
-        ban_label = QLabel("บล็อกผู้ใช้ (คั่นด้วยจุลภาค):")
-        ban_label.setObjectName("Dim")
-        self._current_section_layout.insertWidget(
-            self._current_section_layout.count() - 1, ban_label
-        )
-        self.blocked_users = QLineEdit()
-        self.blocked_users.setPlaceholderText("user1, user2, user3")
-        self.blocked_users.setText(', '.join(blocked))
-        self._current_section_layout.insertWidget(
-            self._current_section_layout.count() - 1, self.blocked_users
-        )
+        # ★ load existing blocked users
+        blocked = getattr(self.settings, 'blocked_users', []) or []
+        for u in blocked:
+            self._add_blocked_row(u, "block_all")
+
+    def _add_blocked_user(self):
+        """เพิ่มผู้ใช้เข้า block table"""
+        name = self.block_input.text().strip()
+        if not name:
+            return
+        self.block_input.clear()
+        # check duplicate
+        for r in range(self.block_table.rowCount()):
+            item = self.block_table.item(r, 0)
+            if item and item.text().lower() == name.lower():
+                return
+        self._add_blocked_row(name, "block_all")
+
+    def _add_blocked_row(self, name, block_type):
+        """เพิ่ม row ใน block table"""
+        from PySide6.QtWidgets import QComboBox
+        row = self.block_table.rowCount()
+        self.block_table.insertRow(row)
+        self.block_table.setItem(row, 0, QTableWidgetItem(name))
+        combo = QComboBox()
+        combo.addItem("🚫 บล็อกทุกอย่าง", "block_all")
+        combo.addItem("🔇 บล็อก TTS เท่านั้น", "block_tts")
+        combo.setCurrentIndex(0 if block_type == "block_all" else 1)
+        self.block_table.setCellWidget(row, 1, combo)
+
+    def _remove_blocked_user(self):
+        """ลบผู้ใช้ที่เลือกจาก block table"""
+        rows = set()
+        for item in self.block_table.selectedItems():
+            rows.add(item.row())
+        for r in sorted(rows, reverse=True):
+            self.block_table.removeRow(r)
 
     def _build_about_section(self):
         self._add_section("about", "ℹ️ เกี่ยวกับ", "")
@@ -597,8 +700,6 @@ class SettingsDialog(QDialog):
         ml_langs = getattr(s, 'multilang_langs', ['en', 'ja', 'ko', 'zh', 'zh-TW', 'fr'])
         for code, cb in self._ml_lang_checks.items():
             cb.setChecked(code in ml_langs)
-        # mixed voice
-        self.mv_enabled.setChecked(getattr(s, 'mixed_voice_enabled', False))
         # TTS
         self.tts_volume.setValue(getattr(s, 'volume', 100))
         self.tts_rate.setValue(getattr(s, 'rate', 0))
@@ -634,12 +735,16 @@ class SettingsDialog(QDialog):
         s.auto_translate_host = self.at_host.text().strip()
         s.auto_translate_langs = [c for c, cb in self._lang_checks.items() if cb.isChecked()]
         s.multilang_langs = [c for c, cb in self._ml_lang_checks.items() if cb.isChecked()]
-        s.mixed_voice_enabled = self.mv_enabled.isChecked()
         # banned words + blocked users
-        banned_text = self.banned_words.text().strip()
-        s.banned_words = [w.strip() for w in banned_text.split(',') if w.strip()] if banned_text else []
-        blocked_text = self.blocked_users.text().strip()
-        s.blocked_users = [u.strip() for u in blocked_text.split(',') if u.strip()] if blocked_text else []
+        s.banned_words = [c.text_val for c in self._ng_chips] if hasattr(self, '_ng_chips') else []
+        blocked_text = self.blocked_users.text().strip() if hasattr(self, 'blocked_users') else ''
+        # ★ อ่านจาก block_table
+        blocked = []
+        for r in range(self.block_table.rowCount()):
+            item = self.block_table.item(r, 0)
+            if item:
+                blocked.append(item.text().strip())
+        s.blocked_users = blocked
         s.max_msg_length = self.max_msg_length.value()
         # TTS
         s.volume = self.tts_volume.value()

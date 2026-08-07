@@ -16,6 +16,7 @@ class ChatPanel(QFrame):
 
     popout_requested = Signal()  # emit เมื่อกดปุ่ม popout
     clear_requested = Signal()   # emit เมื่อกด clear
+    block_user_requested = Signal(str)  # emit author for blocking
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -80,6 +81,9 @@ class ChatPanel(QFrame):
         """
         fs = font_size or getattr(self, '_current_font_size', 14)
         row = ChatRow(msg, self.container, fs)
+        # ★ connect row signals
+        row.delete_requested.connect(self._delete_row)
+        row.block_user_requested.connect(self.block_user_requested.emit)
         self.container_layout.insertWidget(0, row)
         self._rows.append(row)
 
@@ -94,3 +98,9 @@ class ChatPanel(QFrame):
         for row in self._rows:
             row.deleteLater()
         self._rows.clear()
+
+    def _delete_row(self, row):
+        """ลบ row เดียว"""
+        if row in self._rows:
+            self._rows.remove(row)
+            row.deleteLater()

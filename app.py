@@ -596,6 +596,7 @@ class TTSForLivestreamApp(QMainWindow):
         # ═══ Connect chat panel signals ═══
         self.chat_panel.popout_requested.connect(self._open_popout)
         self.chat_panel.clear_requested.connect(self._clear_chat)
+        self.chat_panel.block_user_requested.connect(self._block_user_from_chat)
 
         # ═══ Events panel toggle ═══
         self.events_panel.header.clicked.connect(self.events_panel.toggle_collapse)
@@ -876,6 +877,28 @@ class TTSForLivestreamApp(QMainWindow):
         self.chat_panel.clear_messages()
         if hasattr(self, '_popout_window') and self._popout_window:
             self._popout_window.clear_messages()
+
+    def _block_user_from_chat(self, author_info):
+        """บล็อกผู้ใช้จาก context menu — author_info อาจมี ||tts_only suffix"""
+        if '||tts_only' in author_info:
+            author = author_info.replace('||tts_only', '').strip()
+            block_type = "tts_only"
+            msg = f"🔇 บล็อก TTS: {author}"
+        else:
+            author = author_info.strip()
+            block_type = "block_all"
+            msg = f"🚫 บล็อกผู้ใช้: {author}"
+        if self.settings:
+            blocked = list(getattr(self.settings, 'blocked_users', []) or [])
+            if author not in blocked:
+                blocked.append(author)
+                self.settings.blocked_users = blocked
+                try:
+                    from settings import save_settings
+                    save_settings(self.settings)
+                except Exception:
+                    pass
+        self._post_system_message(msg)
 
     def _update_viewer_ui(self):
         """อัปเดตยอดคนดู"""

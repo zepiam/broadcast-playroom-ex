@@ -210,68 +210,53 @@ class NGReplaceDialog(QDialog):
         self._download_btn = self.sender()
         self._download_btn.setText("⏳ กำลังโหลด...")
         self._download_btn.setEnabled(False)
+        # ★ process events ทันที (กัน UI ค้างตอน set text)
+        from PySide6.QtWidgets import QApplication
+        QApplication.processEvents()
 
-        def _worker():
-            try:
-                raw = None
-                # ★ ลอง urllib ก่อน (เร็วกว่า + ไม่ติด SSL cert issues)
+        # ★ ใช้ QThread (ไม่ใช่ raw threading — กัน signal ไม่ยิง)
+        from PySide6.QtCore import QThread
+        class DownloadThread(QThread):
+            downloaded = Signal(dict)
+            failed = Signal(str)
+            def __init__(self, url):
+                super().__init__()
+                self.url = url
+            def run(self):
                 try:
                     import urllib.request as _urq
                     import ssl
                     ctx = ssl.create_default_context()
                     ctx.load_default_certs()
-                    req = _urq.Request(DICT_URL, headers={
+                    req = _urq.Request(self.url, headers={
                         "User-Agent": "BroadcastPlayroom/2.0",
                         "Accept": "application/json",
                     })
                     with _urq.urlopen(req, timeout=10, context=ctx) as resp:
                         raw = resp.read().decode("utf-8")
-                except Exception as e1:
-                    logger.warning(f"urllib download failed: {e1}")
+                    parsed = _json.loads(raw)
+                    if isinstance(parsed, dict) and "replace_words" in parsed:
+                        incoming = parsed["replace_words"]
+                    elif isinstance(parsed, dict):
+                        incoming = parsed
+                    else:
+                        self.failed.emit("format ไม่ถูกต้อง")
+                        return
+                    if not isinstance(incoming, dict) or not incoming:
+                        self.failed.emit("คลังศัพท์ว่าง")
+                        return
+                    self.downloaded.emit(incoming)
+                except Exception as e:
+                    self.failed.emit(str(e))
 
-                # ★ fallback: requests
-                if raw is None:
-                    try:
-                        import requests as _req
-                        r = _req.get(DICT_URL, headers={"User-Agent": "BroadcastPlayroom/2.0"},
-                                     timeout=10, allow_redirects=True, verify=False)
-                        if r.status_code == 200:
-                            raw = r.text
-                        else:
-                            QTimer.singleShot(0, lambda s=r.status_code: QMessageBox.critical(
-                                self, "ล้มเหลว", f"เซิร์ฟเวอร์ตอบ HTTP {s}"))
-                            return
-                    except Exception as e2:
-                        logger.warning(f"requests download failed: {e2}")
+        self._dl_thread = DownloadThread(DICT_URL)
+        self._dl_thread.downloaded.connect(self._on_download_done)
+        self._dl_thread.failed.connect(self._on_download_failed)
+        self._dl_thread.start()
 
-                if raw is None:
-                    QTimer.singleShot(0, lambda: QMessageBox.critical(
-                        self, "ล้มเหลว", "ดาวน์โหลดไม่ได้ — ตรวจสอบการเชื่อมต่ออินเทอร์เน็ต"))
-                    return
-
-                # ★ parse JSON — อาจเป็น {replace_words: {...}} หรือ dict ตรงๆ
-                parsed = _json.loads(raw)
-                if isinstance(parsed, dict) and "replace_words" in parsed:
-                    incoming = parsed["replace_words"]
-                elif isinstance(parsed, dict):
-                    incoming = parsed
-                else:
-                    QTimer.singleShot(0, lambda: QMessageBox.critical(
-                        self, "ล้มเหลว", "format ไม่ถูกต้อง"))
-                    return
-
-                if not isinstance(incoming, dict) or not incoming:
-                    QTimer.singleShot(0, lambda: QMessageBox.warning(
-                        self, "ไม่มีข้อมูล", "คลังศัพท์ว่าง"))
-                    return
-
-                QTimer.singleShot(0, lambda: self._on_download_done(incoming))
-            except Exception as e:
-                logger.error(f"Download failed: {e}", exc_info=True)
-                QTimer.singleShot(0, lambda err=str(e): QMessageBox.critical(
-                    self, "ล้มเหลว", f"ดาวน์โหลดไม่ได้: {err}"))
-            finally:
-                QTimer.singleShot(0, self._reset_download_btn)
+    def _on_download_failed(self, error):
+        self._reset_download_btn()
+        QMessageBox.critical(self, "ล้มเหลว", f"ดาวน์โหลดไม่ได้: {error}")
 
         threading.Thread(target=_worker, daemon=True).start()
 

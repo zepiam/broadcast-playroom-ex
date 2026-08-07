@@ -33,6 +33,15 @@ def main():
     from PySide6.QtGui import QPixmap, QIcon
     from PySide6.QtCore import Qt
 
+    # ★ Init pygame mixer ก่อน Qt (สำคัญ — กัน WASAPI conflict)
+    #    ต้อง init ก่อนสร้าง QApplication เพราะ Qt อาจจะ lock audio device
+    try:
+        import pygame
+        pygame.mixer.pre_init(frequency=44100, size=-16, channels=1, buffer=512)
+        pygame.mixer.init()
+    except Exception:
+        pass
+
     app = QApplication(sys.argv)
     app.setApplicationName("Broadcast Playroom")
     app.setOrganizationName("MeN9CH")

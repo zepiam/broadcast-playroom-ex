@@ -201,27 +201,17 @@ class ChatRow(QWidget):
             self._add_sticker(sticker_url)
             return
 
-        # ★ inline layout สำหรับ text + emotes (แนวนอน)
-        inline_layout = QHBoxLayout()
-        inline_layout.setContentsMargins(0, 0, 0, 0)
-        inline_layout.setSpacing(2)
-
-        # ★ Segments — render inline
+        # ★ text/emote content — ใช้ QLabel เดียวที่ word-wrap ตามความกว้าง
+        #    (ไม่ใช้ QHBoxLayout เพราะ text จะไม่ wrap)
         if segments and not is_translated:
-            self._render_segments_inline(inline_layout, segments)
+            self._render_segments_wrap(segments)
         elif twitch_emotes and raw_text and not is_translated:
-            self._render_twitch_emotes_inline(inline_layout, raw_text, twitch_emotes)
+            self._render_twitch_emotes_wrap(raw_text, twitch_emotes)
         else:
             # plain text
             text = getattr(self.msg, 'text', '') or raw_text
-            lbl = QLabel(text)
-            lbl.setWordWrap(True)
-            lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            lbl.setStyleSheet(f"color: #e5e7eb; font-size: {self._font_size}px;")
-            lbl.setFont(QFont("Kanit", self._font_size))
-            inline_layout.addWidget(lbl, 1)
-
-        self.content_layout.addLayout(inline_layout)
+            lbl = self._make_wrap_label(text)
+            self.content_layout.addWidget(lbl)
 
         # ★ ต้นฉบับ (บรรทัดใหม่ — ใต้คำแปล)
         if is_translated and original_text:
@@ -230,63 +220,101 @@ class ChatRow(QWidget):
                 flag = flag_for(source_lang)
             except Exception:
                 flag = "🌐"
-            orig_label = QLabel(f"{flag} {original_text}")
-            orig_label.setWordWrap(True)
-            orig_label.setFont(QFont("Kanit", max(10, self._font_size - 1)))
-            orig_label.setStyleSheet(f"color: #10b981; font-size: {max(10, self._font_size - 1)}px; padding-top: 2px;")
+            orig_label = self._make_wrap_label(f"{flag} {original_text}", color="#10b981", size_offset=-1)
             self.content_layout.addWidget(orig_label)
 
-    def _render_segments_inline(self, layout, segments):
-        """Render segments inline ใน layout แนวนอน"""
+    def _make_wrap_label(self, text, color="#e5e7eb", size_offset=0):
+        """สร้าง QLabel ที่ word-wrap ตามความกว้างของ container (สำคัญสำหรับข้อความยาว)"""
+        fs = self._font_size + size_offset
+        lbl = QLabel(text)
+        lbl.setWordWrap(True)
+        lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        lbl.setFont(QFont("Kanit", fs))
+        lbl.setStyleSheet(f"color: {color}; font-size: {fs}px;")
+        # ★ บังคับให้ label ขยายตามความกว้างของ parent (wrap ไม่ล้นออกขวา)
+        lbl.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Preferred)
+        lbl.setMinimumWidth(0)
+        return lbl
+
+    def _render_segments_wrap(self, segments):
+        """Render segments — text ใช้ wrap label, emote inline"""
+        from PySide6.QtWidgets import QHBoxLayout as _HBox
+        # ★ แยก text segments กับ emote segments
+        #    text → wrap label เดียว (concat ทั้งหมด)
+        #    emote → แสดงหลัง text
+        text_parts = []
+        emote_urls = []
+        emoji_chars = []
         for seg in segments:
             stype = seg.get('type', '')
             if stype == 'text':
                 content = seg.get('content', '')
                 if content:
-                    lbl = QLabel(content)
-                    lbl.setWordWrap(True)
-                    lbl.setFont(QFont("Kanit", self._font_size))
-                    lbl.setStyleSheet(f"color: #e5e7eb; font-size: {self._font_size}px;")
-                    layout.addWidget(lbl)
+                    text_parts.append(content)
             elif stype == 'emoji':
                 char = seg.get('char', '')
                 if char:
-                    lbl = QLabel(char)
-                    lbl.setFont(QFont("Kanit", self._font_size + 2))
-                    lbl.setStyleSheet(f"font-size: {self._font_size + 2}px;")
-                    layout.addWidget(lbl)
+                    emoji_chars.append(char)
             elif stype == 'emote':
                 url = seg.get('url', '')
                 if url:
-                    self._add_emote_to_layout(layout, url)
+                    emote_urls.append(url)
+        # ★ render text (wrap)
+        if text_parts:
+            full_text = ' '.join(text_parts)
+            lbl = self._make_wrap_label(full_text)
+            self.content_layout.addWidget(lbl)
+        # ★ render emoji + emotes inline (หลัง text)
+        if emoji_chars or emote_urls:
+            inline = _HBox()
+            inline.setContentsMargins(0, 0, 0, 0)
+            inline.setSpacing(2)
+            for char in emoji_chars:
+                lbl = QLabel(char)
+                lbl.setFont(QFont("Kanit", self._font_size + 2))
+                lbl.setStyleSheet(f"font-size: {self._font_size + 2}px;")
+                inline.addWidget(lbl)
+            for url in emote_urls:
+                self._add_emote_to_layout(inline, url)
+            self.content_layout.addLayout(inline)
 
-    def _render_twitch_emotes_inline(self, layout, text, emotes):
-        """Render Twitch emotes inline"""
+    def _render_twitch_emotes_wrap(self, text, emotes):
+        """Render Twitch emotes — text wrap + emotes inline"""
+        from PySide6.QtWidgets import QHBoxLayout as _HBox
         sorted_emotes = sorted(emotes, key=lambda e: e.get('start', 0))
+        # ★ ถ้ามีแค่ text ล้วน (ไม่มี emote กลาง) → wrap label เดียว
+        if not sorted_emotes:
+            lbl = self._make_wrap_label(text)
+            self.content_layout.addWidget(lbl)
+            return
+        # ★ มี emote → แยกเป็น text segments + emote
+        text_parts = []
+        emote_urls = []
         cur = 0
         for em in sorted_emotes:
             start = em.get('start', 0)
             end = em.get('end', 0)
             url = em.get('url', '')
             if start > cur:
-                txt = text[cur:start]
-                if txt:
-                    lbl = QLabel(txt)
-                    lbl.setWordWrap(True)
-                    lbl.setFont(QFont("Kanit", self._font_size))
-                    lbl.setStyleSheet(f"color: #e5e7eb; font-size: {self._font_size}px;")
-                    layout.addWidget(lbl)
+                text_parts.append(text[cur:start])
             if url:
-                self._add_emote_to_layout(layout, url)
+                emote_urls.append(url)
             cur = end + 1
         if cur < len(text):
-            txt = text[cur:]
-            if txt:
-                lbl = QLabel(txt)
-                lbl.setWordWrap(True)
-                lbl.setFont(QFont("Kanit", self._font_size))
-                lbl.setStyleSheet(f"color: #e5e7eb; font-size: {self._font_size}px;")
-                layout.addWidget(lbl)
+            text_parts.append(text[cur:])
+        # ★ render text (wrap)
+        if text_parts:
+            full_text = ''.join(text_parts)
+            lbl = self._make_wrap_label(full_text)
+            self.content_layout.addWidget(lbl)
+        # ★ render emotes inline
+        if emote_urls:
+            inline = _HBox()
+            inline.setContentsMargins(0, 0, 0, 0)
+            inline.setSpacing(2)
+            for url in emote_urls:
+                self._add_emote_to_layout(inline, url)
+            self.content_layout.addLayout(inline)
 
     def _add_emote_to_layout(self, layout, url, size=28):
         """Add emote image to a horizontal layout (async load)"""

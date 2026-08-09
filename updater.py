@@ -1,117 +1,185 @@
-"""updater.py — Auto-update checker (GitHub Releases)
+"""updater.py — Auto-update (เหมือน v1 — ดาวน์โหลด version.json จาก release)
 
-ตรวจสอบเวอร์ชั่นใหม่จาก GitHub Releases API
-→ เทียบกับ version.json ในเครื่อง
-→ แจ้งเตือน + เปิด browser ดาวน์โหลด
+Flow:
+1. ดาวน์โหลด version.json จาก release URL
+2. เทียบเวอร์ชั่น
+3. ถ้ามีใหม่ → แจ้ง user → เปิด browser ดาวน์โหลด
 
-★ Private repo: ต้องส่ง token ใน header
+★ version.json ใน release มีโครง:
+  { "version": "2.1.0", "changelog": "...",
+    "lite": {"type": "major", "url": "..."},
+    "full": {"type": "major", "url": "..."} }
 """
+from __future__ import annotations
+
 import json
 import logging
 import os
-import threading
+import sys
+import ssl
+import time
+import urllib.request
 import webbrowser
-from typing import Optional, Callable
+from typing import Optional
 
 logger = logging.getLogger("updater")
 
-# GitHub API
-REPO = "zepiam/broadcast-playroom-ex"
-API_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
+# ★ URL สำหรับดาวน์โหลด version.json (จาก GitHub Releases)
+VERSION_CHECK_URL = "https://github.com/zepiam/broadcast-playroom-ex/releases/download/latest/version.json"
+USER_AGENT = "BroadcastPlayroom-v2-Updater/2.0"
 
 
 def get_current_version() -> str:
-    """อ่านเวอร์ชั่นปัจจุบันจาก version.json"""
+    """อ่านเวอร์ชั่นปัจจุบันจาก version.json (bundled กับ exe)"""
+    install_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(install_dir, "_internal", "version.json"),
+        os.path.join(install_dir, "version.json"),
+    ]
+    for path in candidates:
+        try:
+            if os.path.exists(path):
+                with open(path, encoding='utf-8') as f:
+                    data = json.load(f)
+                ver = data.get("version", "0.0.0")
+                if ver and ver != "0.0.0":
+                    return ver
+        except Exception:
+            pass
+    return "0.0.0"
+
+
+def get_build_type() -> str:
+    """ตรวจ Lite/Full จากชื่อ exe"""
     try:
-        import sys
-        if getattr(sys, 'frozen', False):
-            base = os.path.dirname(sys.executable)
-            internal = os.path.join(base, "_internal")
-            path = os.path.join(internal, "version.json")
-            if not os.path.exists(path):
-                path = os.path.join(base, "version.json")
-        else:
-            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "version.json")
-        with open(path, encoding='utf-8') as f:
-            data = json.load(f)
-        return data.get('version', '0.0.0')
-    except Exception as e:
-        logger.debug(f"get_current_version: {e}")
-        return '0.0.0'
-
-
-def get_latest_version(token: str = "") -> Optional[dict]:
-    """เช็คเวอร์ชั่นล่าสุดจาก GitHub Releases API"""
-    try:
-        import urllib.request
-        import urllib.error
-        req = urllib.request.Request(API_URL)
-        req.add_header('Accept', 'application/vnd.github+json')
-        req.add_header('User-Agent', 'BroadcastPlayroom-Updater')
-        if token:
-            req.add_header('Authorization', f'token {token}')
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode('utf-8'))
-        tag = data.get('tag_name', '').lstrip('v')
-        body = data.get('body', '')
-        release_url = data.get('html_url', '')
-        assets = data.get('assets', [])
-        download_urls = {}
-        for asset in assets:
-            name = asset.get('name', '').lower()
-            url = asset.get('browser_download_url', '')
-            if 'lite' in name:
-                download_urls['lite'] = url
-            elif 'full' in name:
-                download_urls['full'] = url
-        return {
-            'version': tag,
-            'changelog': body,
-            'release_url': release_url,
-            'download_urls': download_urls,
-        }
-    except Exception as e:
-        logger.debug(f"get_latest_version: {e}")
-        return None
-
-
-def compare_versions(current: str, latest: str) -> bool:
-    """เทียบเวอร์ชั่น — คืน True ถ้า latest > current"""
-    try:
-        cur = [int(x) for x in current.split('.')]
-        new = [int(x) for x in latest.split('.')]
-        while len(cur) < len(new):
-            cur.append(0)
-        while len(new) < len(cur):
-            new.append(0)
-        return new > cur
+        exe_name = os.path.basename(sys.executable).lower()
+        if "full" in exe_name:
+            return "full"
+        if "lite" in exe_name:
+            return "lite"
     except Exception:
-        return False
+        pass
+    try:
+        import torch  # noqa: F401
+        return "full"
+    except ImportError:
+        return "lite"
 
 
-def check_update_async(callback: Callable[[Optional[dict]], None], token: str = ""):
+def _parse_version(v: str) -> list[int]:
+    """แยก "2.1.0" → [2, 1, 0]"""
+    cleaned = (v or "").strip().lower().lstrip("v")
+    parts = []
+    for p in cleaned.split("."):
+        num = ""
+        for ch in p:
+            if ch.isdigit():
+                num += ch
+            else:
+                break
+        if num:
+            parts.append(int(num))
+    return parts or [0]
+
+
+def is_version_newer(remote: str, local: str) -> bool:
+    """เทียบเวอร์ชั่น — True ถ้า remote > local"""
+    return _parse_version(remote) > _parse_version(local)
+
+
+def fetch_remote_version(retries: int = 2, timeout: int = 10) -> Optional[dict]:
+    """ดาวน์โหลด version.json จาก release URL — ลองหลายวิธี (เหมือน v1)"""
+    for attempt in range(retries + 1):
+        # วิธี 1: urllib + Windows cert
+        try:
+            ctx = ssl.create_default_context()
+            ctx.load_default_certs()
+            req = urllib.request.Request(VERSION_CHECK_URL, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+                data = r.read()
+                if data:
+                    return json.loads(data.decode("utf-8"))
+        except Exception:
+            pass
+
+        # วิธี 2: urllib default
+        try:
+            req = urllib.request.Request(VERSION_CHECK_URL, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                data = r.read()
+                if data:
+                    return json.loads(data.decode("utf-8"))
+        except Exception:
+            pass
+
+        # วิธี 3: urllib unverified SSL (fallback)
+        try:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            req = urllib.request.Request(VERSION_CHECK_URL, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+                data = r.read()
+                if data:
+                    return json.loads(data.decode("utf-8"))
+        except Exception:
+            pass
+
+        if attempt < retries:
+            time.sleep(1)
+
+    return None
+
+
+def check_for_update(build_type: Optional[str] = None) -> Optional[dict]:
+    """ตรวจอัพเดท — คืน dict ข้อมูลอัพเดท หรือ None ถ้าไม่มี/ไม่สำเร็จ
+
+    Returns: {
+        "current": "2.0.0",
+        "latest": "2.1.0",
+        "changelog": "...",
+        "type": "patch" | "major",
+        "url": "https://...",
+        "build_type": "lite" | "full",
+    }
+    """
+    bt = build_type or get_build_type()
+    local_ver = get_current_version()
+    remote = fetch_remote_version()
+    if not remote:
+        return None
+    latest_ver = remote.get("version", "")
+    if not latest_ver or not is_version_newer(latest_ver, local_ver):
+        return None
+    bt_info = remote.get(bt, {})
+    if not bt_info:
+        bt_info = {"type": "major", "url": ""}
+    return {
+        "current": local_ver,
+        "latest": latest_ver,
+        "changelog": remote.get("changelog", ""),
+        "type": bt_info.get("type", "major"),
+        "url": bt_info.get("url", ""),
+        "build_type": bt,
+    }
+
+
+def check_update_async(callback, build_type: Optional[str] = None):
     """เช็คอัพเดทใน background thread"""
+    import threading
     def _bg():
         try:
-            current = get_current_version()
-            latest = get_latest_version(token)
-            if latest is None:
-                callback(None)
-                return
-            if compare_versions(current, latest['version']):
-                latest['current_version'] = current
-                callback(latest)
-            else:
-                callback(None)
+            info = check_for_update(build_type)
         except Exception as e:
             logger.debug(f"check_update_async: {e}")
-            callback(None)
+            info = None
+        callback(info)
     threading.Thread(target=_bg, name="UpdateChecker", daemon=True).start()
 
 
-def open_release_page(release_url: str):
-    """เปิดหน้า release ใน browser"""
+def open_url(url: str):
+    """เปิด URL ใน browser"""
     try:
-        webbrowser.open(release_url)
-    except Exception as e:
-        logger.debug(f"open_release_page: {e}")
+        webbrowser.open(url)
+    except Exception:
+        pass

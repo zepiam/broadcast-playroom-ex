@@ -1893,9 +1893,6 @@ class SettingsDialog(QDialog):
             btn.setEnabled(False)
             btn.setText("⏳ กำลังเช็ค...")
 
-        # ★ ใช้ updater.py ใหม่ (check_update_async)
-        from updater import check_update_async
-
         # ★ class-level signal สำหรับ cross-thread
         try:
             self._update_result_sig.disconnect()
@@ -1903,14 +1900,8 @@ class SettingsDialog(QDialog):
             pass
         self._update_result_sig.connect(lambda info: self._check_update_done(info, btn))
 
-        # ★ token สำหรับ private repo (ฝังในโปรแกรม — ไม่ push ขึ้น repo)
-        _token = getattr(self, '_github_token', '')
-
-        check_update_async(self._on_update_result, token=_token)
-
-    def _on_update_result(self, info):
-        """slot: รับผลจาก check_update_async (main thread)"""
-        self._update_result_sig.emit(info)
+        from updater import check_update_async
+        check_update_async(lambda info: self._update_result_sig.emit(info))
 
     def _check_update_done(self, info, btn):
         """slot: เช็คอัพเดทเสร็จ (main thread) → แสดงผล + คืนปุ่ม"""
@@ -1920,22 +1911,27 @@ class SettingsDialog(QDialog):
         if not info:
             QMessageBox.information(self, "เช็คอัพเดท", "✅ คุณใช้เวอร์ชั่นล่าสุดอยู่แล้ว")
             return
-        # ★ info = {'version': '2.1.0', 'changelog': '...', 'release_url': '...', 'current_version': '2.0.0'}
-        latest = info.get("version", "?")
-        current = info.get("current_version", "?")
+        latest = info.get("latest", "?")
+        current = info.get("current", "?")
         changelog = info.get("changelog", "")
-        release_url = info.get("release_url", "")
+        url = info.get("url", "")
+        bt = info.get("build_type", "")
+        bt_label = "Lite" if bt == "lite" else "Full"
         msg = f"🆕 เวอร์ชั่นใหม่พร้อมใช้งาน!\n\n"
-        msg += f"เวอร์ชั่นปัจจุบัน: v{current}\n"
+        msg += f"เวอร์ชั่นปัจจุบัน: v{current} ({bt_label})\n"
         msg += f"เวอร์ชั่นล่าสุด: v{latest}\n\n"
         if changelog:
             msg += f"มีอะไรใหม่:\n{changelog}\n\n"
         msg += "ต้องการดาวน์โหลดตอนนี้ไหม?"
         reply = QMessageBox.question(self, "เช็คอัพเดท", msg,
             QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
-        if reply == QMessageBox.Yes and release_url:
+        if reply == QMessageBox.Yes and url:
             import webbrowser
-            webbrowser.open(release_url)
+            webbrowser.open(url)
+        elif reply == QMessageBox.Yes:
+            # fallback — เปิดหน้า release
+            import webbrowser
+            webbrowser.open("https://github.com/zepiam/broadcast-playroom-ex/releases/latest")
 
     # ════════════════════════════════════════════════════════════
     # Load / Save

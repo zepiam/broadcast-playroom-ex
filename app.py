@@ -178,6 +178,9 @@ class TTSForLivestreamApp(QMainWindow):
         if getattr(self.settings, 'tts_engine', 'edge') == 'omnivoice':
             QTimer.singleShot(2000, self._auto_load_omnivoice)
 
+        # ★ Auto-check อัพเดทเงียบๆ 10 วินาทีหลังเปิดโปรแกรม (เหมือน v1)
+        QTimer.singleShot(10000, self._auto_check_update)
+
     # ════════════════════════════════════════════════════════════
     # Subsystem init (events + donate + notification + history)
     # ════════════════════════════════════════════════════════════
@@ -1986,6 +1989,21 @@ class TTSForLivestreamApp(QMainWindow):
             self.pipeline.config.tts_engine = "edge"
 
     # ═══ Auto-load OmniVoice with progress bar ═══
+    def _auto_check_update(self):
+        """Auto-check อัพเดทเงียบๆ หลังเปิดโปรแกรม 10 วินาที (เหมือน v1)
+
+        ★ ถ้ามีอัพเดท → แสดง status bar "มีอัพเดทใหม่" (ไม่บังคับ dialog)
+        """
+        try:
+            from updater import check_update_async
+            def _on_result(info):
+                if info:
+                    ver = info.get("latest", "?")
+                    self.status_bar.set_status(f"🆕 มีอัพเดทใหม่ v{ver} — ไปที่ ตั้งค่า > เช็คอัพเดท")
+            check_update_async(_on_result)
+        except Exception as e:
+            logger.debug(f"auto_check_update: {e}")
+
     def _auto_load_omnivoice(self):
         """auto-load OmniVoice ตอนเปิดโปรแกรม (เบื้องหลัง + progress bar)
 

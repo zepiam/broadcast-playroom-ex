@@ -21,3 +21,5 @@ Thumbs.db
 # Large files
 *.whl
 site-packages/
+ffmpeg.exe
+test_*.wav

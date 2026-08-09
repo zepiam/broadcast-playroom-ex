@@ -107,7 +107,7 @@ class TTSForLivestreamApp(QMainWindow):
 
         # ═══ Load settings ═══
         from data_dir import get_data_dir
-        _data_dir = get_data_dir()
+        self._data_dir = get_data_dir()
         from settings import load_settings
         try:
             self.settings = load_settings()
@@ -391,7 +391,7 @@ class TTSForLivestreamApp(QMainWindow):
     def _save_splitter_sizes(self):
         """บันทึกความกว้าง sidebar/chat/events + events collapsed state"""
         import json, os
-        layout_path = os.path.join(_data_dir, "layout.json")
+        layout_path = os.path.join(self._data_dir, "layout.json")
         try:
             data = {
                 'splitter_sizes': self.splitter.sizes(),
@@ -769,7 +769,7 @@ class TTSForLivestreamApp(QMainWindow):
 
         # ★ restore saved splitter sizes (บันทึกความกว้างที่ user ตั้งไว้)
         import json, os
-        layout_path = os.path.join(_data_dir, "layout.json")
+        layout_path = os.path.join(self._data_dir, "layout.json")
         saved_sizes = None
         try:
             if os.path.exists(layout_path):
@@ -1556,7 +1556,7 @@ class TTSForLivestreamApp(QMainWindow):
         import os
         search_dirs = [
             os.path.join(os.path.dirname(os.path.abspath(__file__)), "rvc_models"),
-            os.path.join(_data_dir, "rvc_models"),
+            os.path.join(self._data_dir, "rvc_models"),
             os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tts-for-livestream", "rvc_models"),
         ]
         rvc_models = []
@@ -1707,7 +1707,7 @@ class TTSForLivestreamApp(QMainWindow):
         import os
         search_dirs = [
             os.path.join(os.path.dirname(os.path.abspath(__file__)), "rvc_models"),
-            os.path.join(_data_dir, "rvc_models"),
+            os.path.join(self._data_dir, "rvc_models"),
             os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tts-for-livestream", "rvc_models"),
         ]
         for d in search_dirs:

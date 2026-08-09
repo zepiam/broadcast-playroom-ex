@@ -21,6 +21,7 @@ class SettingsDialog(QDialog):
 
     settings_changed = Signal()  # emit เมื่อ settings เปลี่ยน (บันทึกแล้ว)
     _obs_test_sig = Signal(str, object)  # OBS test result from background thread
+    _update_result_sig = Signal(object)  # update check result from background thread
 
     def __init__(self, parent_app):
         super().__init__(parent_app if isinstance(parent_app, QWidget) else None)
@@ -1892,17 +1893,24 @@ class SettingsDialog(QDialog):
             btn.setEnabled(False)
             btn.setText("⏳ กำลังเช็ค...")
 
-        def _bg():
-            try:
-                from updater import check_for_update
-                info = check_for_update()
-            except Exception as e:
-                info = {"error": str(e)}
-            from PySide6.QtCore import QTimer
-            QTimer.singleShot(0, lambda: self._check_update_done(info, btn))
+        # ★ ใช้ updater.py ใหม่ (check_update_async)
+        from updater import check_update_async
 
-        import threading
-        threading.Thread(target=_bg, name="CheckUpdate", daemon=True).start()
+        # ★ class-level signal สำหรับ cross-thread
+        try:
+            self._update_result_sig.disconnect()
+        except Exception:
+            pass
+        self._update_result_sig.connect(lambda info: self._check_update_done(info, btn))
+
+        # ★ token สำหรับ private repo (ฝังในโปรแกรม — ไม่ push ขึ้น repo)
+        _token = getattr(self, '_github_token', '')
+
+        check_update_async(self._on_update_result, token=_token)
+
+    def _on_update_result(self, info):
+        """slot: รับผลจาก check_update_async (main thread)"""
+        self._update_result_sig.emit(info)
 
     def _check_update_done(self, info, btn):
         """slot: เช็คอัพเดทเสร็จ (main thread) → แสดงผล + คืนปุ่ม"""
@@ -1912,20 +1920,22 @@ class SettingsDialog(QDialog):
         if not info:
             QMessageBox.information(self, "เช็คอัพเดท", "✅ คุณใช้เวอร์ชั่นล่าสุดอยู่แล้ว")
             return
-        if info.get("error"):
-            QMessageBox.warning(self, "เช็คอัพเดท", f"❌ เช็คไม่สำเร็จ\n\n{info['error']}")
-            return
-        latest = info.get("latest", "?")
-        current = info.get("current", "?")
+        # ★ info = {'version': '2.1.0', 'changelog': '...', 'release_url': '...', 'current_version': '2.0.0'}
+        latest = info.get("version", "?")
+        current = info.get("current_version", "?")
         changelog = info.get("changelog", "")
-        bt = info.get("build_type", "")
-        bt_label = "Lite" if bt == "lite" else "Full"
+        release_url = info.get("release_url", "")
         msg = f"🆕 เวอร์ชั่นใหม่พร้อมใช้งาน!\n\n"
-        msg += f"เวอร์ชั่นปัจจุบัน: v{current} ({bt_label})\n"
+        msg += f"เวอร์ชั่นปัจจุบัน: v{current}\n"
         msg += f"เวอร์ชั่นล่าสุด: v{latest}\n\n"
         if changelog:
-            msg += f"มีอะไรใหม่:\n{changelog}"
-        QMessageBox.information(self, "เช็คอัพเดท", msg)
+            msg += f"มีอะไรใหม่:\n{changelog}\n\n"
+        msg += "ต้องการดาวน์โหลดตอนนี้ไหม?"
+        reply = QMessageBox.question(self, "เช็คอัพเดท", msg,
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if reply == QMessageBox.Yes and release_url:
+            import webbrowser
+            webbrowser.open(release_url)
 
     # ════════════════════════════════════════════════════════════
     # Load / Save

@@ -24,8 +24,8 @@ from typing import Optional
 
 logger = logging.getLogger("updater")
 
-# ★ URL สำหรับดาวน์โหลด version.json (จาก GitHub Releases)
-VERSION_CHECK_URL = "https://github.com/zepiam/broadcast-playroom-ex/releases/download/latest/version.json"
+# ★ URL สำหรับเช็คเวอร์ชั่นล่าสุด (GitHub API releases/latest)
+VERSION_API_URL = "https://api.github.com/repos/zepiam/broadcast-playroom-ex/releases/latest"
 USER_AGENT = "BroadcastPlayroom-v2-Updater/2.0"
 
 
@@ -88,42 +88,37 @@ def is_version_newer(remote: str, local: str) -> bool:
 
 
 def fetch_remote_version(retries: int = 2, timeout: int = 10) -> Optional[dict]:
-    """ดาวน์โหลด version.json จาก release URL — ลองหลายวิธี (เหมือน v1)"""
+    """ดาวน์โหลด version.json จาก GitHub Releases (ผ่าน API latest → assets)"""
     for attempt in range(retries + 1):
-        # วิธี 1: urllib + Windows cert
         try:
-            ctx = ssl.create_default_context()
-            ctx.load_default_certs()
-            req = urllib.request.Request(VERSION_CHECK_URL, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
-            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
-                data = r.read()
-                if data:
-                    return json.loads(data.decode("utf-8"))
-        except Exception:
-            pass
-
-        # วิธี 2: urllib default
-        try:
-            req = urllib.request.Request(VERSION_CHECK_URL, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
+            # 1. เรียก API releases/latest เพื่อหา download URL ของ version.json
+            req = urllib.request.Request(VERSION_API_URL, headers={
+                "User-Agent": USER_AGENT,
+                "Accept": "application/vnd.github+json",
+            })
             with urllib.request.urlopen(req, timeout=timeout) as r:
-                data = r.read()
-                if data:
-                    return json.loads(data.decode("utf-8"))
-        except Exception:
-            pass
+                release_data = json.loads(r.read().decode("utf-8"))
 
-        # วิธี 3: urllib unverified SSL (fallback)
-        try:
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-            req = urllib.request.Request(VERSION_CHECK_URL, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
-            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
-                data = r.read()
+            # 2. หา version.json ใน assets
+            version_url = None
+            for asset in release_data.get("assets", []):
+                if asset.get("name") == "version.json":
+                    version_url = asset.get("browser_download_url")
+                    break
+
+            if not version_url:
+                # fallback: ใช้ tag_name + raw URL
+                tag = release_data.get("tag_name", "latest")
+                version_url = f"https://github.com/zepiam/broadcast-playroom-ex/releases/download/{tag}/version.json"
+
+            # 3. ดาวน์โหลด version.json
+            req2 = urllib.request.Request(version_url, headers={"User-Agent": USER_AGENT})
+            with urllib.request.urlopen(req2, timeout=timeout) as r2:
+                data = r2.read()
                 if data:
                     return json.loads(data.decode("utf-8"))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"fetch_remote_version attempt {attempt+1}: {e}")
 
         if attempt < retries:
             time.sleep(1)

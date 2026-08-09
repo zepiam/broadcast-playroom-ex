@@ -1,6 +1,6 @@
 {
-  "version": "2.0.0",
-  "changelog": "🚀 v2.0.0 — Broadcast Playroom v2\n\n• ย้าย UI framework จาก customtkinter → PySide6 (Qt)\n• Voice panel ใหม่ — text toggles Azure/Omni + หญิง/ชาย\n• OmniVoice + RVC support (Full build)\n• User Manager + Author Modal ครบ\n• Portable data directory\n• Viewer commands [x2]/[p1]/[v50]",
+  "version": "2.0.1",
+  "changelog": "🐛 v2.0.1 — แก้ฟอนต์ภาษาไทยเล็กเกินในเครื่องที่ไม่มี Kanit\n\n• โหลด NotoSansThai เป็น fallback เสมอ (ติดมากับโปรแกรม)\n• รองรับ PyInstaller frozen path สำหรับ assets/fonts",
   "repo": "https://github.com/zepiam/broadcast-playroom-ex",
   "lite": {
     "type": "major",

@@ -32,19 +32,28 @@ COLOR_BORDER_LIGHT = "#374151"
 # Fonts
 # ═══════════════════════════════════════════════════════════════
 def setup_fonts(app: QApplication) -> None:
-    """ตั้ง font default + โหลด Kanit (ถ้ามี)"""
-    # หา Kanit ใน assets/fonts
-    import os
-    font_paths = [
-        os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "fonts", "Kanit-Regular.ttf"),
-        os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "fonts", "Kanit-Medium.ttf"),
-        os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "fonts", "Kanit-SemiBold.ttf"),
-        os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "fonts", "Kanit-Bold.ttf"),
+    """ตั้ง font default + โหลด Kanit + NotoSansThai (fallback ภาษาไทย)"""
+    import os, sys
+    # ★ หา assets/fonts path — รองรับทั้ง dev + PyInstaller frozen
+    if getattr(sys, 'frozen', False):
+        exe_dir = os.path.dirname(sys.executable)
+        fonts_dir = os.path.join(exe_dir, "_internal", "assets", "fonts")
+        if not os.path.isdir(fonts_dir):
+            fonts_dir = os.path.join(exe_dir, "assets", "fonts")
+    else:
+        fonts_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "fonts")
+
+    # ★ โหลด Kanit (ถ้ามี) + NotoSansThai (fallback ภาษาไทย — ติดมากับโปรแกรมเสมอ)
+    font_files = [
+        "Kanit-Regular.ttf", "Kanit-Medium.ttf", "Kanit-SemiBold.ttf", "Kanit-Bold.ttf",
+        "NotoSansThai-Regular.ttf", "NotoSansThai-Medium.ttf", "NotoSansThai-Bold.ttf",
     ]
-    for p in font_paths:
+    for fname in font_files:
+        p = os.path.join(fonts_dir, fname)
         if os.path.exists(p):
             QFontDatabase.addApplicationFont(p)
-    # default font (★ เพิ่มจาก 10 → 11 ให้ตัวหนังสืออ่านง่ายขึ้น)
+
+    # ★ default font — Kanit ถ้ามี, ถ้าไม่มี Qt จะ fallback เป็น NotoSansThai อัตโนมัติ
     font = QFont("Kanit", 11)
     font.setStyleHint(QFont.SansSerif)
     app.setFont(font)
@@ -56,7 +65,7 @@ def setup_fonts(app: QApplication) -> None:
 QSS = """
 /* ═══ Global ═══ */
 * {
-    font-family: 'Kanit', 'Segoe UI', sans-serif;
+    font-family: 'Kanit', 'Noto Sans Thai', 'Segoe UI', sans-serif;
     color: __TEXT__;
     outline: none;
 }

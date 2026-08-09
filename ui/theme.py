@@ -44,8 +44,8 @@ def setup_fonts(app: QApplication) -> None:
     for p in font_paths:
         if os.path.exists(p):
             QFontDatabase.addApplicationFont(p)
-    # default font
-    font = QFont("Kanit", 10)
+    # default font (★ เพิ่มจาก 10 → 11 ให้ตัวหนังสืออ่านง่ายขึ้น)
+    font = QFont("Kanit", 11)
     font.setStyleHint(QFont.SansSerif)
     app.setFont(font)
 
@@ -63,15 +63,15 @@ QSS = """
 
 QWidget {
     background-color: __BG__;
-    font-size: 14px;
+    font-size: 16px;
 }
 
 /* ★ label — ไม่ตัดความสูง */
 QLabel {
     background-color: transparent;
     color: __TEXT__;
-    min-height: 18px;
-    font-size: 14px;
+    min-height: 20px;
+    font-size: 16px;
 }
 
 /* ═══ Windows ═══ */
@@ -115,8 +115,8 @@ QPushButton {
     padding: 8px 16px;
     color: __TEXT__;
     font-weight: 600;
-    font-size: 14px;
-    min-height: 20px;
+    font-size: 16px;
+    min-height: 22px;
 }
 QPushButton:hover {
     background-color: __CARD_HOVER__;
@@ -164,16 +164,80 @@ QPushButton#Success:hover {
     background-color: __SUCCESS_HOVER__;
 }
 
-/* Icon button (topbar — flat, no border) */
+/* Icon button (topbar/chat panel — flat, no border) */
 QPushButton#IconButton {
     background-color: transparent;
     border: none;
-    padding: 6px 10px;
+    padding: 2px 4px;
     font-size: 16px;
     border-radius: 6px;
 }
 QPushButton#IconButton:hover {
     background-color: __CARD_HI__;
+}
+
+/* ═══ SplitButton (QPushButton — topbar split button with dropdown) ═══ */
+/* flat pill design — main button + arrow button คู่กัน */
+QPushButton#SplitButtonMain {
+    background-color: rgba(255, 255, 255, 0.04);
+    border: none;
+    border-radius: 14px 0 0 14px;
+    padding: 4px 6px 4px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: __TEXT_DIM__;
+    min-height: 18px;
+}
+QPushButton#SplitButtonMain:hover {
+    background-color: rgba(255, 255, 255, 0.10);
+    color: __TEXT__;
+}
+QPushButton#SplitButtonMain:pressed {
+    background-color: rgba(255, 255, 255, 0.06);
+}
+/* arrow button (dropdown) */
+QPushButton#SplitButtonArrow {
+    background-color: rgba(255, 255, 255, 0.04);
+    border: none;
+    border-radius: 0 14px 14px 0;
+    padding: 4px 2px;
+    font-size: 11px;
+    color: __TEXT_DIM__;
+    min-height: 18px;
+}
+QPushButton#SplitButtonArrow:hover {
+    background-color: rgba(255, 255, 255, 0.10);
+    color: __TEXT__;
+}
+/* ★ state="on" — accent (ม่วง) ตอนเปิดใช้งาน */
+QPushButton#SplitButtonMain[state="on"],
+QPushButton#SplitButtonArrow[state="on"] {
+    background-color: __ACCENT__;
+    color: #ffffff;
+}
+QPushButton#SplitButtonMain[state="on"]:hover,
+QPushButton#SplitButtonArrow[state="on"]:hover {
+    background-color: __ACCENT_HOVER__;
+}
+/* ★ state="danger" — แดง */
+QPushButton#SplitButtonMain[state="danger"],
+QPushButton#SplitButtonArrow[state="danger"] {
+    background-color: __DANGER__;
+    color: #ffffff;
+}
+QPushButton#SplitButtonMain[state="danger"]:hover,
+QPushButton#SplitButtonArrow[state="danger"]:hover {
+    background-color: __DANGER_HOVER__;
+}
+/* ★ state="warning" — amber */
+QPushButton#SplitButtonMain[state="warning"],
+QPushButton#SplitButtonArrow[state="warning"] {
+    background-color: __HEADING__;
+    color: #ffffff;
+}
+QPushButton#SplitButtonMain[state="warning"]:hover,
+QPushButton#SplitButtonArrow[state="warning"]:hover {
+    background-color: #d97706;
 }
 
 /* ═══ Input ═══ */
@@ -257,7 +321,7 @@ QCheckBox::indicator:hover {
 QRadioButton {
     spacing: 8px;
     color: __TEXT__;
-    font-size: 14px;
+    font-size: 16px;
     padding: 4px;
 }
 QRadioButton::indicator {
@@ -342,7 +406,7 @@ QLabel {
 }
 QLabel#Heading {
     color: __HEADING__;
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 600;
 }
 QLabel#Dim {
@@ -350,11 +414,11 @@ QLabel#Dim {
 }
 QLabel#Faint {
     color: __TEXT_FAINT__;
-    font-size: 11px;
+    font-size: 13px;
 }
 QLabel#Section {
     color: __ACCENT_2__;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -367,7 +431,7 @@ QProgressBar {
     border-radius: 4px;
     height: 8px;
     text-align: center;
-    font-size: 10px;
+    font-size: 12px;
     color: __TEXT_DIM__;
 }
 QProgressBar::chunk {
@@ -393,7 +457,7 @@ QToolTip {
     border: 1px solid __BORDER__;
     border-radius: 4px;
     padding: 4px 8px;
-    font-size: 12px;
+    font-size: 14px;
 }
 
 /* ═══ Menu (context menu / dropdown) ═══ */

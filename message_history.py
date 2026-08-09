@@ -18,7 +18,8 @@ import os
 import threading
 from datetime import datetime, date
 
-CACHE_DIR = os.path.join(os.path.expanduser("~"), ".tts-for-livestream")
+from data_dir import get_data_dir
+CACHE_DIR = get_data_dir()
 HISTORY_FILE = os.path.join(CACHE_DIR, "message_history.json")
 
 
@@ -33,6 +34,8 @@ class MessageHistory:
         self.enabled = enabled
         # author_lower → [{timestamp, platform, text, is_banned, banned_original}]
         self._data: dict[str, list[dict]] = {}
+        # author_lower → total message count (ตลอดกาล — ไม่หายตอน cap)
+        self._total_counts: dict[str, int] = {}
         self._lock = threading.Lock()
         os.makedirs(CACHE_DIR, exist_ok=True)
         self._load()
@@ -52,9 +55,14 @@ class MessageHistory:
         text: str,
         is_banned: bool = False,
         banned_original: str = "",
+        emotes: str = "",
+        emote_urls: str = "",
     ) -> None:
         """บันทึกข้อความ 1 รายการ (เรียกจาก on_message ทุกครั้ง แม้แบน)
 
+        Args:
+            emotes: emote names (คั่นด้วย space) สำหรับแสดงใน log เมื่อ text ว่าง
+            emote_urls: emote image URLs (คั่นด้วย |) สำหรับแสดงภาพใน Modal
         thread-safe (เรียกจาก chat thread ได้)
         """
         if not self.enabled or not author:
@@ -65,13 +73,18 @@ class MessageHistory:
             "text": text or "",
             "is_banned": is_banned,
             "banned_original": banned_original or "",
+            "emotes": emotes or "",
+            "emote_urls": emote_urls or "",
         }
         key = author.lower()
         with self._lock:
-            self._data.setdefault(key, []).append(entry)
+            user_list = self._data.setdefault(key, [])
+            user_list.append(entry)
             # cap per author (กัน memory bloat — เก็บสูงสุด 500/คน)
-            if len(self._data[key]) > 500:
-                self._data[key] = self._data[key][-500:]
+            if len(user_list) > 500:
+                user_list[:] = user_list[-500:]
+            # ★ total_count — นับรวมตลอดกาล (ไม่หายตอน cap)
+            self._total_counts[key] = self._total_counts.get(key, 0) + 1
         self._save_async()
 
     # ------------------------------------------------------------------ #
@@ -82,10 +95,26 @@ class MessageHistory:
         with self._lock:
             return list(self._data.get(author.lower(), []))
 
-    def count(self, author: str) -> int:
-        """จำนวนข้อความทั้งหมดของ author"""
+    def get_messages_by_author(self, author: str, limit: int = 20, offset: int = 0) -> list[dict]:
+        """คืนข้อความของ author พร้อม pagination (เรียงใหม่→เก่า)
+
+        Args:
+            author: ชื่อ user
+            limit: จำนวนสูงสุดที่จะคืน (default 20)
+            offset: ข้ามรายการแรก N รายการ (สำหรับ load more)
+        Returns: list[dict] เรียงใหม่→เก่า
+        """
         with self._lock:
-            return len(self._data.get(author.lower(), []))
+            entries = list(self._data.get(author.lower(), []))
+        # เรียงใหม่→เก่า
+        entries.reverse()
+        # pagination
+        return entries[offset:offset + limit]
+
+    def count(self, author: str) -> int:
+        """จำนวนข้อความทั้งหมดของ author (ตลอดกาล — ไม่จำกัดที่ 500)"""
+        with self._lock:
+            return self._total_counts.get(author.lower(), len(self._data.get(author.lower(), [])))
 
     def all_authors(self) -> dict:
         """คืนทุก author + entries (for User Manager)
@@ -121,13 +150,28 @@ class MessageHistory:
         """โหลดจาก JSON — prune ถ้า retention='today'"""
         try:
             with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
+                raw = json.load(f)
         except Exception:  # noqa: BLE001
             return  # ไม่มีไฟล์/เสีย → เริ่มใหม่
-        if not isinstance(data, dict):
-            return
+
         with self._lock:
-            self._data = data
+            # ★ backward compat: เดิมเก็บแค่ data dict → ถ้ามี _total_counts ให้แยก
+            if isinstance(raw, dict) and "_total_counts" in raw:
+                self._data = raw.get("data", {})
+                self._total_counts = raw.get("_total_counts", {})
+            elif isinstance(raw, dict):
+                # เดิม — สร้าง total_counts จากจำนวน entries ปัจจุบัน
+                self._data = raw
+                self._total_counts = {k: len(v) for k, v in raw.items()}
+            else:
+                return
+
+        # ★ migration: ถ้า total_counts น้อยกว่า entries (ข้อมูลเก่า) → sync
+        with self._lock:
+            for author, entries in self._data.items():
+                if self._total_counts.get(author, 0) < len(entries):
+                    self._total_counts[author] = len(entries)
+
         if self.retention == "today":
             self._prune_today()
 
@@ -142,15 +186,21 @@ class MessageHistory:
                 ]
                 if not self._data[author]:
                     del self._data[author]
+        # ★ reset total_counts ในโหมด today (นับใหม่เฉพาะวันนี้)
+        with self._lock:
+            self._total_counts = {k: len(v) for k, v in self._data.items()}
         self._save()
 
     def _save(self) -> None:
-        """บันทึกลง JSON (sync)"""
+        """บันทึกลง JSON (sync) — เก็บ data + total_counts"""
         try:
             with self._lock:
-                data_copy = {k: list(v) for k, v in self._data.items()}
+                save_obj = {
+                    "data": {k: list(v) for k, v in self._data.items()},
+                    "_total_counts": dict(self._total_counts),
+                }
             with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-                json.dump(data_copy, f, ensure_ascii=False)
+                json.dump(save_obj, f, ensure_ascii=False)
         except Exception:  # noqa: BLE001
             pass
 

@@ -379,23 +379,23 @@ class GameOverlay:
                 pass
 
     def _sync_demo_state_to_dialog(self, running: bool) -> None:
-        """sync สถานะ demo loop กลับไป Setting dialog (ถ้าเปิดอยู่)"""
+        """sync สถานะ demo loop กลับไป Game Overlay Settings dialog (ถ้าเปิดอยู่)
+
+        PySide6: dialog ใช้ _refresh_demo_btn_state() ของตัวเอง → no-op here
+        (kept for compatibility — game_overlay.py ถูกเรียกจาก toggle_demo)
+        """
         try:
+            # ★ PySide6 dialog มี _refresh_demo_btn_state → เรียกผ่าน QTimer
             dlg = getattr(self.parent_app, "_go_settings_dlg", None)
-            # DEBUG log — ตรงจุด
-            if dlg is not None and dlg.winfo_exists():
+            if dlg is not None:
+                # อัปเดต state tracking
                 dlg._demo_running = running
-                if running:
-                    dlg._demo_btn.configure(
-                        text="⏸ ปิด Loop Demo",
-                        fg_color="#ef4444", hover_color="#dc2626",
-                    )
-                else:
-                    from app_gui import COLOR_SUCCESS, COLOR_SUCCESS_HOVER
-                    dlg._demo_btn.configure(
-                        text="▶ เปิด Loop Demo",
-                        fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER,
-                    )
+                # ใช้ QTimer.singleShot เพื่อเรียก refresh ใน main thread
+                try:
+                    from PySide6.QtCore import QTimer
+                    QTimer.singleShot(0, dlg._refresh_demo_btn_state)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -411,18 +411,40 @@ class GameOverlay:
         self._send_cmd_json({"cmd": "demo_state", "running": running})
 
     def _send_cmd_json(self, msg: dict) -> None:
-        """ส่ง command ไป subprocess ผ่าน file-based queue"""
+        """ส่ง command ไป subprocess ผ่าน file-based queue (atomic write กัน race)"""
         import tempfile
         queue_file = os.path.join(tempfile.gettempdir(), "game_overlay_cmd_queue.json")
         debug_path = os.path.join(get_base_dir(), "go_parent_debug.log")
         try:
+            # ★ read existing — tolerant ต่อ empty/corrupt file (race กับ Qt poller)
             existing = []
             if os.path.exists(queue_file):
-                with open(queue_file, "r", encoding="utf-8") as f:
-                    existing = json.load(f)
+                try:
+                    with open(queue_file, "r", encoding="utf-8") as f:
+                        content = f.read().strip()
+                    if content:
+                        existing = json.loads(content)
+                        if not isinstance(existing, list):
+                            existing = []
+                except (json.JSONDecodeError, ValueError):
+                    # corrupt file → เริ่มใหม่
+                    existing = []
             existing.append(msg)
-            with open(queue_file, "w", encoding="utf-8") as f:
-                json.dump(existing, f)
+            # ★ atomic write: เขียน temp แล้ว rename กัน partial read
+            tmp_fd, tmp_path = tempfile.mkstemp(
+                dir=tempfile.gettempdir(), suffix=".json", prefix="go_cmd_",
+            )
+            try:
+                with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                    json.dump(existing, f)
+                # os.replace = atomic on Windows (Python 3.3+)
+                os.replace(tmp_path, queue_file)
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
+                raise
             with open(debug_path, "a", encoding="utf-8") as f:
                 f.write(f"_send_cmd_json OK: {msg.get('cmd')} → queue={len(existing)}\n")
         except Exception as exc:
@@ -757,6 +779,7 @@ class MoreOverlay:
         self._send_cmd_json({"cmd": cmd})
 
     def _send_cmd_json(self, msg: dict) -> None:
+        """ส่ง command ไป subprocess ผ่าน file-based queue (atomic write กัน race)"""
         import tempfile
         queue_file = os.path.join(
             tempfile.gettempdir(), f"game_overlay_cmd_queue_{self.overlay_id}.json"
@@ -764,11 +787,30 @@ class MoreOverlay:
         try:
             existing = []
             if os.path.exists(queue_file):
-                with open(queue_file, "r", encoding="utf-8") as f:
-                    existing = json.load(f)
+                try:
+                    with open(queue_file, "r", encoding="utf-8") as f:
+                        content = f.read().strip()
+                    if content:
+                        existing = json.loads(content)
+                        if not isinstance(existing, list):
+                            existing = []
+                except (json.JSONDecodeError, ValueError):
+                    existing = []
             existing.append(msg)
-            with open(queue_file, "w", encoding="utf-8") as f:
-                json.dump(existing, f)
+            # ★ atomic write: temp + replace (กัน race กับ Qt poller)
+            tmp_fd, tmp_path = tempfile.mkstemp(
+                dir=tempfile.gettempdir(), suffix=".json", prefix="mo_cmd_",
+            )
+            try:
+                with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                    json.dump(existing, f)
+                os.replace(tmp_path, queue_file)
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
+                raise
         except Exception:
             pass
 
@@ -982,17 +1024,35 @@ class ViewerOverlay:
                 pass
 
     def _send_cmd_json(self, msg: dict) -> None:
-        """ส่ง command ไป subprocess ผ่าน file-based queue (id-suffixed)"""
+        """ส่ง command ไป subprocess ผ่าน file-based queue (atomic write กัน race)"""
         import tempfile
         queue_file = os.path.join(tempfile.gettempdir(), "game_overlay_cmd_queue_viewer0.json")
         try:
             existing = []
             if os.path.exists(queue_file):
-                with open(queue_file, "r", encoding="utf-8") as f:
-                    existing = json.load(f)
+                try:
+                    with open(queue_file, "r", encoding="utf-8") as f:
+                        content = f.read().strip()
+                    if content:
+                        existing = json.loads(content)
+                        if not isinstance(existing, list):
+                            existing = []
+                except (json.JSONDecodeError, ValueError):
+                    existing = []
             existing.append(msg)
-            with open(queue_file, "w", encoding="utf-8") as f:
-                json.dump(existing, f)
+            tmp_fd, tmp_path = tempfile.mkstemp(
+                dir=tempfile.gettempdir(), suffix=".json", prefix="vo_cmd_",
+            )
+            try:
+                with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                    json.dump(existing, f)
+                os.replace(tmp_path, queue_file)
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
+                raise
         except Exception:
             pass
 

@@ -31,7 +31,7 @@ class ViewerProfileDialog(QDialog):
         hlayout = QHBoxLayout(header)
         hlayout.setContentsMargins(16, 0, 16, 0)
         title = QLabel(f"👤 {self.author}")
-        title.setStyleSheet("font-size: 16px; font-weight: 700; color: #f59e0b;")
+        title.setStyleSheet("font-size: 18px; font-weight: 700; color: #f59e0b;")
         hlayout.addWidget(title)
         hlayout.addStretch()
         count = QLabel(f"{len(self.messages)} ข้อความ")

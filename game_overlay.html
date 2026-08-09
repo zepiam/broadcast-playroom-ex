@@ -139,25 +139,35 @@ html, body {
 
 /* ═══ Balloon mode — chat balloon สีขาว สุ่มตำแหน่ง ลอยขึ้น ═══
    โหมดนี้: ไม่ใช้ flex stack, แต่ใช้ absolute positioning สุ่ม
-   พื้นหลังเป็นกล่องคำพูดสีขาว มีหางเล็กๆ ด้านล่าง */
+   พื้นหลังเป็นกล่องคำพูดสีขาว มีหางเล็กๆ ด้านล่าง
+   ★ ทับทุก theme CSS variables — balloon มี style เป็นของตัวเองเสมอ */
 #chat.mode-balloon {
   position: relative;
   display: block;        /* ไม่ใช้ flex */
+  /* ★ reset ทุก theme variable ที่อาจค้างจาก theme เดิม */
+  --box-bg: transparent !important;
+  --box-border: none !important;
+  --box-shadow: none !important;
+  --box-glow: transparent !important;
+  --box-blur: 0 !important;
+  --box-radius: 18px !important;
+  --text-shadow: none !important;
+  --text-stroke: 0 transparent !important;
 }
 #chat.mode-balloon .msg {
   position: absolute;
-  background: rgba(255,255,255, var(--balloon-bg-opacity));
-  color: var(--text-color, #1a1a2e);  /* ใช้ text_color ที่ผู้ใช้ตั้ง */
-  border-radius: 18px;
-  padding: 10px 16px;
+  background: rgba(255,255,255, var(--balloon-bg-opacity)) !important;
+  color: #1a1a2e !important;  /* balloon = ข้อความเข้มบนพื้นขาวเสมอ */
+  border-radius: 18px !important;
+  padding: 10px 16px !important;
   max-width: 320px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-  border: none;          /* ทับ box-border */
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25) !important;
+  border: none !important;
   animation-name: a-balloon-float;
   animation-duration: 0.6s;
   animation-fill-mode: both;
-  -webkit-text-stroke: 0 transparent !important;   /* ทับ text-stroke */
-  text-shadow: none !important;                     /* ทับ text-shadow */
+  -webkit-text-stroke: 0 transparent !important;
+  text-shadow: none !important;
 }
 /* หางบอลลูน (เครื่องหมายพูด) ด้านล่างซ้าย */
 #chat.mode-balloon .msg::after {
@@ -400,7 +410,10 @@ html, body {
 @keyframes e-shrink { to { opacity: 0; transform: scale(0.3); } }
 @keyframes e-blur_out { to { opacity: 0; filter: blur(8px); } }
 @keyframes e-dissolve { to { opacity: 0; transform: scale(1.1); filter: blur(4px); } }
-.msg.exiting { animation-duration: 0.4s !important; animation-fill-mode: forwards; max-height: 200px; overflow: hidden; }
+.msg.exiting { animation-duration: 0.4s !important; animation-fill-mode: forwards; max-height: 200px; overflow: hidden; pointer-events: none; }
+/* ★ fallback: ถ้า animationend ไม่ยิง → ซ่อนหลัง 0.45s (กันภาพค้าง) */
+.msg.exiting { animation-delay: 0s; }
+@keyframes e-fallback-hide { 0% { opacity: 1; } 90% { opacity: 0.01; } 100% { opacity: 0; visibility: hidden; } }
 .exit-fade_out { animation-name: e-fade_out !important; }
 .exit-slide_right { animation-name: e-slide_right !important; }
 .exit-slide_down { animation-name: e-slide_down !important; }
@@ -530,11 +543,13 @@ async function loadConfig() {
 
 function applyConfig(c) {
   console.log('[overlay] applyConfig: theme=', c.theme, 'theme_css len=', (c.theme_css || '').length);
-  // เก็บค่าเก่าก่อน override เพื่อตรวจการเปลี่ยนแปลง (auto-hide retroactive + glow retroactive)
+  // เก็บค่าเก่าก่อน override เพื่อตรวจการเปลี่ยนแปลง (auto-hide retroactive + glow retroactive + mode switch clear)
   const oldAutoHide = config.auto_hide;
   const oldHideAfter = config.hide_after;
   const oldBalloonHideAfter = config.balloon_hide_after;
   const oldGlow = config.box_glow;
+  const oldCharacterMode = config.character_mode;
+  const oldBalloonMode = config.balloon_mode;
   config = Object.assign(config, c);
   // ── apply theme + custom CSS ทันที ──
   // สำคัญ: ใช้ remove + re-create style element (บังคับ browser re-evaluate CSS)
@@ -546,6 +561,20 @@ function applyConfig(c) {
     t.textContent = config.theme_css;
     document.head.appendChild(t);
     console.log('[overlay] re-created theme-css, len=', config.theme_css.length);
+    // ★ เมื่อ theme=default (theme_css ว่าง) → reset CSS variables ที่ theme เดิมตั้งไว้
+    //    ไม่งั้น browser จำค่าเก่าไว้ (เช่น --box-bg, --text-shadow จาก neon/glass)
+    if (!config.theme_css || config.theme_css.trim() === '') {
+      const r = document.documentElement.style;
+      r.removeProperty('--box-bg');
+      r.removeProperty('--box-border');
+      r.removeProperty('--box-shadow');
+      r.removeProperty('--box-glow');
+      r.removeProperty('--box-blur');
+      r.removeProperty('--box-radius');
+      r.removeProperty('--text-shadow');
+      r.removeProperty('--text-color');
+      console.log('[overlay] reset CSS variables (theme=default)');
+    }
   }
   if (config.custom_css !== undefined) {
     const oldU = document.getElementById('user-css');
@@ -597,11 +626,23 @@ function applyConfig(c) {
   // font family (dynamic Google Font load)
   loadFont(config.font_family);
   document.body.style.fontFamily = `"${config.font_family}","Leelawadee UI","Segoe UI",Tahoma,sans-serif`;
+  // ★ อัปเดต CSS variable ด้วย — messages ใหม่ใช้ var(--font-family)
+  root.setProperty('--font-family', `"${config.font_family}","Leelawadee UI","Segoe UI",Tahoma,sans-serif`);
   // direction
   chatEl.classList.toggle('direction-top', config.direction === 'top');
   // balloon mode toggle
   chatEl.classList.toggle('mode-balloon', config.balloon_mode === true);
   chatEl.classList.toggle('mode-character', config.character_mode === true);
+  // ★ เคลียร์ตัวละคร/balloon ทันทีเมื่อสลับออกจาก mode นั้น (กันค้างบนจอจนกว่าจะหมดเวลา)
+  if (oldCharacterMode && !config.character_mode) {
+    // ออกจาก character mode → ลบตัวละครทั้งหมดทันที
+    charSlots.slice().forEach(s => removeCharSlot(s));
+  }
+  if (oldBalloonMode && !config.balloon_mode) {
+    // ออกจาก balloon mode → ลบ balloon messages ทั้งหมดทันที + clear slot tracking
+    balloonSlots = [];
+    chatEl.querySelectorAll('.msg:not(.exiting)').forEach(el => removeMessage(el));
+  }
   root.setProperty('--char-size', (config.character_size || 120) + 'px');
   // character name style
   root.setProperty('--char-name-size', (config.character_name_size || 11) + 'px');
@@ -654,7 +695,8 @@ function clearAllAutoHide() {
 }
 
 function loadFont(family) {
-  if (family === loadedFont) return;
+  // ★ เสมอ reload — กันปัญหา font เดิมค้างเมื่อสลับไปกลับระหว่าง fonts
+  if (!family) return;
   loadedFont = family;
   // remove old
   document.querySelectorAll('link[data-gfont]').forEach(l => l.remove());
@@ -1126,8 +1168,8 @@ function removeMessage(el) {
   if (!el || !el.parentNode || el.classList.contains('exiting')) return;
   el.classList.add('exiting', 'exit-' + (config.exit_animation || 'fade_out'));
   el.addEventListener('animationend', () => el.remove(), { once: true });
-  // safety: remove after 1s ถ้า animationend ไม่ยิง
-  setTimeout(() => { if (el.parentNode) el.remove(); }, 1000);
+  // safety: remove after 500ms ถ้า animationend ไม่ยิง (ลดจาก 1s กันภาพค้างนาน)
+  setTimeout(() => { if (el.parentNode) el.remove(); }, 500);
 }
 
 function platformColor(p) {

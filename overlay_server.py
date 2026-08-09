@@ -487,12 +487,19 @@ class OverlayServer:
         """อัปเดต config (หลัง settings เปลี่ยน) + push config ใหม่ไป clients
 
         ใช้สำหรับเปลี่ยน font_size/emote_size/animation แบบสดโดยไม่ restart server
+        ★ ถ้า theme เปลี่ยน → force reload (กัน CSS variables ค้างจาก theme เดิม)
         """
         self.settings = settings
         if not self._started or not self._clients or self._loop is None:
             return
         config = self._build_config()
         try:
+            # ★ ถ้า theme=default → force reload (กัน CSS variables จาก theme เดิมค้าง)
+            if config.get("theme", "default") == "default":
+                asyncio.run_coroutine_threadsafe(
+                    self._broadcast({"type": "eval_js", "js": "location.reload()"}), self._loop
+                )
+                return
             asyncio.run_coroutine_threadsafe(
                 self._broadcast({"type": "config", "config": config}), self._loop
             )
@@ -589,14 +596,14 @@ class OverlayServer:
             # layout: inline (บรรทัดเดียว) | stacked (สองบรรทัด)
             "layout": getattr(s, "overlay_layout", "inline"),
             # กล่องข้อความ
-            "box_enabled": getattr(s, "overlay_box_enabled", True),
-            "box_bg_color": getattr(s, "overlay_box_bg_color", "#0a0e1a"),
+            "box_enabled": getattr(s, "overlay_box_enabled", False),
+            "box_bg_color": getattr(s, "overlay_bg_color", "#0a0e1a"),
             "box_bg_opacity": getattr(s, "overlay_box_bg_opacity", 0.55),
             "box_radius": getattr(s, "overlay_box_radius", 8),
             "box_border": getattr(s, "overlay_box_border", False),
             "box_border_color": getattr(s, "overlay_box_border_color", "#7c3aed"),
             "box_border_width": getattr(s, "overlay_box_border_width", 1),
-            "box_shadow": getattr(s, "overlay_box_shadow", True),
+            "box_shadow": getattr(s, "overlay_box_shadow", False),
             "box_blur": float(getattr(s, "overlay_box_blur", 0) or 0),
             # balloon mode → ปิด glow animation เสมอ (กันบัค)
             "box_glow": False if getattr(s, "overlay_balloon_mode", False) else getattr(s, "overlay_box_glow", False),

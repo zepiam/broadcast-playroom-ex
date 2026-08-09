@@ -626,18 +626,42 @@ def main():
             view_opacity_effect.setOpacity(max(0.0, min(1.0, alpha_val)))
 
     def cmd_poller():
-        """poll command จาก file-based queue ทุก 200ms → ส่งไป Qt main thread"""
+        """poll command จาก file-based queue ทุก 200ms → ส่งไป Qt main thread
+
+        ★ tolerant ต่อ empty/corrupt file (race กับ parent process)
+        ★ clear file แบบ atomic (temp + replace)
+        """
         import tempfile, os as _os
         suffix = f"_{_OVERLAY_ID}" if _OVERLAY_ID else ""
         queue_file = _os.path.join(tempfile.gettempdir(), f"game_overlay_cmd_queue{suffix}.json")
         while True:
             try:
                 if _os.path.exists(queue_file):
-                    with open(queue_file, "r", encoding="utf-8") as f:
-                        cmds = json.load(f)
-                    # clear file
-                    with open(queue_file, "w", encoding="utf-8") as f:
-                        json.dump([], f)
+                    # ★ read + tolerant parse (ไฟล์อาจว่าง/กึ่งเขียน)
+                    cmds = []
+                    try:
+                        with open(queue_file, "r", encoding="utf-8") as f:
+                            content = f.read().strip()
+                        if content:
+                            cmds = json.loads(content)
+                            if not isinstance(cmds, list):
+                                cmds = []
+                    except (json.JSONDecodeError, ValueError):
+                        cmds = []
+                    # ★ clear file แบบ atomic (temp + replace กัน partial write)
+                    if cmds:
+                        tmp_fd, tmp_path = tempfile.mkstemp(
+                            dir=tempfile.gettempdir(), suffix=".json", prefix="go_clr_",
+                        )
+                        try:
+                            with _os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                                json.dump([], f)
+                            _os.replace(tmp_path, queue_file)
+                        except Exception:
+                            try:
+                                _os.unlink(tmp_path)
+                            except Exception:
+                                pass
                     if cmds:
                         try:
                             with open("game_overlay_qt.log", "a", encoding="utf-8") as f:

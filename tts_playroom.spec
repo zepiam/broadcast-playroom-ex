@@ -1,19 +1,22 @@
 # -*- mode: python ; coding: utf-8 -*-
 # ════════════════════════════════════════════════════════════════════
-# tts_lite.spec — PyInstaller spec สำหรับ Broadcast Playroom v2 (Lite)
-# ฟีเจอร์ครบทุกอย่าง + Edge-TTS (ไม่มี OmniVoice/RVC)
+# tts_playroom.spec — Broadcast Playroom (base + plugin system)
+#
+# exe ตัวเดียว (~1GB) — Edge-TTS + ฟีเจอร์ครบ
+# torch/omnivoice/rvc แยกใน site-packages/ ข้าง exe (ไม่ bundle)
+# → build เร็ว (~2 นาที)
+# → อัปเดต exe ไม่ต้อง rebuild torch 7GB
 # ════════════════════════════════════════════════════════════════════
 import os
 import sys
 
 block_cipher = None
 
-from PyInstaller.utils.hooks import collect_submodules, collect_data_files, collect_dynamic_libs
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 _requests_subs = collect_submodules('requests')
 _urllib3_subs = collect_submodules('urllib3')
 
-# ── ไฟล์ data ที่ต้อง bundle ──
 def _data(src, dst):
     return [(src, dst)] if os.path.exists(src) else []
 
@@ -38,20 +41,23 @@ for _clip in ['bad.mp4', 'good.mp4', 'normal.mp4']:
 pyside_datas = collect_data_files('PySide6')
 datas += pyside_datas
 
-# ── exclude RVC + OmniVoice stack (Lite) ──
+# ── exclude ทุกอย่างที่อยู่ใน site-packages/ (plugin) ──
 excludes = [
-    'torch', 'torchaudio', 'torchvision', 'fairseq', 'rvc_python',
-    'torchcrepe', 'praatparselmouth', 'parselmouth', 'pyworld',
-    'omegaconf', 'hydra', 'faiss', 'av', 'tensorrt', 'onnx', 'onnxruntime',
-    'matplotlib', 'scipy', 'pandas', 'notebook', 'jupyter', 'IPython',
-    'pytest', 'sphinx', 'tornado', 'zmq',
+    'torch', 'torchaudio', 'torchvision', 'torchgen', 'torio',
+    'fairseq', 'rvc_python', 'torchcrepe', 'praatparselmouth', 'parselmouth',
+    'pyworld', 'omegaconf', 'hydra', 'faiss', 'av',
+    'scipy', 'pandas', 'notebook', 'jupyter', 'IPython', 'numpy',
+    'pytest', 'sphinx', 'tornado', 'zmq', 'tensorrt', 'onnx', 'onnxruntime',
+    'matplotlib',
     'customtkinter', 'tkinter', 'darkdetect',
     'omnivoice', 'transformers', 'accelerate', 'datasets',
     'safetensors', 'tokenizers', 'huggingface_hub',
     'cached_path', 'vocos', 'ema_pytorch', 'torchdiffeq',
     'bitsandbytes', 'wandb', 'gradio',
-    # engine modules — ไม่ bundle (Lite ไม่ใช้)
     'omnivoice_engine', 'rvc_engine',
+    'sympy', 'mpmath', 'networkx', 'filelock', 'fsspec', 'jinja2',
+    'regex', 'tqdm', 'pyyaml', 'packaging', 'PIL', 'pillow',
+    'librosa', 'typer', 'tensorboardx', 'webdataset',
 ]
 
 a = Analysis(
@@ -61,21 +67,41 @@ a = Analysis(
     datas=datas,
     hiddenimports=[
         'edge_tts', 'aiohttp', 'aiohttp.web',
+        'pygame', 'pygame.mixer',
         'PySide6', 'PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets',
         'PySide6.QtWebEngineWidgets', 'PySide6.QtWebEngineCore',
         'PySide6.QtWebChannel', 'PySide6.QtNetwork', 'shiboken6',
-        'pedalboard', 'numpy', 'soundfile', '_sounddevice',
+        'soundfile', '_sounddevice', 'pedalboard',
+        # ★ stdlib modules ที่ torch ต้องการ (PyInstaller อาจไม่ bundle เพราะ torch ถูก exclude)
+        'timeit', 'pickletools', 'shutil', 'tarfile', 'zipfile', 'gzip',
+        'multiprocessing', 'multiprocessing.dummy',
+        'pydoc', 'pydoc_data', 'difflib', 'tokenize', 'tabnanny',
+        'unittest', 'unittest.mock',
+        '_sitebuiltins',
+        'importlib.metadata', 'importlib.resources',
+        # ★ stdlib เพิ่มเติมที่ torch/transformers ต้องการ
+        'filecmp', 'tempfile', 'subprocess', 'platform', 'locale',
+        'string', 'textwrap', 'keyword', 'token', 'struct',
+        'ctypes', 'ctypes.wintypes', 'ctypes.util',
+        'concurrent', 'concurrent.futures',
+        'asyncio', 'selectors', 'ssl', 'hashlib',
+        'sqlite3', 'csv', 'configparser', 'tomllib',
+        'json', 'json.decoder', 'json.encoder',
         'TikTokLive', 'TikTokLive.client', 'TikTokLive.client.client',
         'TikTokLive.client.web', 'TikTokLive.events', 'TikTokLive.proto',
         'TikTokLive.proto.custom_proto', 'betterproto2', 'betterproto2.cased',
         'websockets', 'websocket', '_websocket',
         'requests', 'urllib3', 'certifi',
         'ui', 'ui.theme', 'ui.widgets', 'ui.dialogs',
-        'engine_plugin_loader',
+        'deep_translator', 'translator', 'flag_utils',
+        'game_overlay_themes', 'third_party_emotes', 'twemoji_icon',
+        'updater', 'splash',
+        'now_playing', 'winsdk',
+        'obsws_python', 'obs_refresh',
     ] + _requests_subs + _urllib3_subs,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=['rthook_site_packages.py'],
     excludes=excludes,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -90,13 +116,13 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='Broadcast Playroom Lite',
+    name='Broadcast Playroom',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     console=False,
-    icon='assets/icon_lite.ico' if os.path.exists('assets/icon_lite.ico') else None,
+    icon='assets/icon_full.ico' if os.path.exists('assets/icon_full.ico') else None,
 )
 
 coll = COLLECT(
@@ -107,5 +133,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='Broadcast Playroom Lite',
+    name='Broadcast_Playroom_tmp',
 )

@@ -24,7 +24,8 @@ import os
 import threading
 from datetime import datetime
 
-CACHE_DIR = os.path.join(os.path.expanduser("~"), ".tts-for-livestream")
+from data_dir import get_data_dir
+CACHE_DIR = get_data_dir()
 DONATE_FILE = os.path.join(CACHE_DIR, "donate_tracker.json")
 
 # ประเภท donation แยกตามแพลตฟอร์ม

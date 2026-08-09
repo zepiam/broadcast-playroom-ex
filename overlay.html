@@ -562,6 +562,19 @@ function applyConfig(c) {
     t.id = 'theme-css';
     t.textContent = config.theme_css;
     document.head.appendChild(t);
+    // ★ เมื่อ theme=default (theme_css ว่าง) → reset CSS variables ที่ theme เดิมตั้งไว้
+    //    ไม่งั้น browser จำค่าเก่าไว้ (เช่น --box-bg, --text-shadow จาก neon/glass)
+    if (!config.theme_css || config.theme_css.trim() === '') {
+      const r = document.documentElement.style;
+      r.removeProperty('--box-bg');
+      r.removeProperty('--box-border');
+      r.removeProperty('--box-shadow');
+      r.removeProperty('--box-glow');
+      r.removeProperty('--box-blur');
+      r.removeProperty('--box-radius');
+      r.removeProperty('--text-shadow');
+      r.removeProperty('--text-color');
+    }
   }
   if (config.custom_css !== undefined) {
     const oldU = document.getElementById('user-css');
@@ -1290,8 +1303,8 @@ function removeMessage(el) {
   if (!el || !el.parentNode || el.classList.contains('exiting')) return;
   el.classList.add('exiting', 'exit-' + (config.exit_animation || 'fade_out'));
   el.addEventListener('animationend', () => el.remove(), { once: true });
-  // safety: remove after 1s ถ้า animationend ไม่ยิง
-  setTimeout(() => { if (el.parentNode) el.remove(); }, 1000);
+  // safety: remove after 500ms ถ้า animationend ไม่ยิง (ลดจาก 1s กันภาพค้างนาน)
+  setTimeout(() => { if (el.parentNode) el.remove(); }, 500);
 }
 
 function platformColor(p) {

@@ -2,7 +2,7 @@
 
 โปรแกรม TTS สำหรับอ่านแชทสดจาก Twitch / YouTube / MyLive / TikTok / KICK ด้วย edge-tts และ RVC voice conversion
 
-> ⚠️ **v2.0.0-dev** — เวอร์ชันพัฒนา (PySide6 migration)
+> ⚠️ **v2.0.0** — เวอร์ชันพัฒนา (PySide6 migration)
 > UI framework เปลี่ยนจาก customtkinter → PySide6 (Qt for Python)
 > Logic เดิมทั้งหมด (TTS/RVC/chat/translation/overlay) ใช้ได้เหมือนเดิม
 

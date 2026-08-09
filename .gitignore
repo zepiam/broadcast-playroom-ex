@@ -1,0 +1,23 @@
+# Data (user data — portable)
+data/
+dist/
+build/
+__pycache__/
+*.pyc
+*.egg-info/
+rvc_models/
+*.pth
+*.index
+
+# OS
+Thumbs.db
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Large files
+*.whl
+site-packages/

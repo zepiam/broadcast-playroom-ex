@@ -36,7 +36,7 @@ class PopoutWindow(QDialog):
         hlayout.addWidget(title)
         hlayout.addStretch()
         self.viewers_label = QLabel("👥 0")
-        self.viewers_label.setStyleSheet("color: #9ca3af; font-size: 12px;")
+        self.viewers_label.setStyleSheet("color: #9ca3af; font-size: 14px;")
         hlayout.addWidget(self.viewers_label)
         btn_close = QPushButton("✕")
         btn_close.setObjectName("IconButton")
@@ -67,6 +67,16 @@ class PopoutWindow(QDialog):
         if len(self._rows) > 60:
             old = self._rows.pop(0)
             old.deleteLater()
+        # ★ re-apply zebra (เหมือน chat_panel — index เปลี่ยนเพราะมี row ใหม่ด้านบน)
+        self._apply_zebra()
+
+    def _apply_zebra(self):
+        """re-apply zebra stripes ตาม settings (เหมือน chat_panel)"""
+        try:
+            from ui.widgets.chat_row import apply_zebra_backgrounds
+            apply_zebra_backgrounds(self._rows)
+        except Exception:
+            pass
 
     def clear_messages(self):
         for row in self._rows:

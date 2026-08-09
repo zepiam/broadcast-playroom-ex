@@ -1,8 +1,190 @@
+_send_cmd_json OK: test1 → queue=1
+_send_cmd_json OK: test2 → queue=1
+_send_cmd_json OK: test3 → queue=2
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
 _send_cmd: quit
-_send_cmd_json ERROR: Expecting value: line 1 column 1 (char 0)
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
 _send_cmd: quit
-_send_cmd_json ERROR: Expecting value: line 1 column 1 (char 0)
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: edit_toggle
+_send_cmd_json OK: edit_toggle → queue=1
+_send_cmd: edit_toggle
+_send_cmd_json OK: edit_toggle → queue=1
+_send_cmd_json OK: demo_state → queue=1
 _send_cmd: quit
-_send_cmd_json ERROR: Expecting value: line 1 column 1 (char 0)
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
 _send_cmd: quit
-_send_cmd_json ERROR: Expecting value: line 1 column 1 (char 0)
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: edit_toggle
+_send_cmd_json OK: edit_toggle → queue=1
+_send_cmd: edit_toggle
+_send_cmd_json OK: edit_toggle → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: edit_toggle
+_send_cmd_json OK: edit_toggle → queue=1
+_send_cmd: edit_toggle
+_send_cmd_json OK: edit_toggle → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd: edit_toggle
+_send_cmd_json OK: edit_toggle → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd_json OK: demo_state → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd: edit_toggle
+_send_cmd_json OK: edit_toggle → queue=1
+_send_cmd: edit_toggle
+_send_cmd_json OK: edit_toggle → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1
+_send_cmd: quit
+_send_cmd_json OK: quit → queue=1

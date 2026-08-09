@@ -30,6 +30,47 @@ class NGReplaceDialog(QDialog):
         self.setMinimumSize(600, 400)
         self._build_ui()
         self._load_words()
+        # ★ snapshot ข้อมูลตอนเปิด (เพื่อเทียบตอนปิด — เตือนถ้ามีการแก้ไข)
+        self._original_data = self._collect_current_data()
+
+    def _collect_current_data(self):
+        """อ่านข้อมูลทั้งหมดจาก table → dict {src: {display, read}}"""
+        words = {}
+        for row in range(self.table.rowCount()):
+            src = display = read = ''
+            w0 = self.table.cellWidget(row, 0)
+            w1 = self.table.cellWidget(row, 1)
+            w2 = self.table.cellWidget(row, 2)
+            if w0 and hasattr(w0, '_edit'):
+                src = w0._edit.text().strip()
+            if w1 and hasattr(w1, '_edit'):
+                display = w1._edit.text().strip()
+            if w2 and hasattr(w2, '_edit'):
+                read = w2._edit.text().strip()
+            if src:
+                words[src] = {'display': display, 'read': read}
+        return words
+
+    def closeEvent(self, event):
+        """★ ตอนปิด — เตือนถ้ามีการเพิ่ม/แก้ไขคำศัพท์"""
+        current = self._collect_current_data()
+        if current != self._original_data:
+            from PySide6.QtWidgets import QMessageBox
+            reply = QMessageBox.question(
+                self, "บันทึกการเปลี่ยนแปลง",
+                "คุณได้เพิ่มหรือแก้ไขคำศัพท์\nต้องการบันทึกหรือไม่?",
+                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+                QMessageBox.Yes,
+            )
+            if reply == QMessageBox.Yes:
+                self._save()  # save + accept (ปิด)
+                event.accept()
+            elif reply == QMessageBox.No:
+                event.accept()  # ปิดโดยไม่บันทึก
+            else:
+                event.ignore()  # ยกเลิกการปิด
+        else:
+            event.accept()  # ไม่มีการเปลี่ยนแปลง → ปิดได้เลย
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
@@ -43,7 +84,7 @@ class NGReplaceDialog(QDialog):
         hlayout = QHBoxLayout(header)
         hlayout.setContentsMargins(16, 0, 16, 0)
         title = QLabel("🚫 NG-Replace — คำต้องห้าม + คำแทนที่")
-        title.setStyleSheet("font-size: 15px; font-weight: 700; color: #f59e0b;")
+        title.setStyleSheet("font-size: 17px; font-weight: 700; color: #f59e0b;")
         hlayout.addWidget(title)
         hlayout.addStretch()
         # ★ ปุ่มโหลดจากคลัง
@@ -57,12 +98,29 @@ class NGReplaceDialog(QDialog):
         hlayout.addWidget(btn_add)
         layout.addWidget(header)
 
-        # ★ Table (3 columns: source+🔊 / display / read+🔊)
-        self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["คำเดิม", "คำที่แสดง", "คำที่อ่าน TTS"])
+        # ★ Search box (ค้นหาใน คำเดิม + คำที่อ่าน)
+        search_row = QHBoxLayout()
+        search_row.setContentsMargins(16, 8, 16, 4)
+        search_row.setSpacing(8)
+        search_lbl = QLabel("🔍")
+        search_lbl.setStyleSheet("color: #9ca3af; font-size: 16px;")
+        search_row.addWidget(search_lbl)
+        self.search_entry = QLineEdit()
+        self.search_entry.setPlaceholderText("ค้นหาคำศัพท์ (คำเดิม / คำที่แสดง / คำที่อ่าน)...")
+        self.search_entry.setStyleSheet("QLineEdit { background: #0a0e1a; border: 1px solid #2a2f45; border-radius: 4px; padding: 6px 10px; color: #e5e7eb; }")
+        self.search_entry.textChanged.connect(self._filter_rows)
+        search_row.addWidget(self.search_entry, 1)
+        layout.addLayout(search_row)
+
+        # ★ Table (4 columns: source+🔊 / display / read+🔊 / ❌ delete)
+        self.table = QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels(["คำเดิม", "คำที่แสดง", "คำที่อ่าน TTS", ""])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)
+        self.table.horizontalHeader().resizeSection(3, 40)  # ★ คอลัมน์ลบ 40px
+        self.table.horizontalHeader().setStretchLastSection(False)
         # ★ แถวสูงพอให้พิมพ์เห็นชัด
         self.table.verticalHeader().setDefaultSectionSize(36)
         self.table.verticalHeader().setMinimumSectionSize(36)
@@ -97,17 +155,13 @@ class NGReplaceDialog(QDialog):
         self.count_label.setStyleSheet("color: #9ca3af;")
         bottom_layout.addWidget(self.count_label)
         bottom_layout.addStretch()
-        btn_delete = QPushButton("🗑 ลบที่เลือก")
-        btn_delete.setObjectName("Danger")
-        btn_delete.clicked.connect(self._delete_selected)
-        bottom_layout.addWidget(btn_delete)
         btn_save = QPushButton("💾 บันทึก")
         btn_save.setObjectName("Primary")
         btn_save.setFixedWidth(100)
         btn_save.clicked.connect(self._save)
         btn_close = QPushButton("ปิด")
         btn_close.setFixedWidth(80)
-        btn_close.clicked.connect(self.reject)
+        btn_close.clicked.connect(self.close)  # ★ ใช้ close() เพื่อ trigger closeEvent (เตือนถ้ามีแก้ไข)
         bottom_layout.addWidget(btn_save)
         bottom_layout.addWidget(btn_close)
         layout.addWidget(bottom)
@@ -137,14 +191,14 @@ class NGReplaceDialog(QDialog):
         edit0 = QLineEdit(src)
         edit0.setStyleSheet("border: none; background: transparent; color: #e5e7eb; padding: 0px;")
         l0.addWidget(edit0)
-        if src:
-            btn0 = QPushButton("🔊")
-            btn0.setFixedSize(28, 28)
-            btn0.setToolTip("ฟังคำเดิม")
-            btn0.setStyleSheet("border: 1px solid #2a2f45; border-radius: 4px; background: #1a1f33; font-size: 14px; color: #06b6d4;")
-            btn0.setCursor(Qt.PointingHandCursor)
-            btn0.clicked.connect(lambda _, t=src, b=btn0: self._preview_tts_with_loading(b, t))
-            l0.addWidget(btn0)
+        btn0 = QPushButton("🔊")
+        btn0.setFixedSize(32, 28)
+        btn0.setToolTip("ฟังคำเดิม")
+        btn0.setStyleSheet("border: 1px solid #2a2f45; border-radius: 4px; background: #1a1f33; padding: 0px; font-size: 15px;")
+        btn0.setCursor(Qt.PointingHandCursor)
+        # ★ อ่าน text จาก QLineEdit ตอนกด (ไม่ใช่ capture ค่าเดิม)
+        btn0.clicked.connect(lambda _, e=edit0, b=btn0: self._preview_tts_with_loading(b, e.text()))
+        l0.addWidget(btn0)
         self.table.setCellWidget(row, 0, w0)
         w0._edit = edit0
 
@@ -166,16 +220,85 @@ class NGReplaceDialog(QDialog):
         edit2 = QLineEdit(read)
         edit2.setStyleSheet("border: none; background: transparent; color: #e5e7eb; padding: 0px;")
         l2.addWidget(edit2)
-        if read:
-            btn2 = QPushButton("🔊")
-            btn2.setFixedSize(28, 28)
-            btn2.setToolTip("ฟังคำที่อ่าน")
-            btn2.setStyleSheet("border: 1px solid #2a2f45; border-radius: 4px; background: #1a1f33; font-size: 14px; color: #06b6d4;")
-            btn2.setCursor(Qt.PointingHandCursor)
-            btn2.clicked.connect(lambda _, t=read, b=btn2: self._preview_tts_with_loading(b, t))
-            l2.addWidget(btn2)
+        btn2 = QPushButton("🔊")
+        btn2.setFixedSize(32, 28)
+        btn2.setToolTip("ฟังคำที่อ่าน")
+        btn2.setStyleSheet("border: 1px solid #2a2f45; border-radius: 4px; background: #1a1f33; padding: 0px; font-size: 15px;")
+        btn2.setCursor(Qt.PointingHandCursor)
+        # ★ อ่าน text จาก QLineEdit ตอนกด (แก้ไขได้ทันที ไม่ต้อง save + reopen)
+        btn2.clicked.connect(lambda _, e=edit2, b=btn2: self._preview_tts_with_loading(b, e.text()))
+        l2.addWidget(btn2)
         self.table.setCellWidget(row, 2, w2)
         w2._edit = edit2
+
+        # ★ column 3: ❌ delete button
+        w3 = QWidget()
+        l3 = QHBoxLayout(w3)
+        l3.setContentsMargins(2, 2, 2, 2)
+        btn_del = QPushButton("❌")
+        btn_del.setFixedSize(30, 28)
+        btn_del.setToolTip("ลบแถวนี้")
+        btn_del.setCursor(Qt.PointingHandCursor)
+        btn_del.setStyleSheet("border: none; background: transparent; font-size: 14px; padding: 0px;")
+        btn_del.clicked.connect(lambda _, r=row: self._delete_row_with_confirm(r))
+        l3.addWidget(btn_del)
+        self.table.setCellWidget(row, 3, w3)
+
+    def _delete_row_with_confirm(self, row):
+        """ลบแถวพร้อมถามยืนยัน + save ทันที"""
+        # ★ อ่านคำเดิมเพื่อแสดงใน confirmation
+        w0 = self.table.cellWidget(row, 0)
+        word = w0._edit.text().strip() if w0 and hasattr(w0, '_edit') else f"แถว {row+1}"
+        reply = QMessageBox.question(
+            self, "ยืนยันการลบ",
+            f'ต้องการลบ "{word}" ใช่ไหม?',
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes,
+        )
+        if reply == QMessageBox.Yes:
+            # ★ clear cell widgets ก่อน removeRow (กัน crash)
+            for col in range(4):
+                w = self.table.cellWidget(row, col)
+                if w:
+                    self.table.removeCellWidget(row, col)
+            self.table.removeRow(row)
+            self._update_count()
+            # ★ save ทันที + sync count + update snapshot
+            self._save_silent()
+            self._update_count()
+
+    def _save_silent(self):
+        """save โดยไม่ปิด dialog (เรียกหลังลบ/แก้ไข)"""
+        if not self.settings:
+            return
+        words = {}
+        for row in range(self.table.rowCount()):
+            src = display = read = ''
+            w0 = self.table.cellWidget(row, 0)
+            w1 = self.table.cellWidget(row, 1)
+            w2 = self.table.cellWidget(row, 2)
+            if w0 and hasattr(w0, '_edit'):
+                src = w0._edit.text().strip()
+            if w1 and hasattr(w1, '_edit'):
+                display = w1._edit.text().strip()
+            if w2 and hasattr(w2, '_edit'):
+                read = w2._edit.text().strip()
+            if src:
+                words[src] = {'display': display, 'read': read}
+        self.settings.replace_words = words
+        try:
+            from settings import save_settings
+            save_settings(self.settings)
+            # ★ sync pipeline filter
+            if self.parent_app and hasattr(self.parent_app, 'pipeline') and self.parent_app.pipeline:
+                self.parent_app.pipeline.set_filter(self.settings.to_text_filter())
+        except Exception as e:
+            logger.error(f"_save_silent failed: {e}")
+        # ★ update snapshot (กัน closeEvent เตือนซ้ำ)
+        self._original_data = dict(words)
+
+    def _delete_selected(self):
+        """ลบแถวที่เลือก (legacy — ใช้ _delete_row_with_confirm แทน)"""
+        pass
 
     def _preview_tts_with_loading(self, btn, text):
         """preview TTS with loading indicator (กันกดรัว)"""
@@ -208,25 +331,48 @@ class NGReplaceDialog(QDialog):
         self._update_count()
 
     def _add_word_dialog(self):
-        """เปิด dialog เพิ่มคำศัพท์ใหม่ (3 ช่อง)"""
+        """เปิด dialog เพิ่มคำศัพท์ใหม่ (3 ช่อง + ปุ่ม preview)"""
         dlg = QDialog(self)
         dlg.setWindowTitle("➕ เพิ่มคำศัพท์")
-        dlg.setMinimumWidth(400)
+        dlg.setMinimumWidth(420)
         layout = QVBoxLayout(dlg)
         layout.setSpacing(8)
-        # ★ fields
+        layout.setContentsMargins(20, 16, 20, 16)
+        # ★ คำเดิม + 🔊 preview
+        layout.addWidget(QLabel("คำเดิม:"))
+        src_row = QHBoxLayout()
+        src_row.setSpacing(4)
         src_entry = QLineEdit()
         src_entry.setPlaceholderText("คำเดิม (ที่จะค้นหา)")
-        layout.addWidget(QLabel("คำเดิม:"))
-        layout.addWidget(src_entry)
+        src_row.addWidget(src_entry, 1)
+        btn_src_preview = QPushButton("🔊")
+        btn_src_preview.setFixedSize(34, 30)
+        btn_src_preview.setToolTip("ทดสอบอ่านคำเดิม")
+        btn_src_preview.setStyleSheet("border: 1px solid #2a2f45; border-radius: 4px; background: #1a1f33; padding: 0px; font-size: 15px;")
+        btn_src_preview.setCursor(Qt.PointingHandCursor)
+        btn_src_preview.clicked.connect(lambda: self._preview_tts_with_loading(btn_src_preview, src_entry.text()))
+        src_row.addWidget(btn_src_preview)
+        layout.addLayout(src_row)
+        # ★ คำที่แสดง
+        layout.addWidget(QLabel("คำที่แสดง:"))
         display_entry = QLineEdit()
         display_entry.setPlaceholderText("คำที่แสดงในแชท (ว่าง = ซ่อน)")
-        layout.addWidget(QLabel("คำที่แสดง:"))
         layout.addWidget(display_entry)
+        # ★ คำที่อ่าน + 🔊 preview
+        layout.addWidget(QLabel("คำที่อ่าน TTS:"))
+        read_row = QHBoxLayout()
+        read_row.setSpacing(4)
         read_entry = QLineEdit()
         read_entry.setPlaceholderText("คำที่อ่าน TTS (ว่าง = ไม่อ่านส่วนนี้)")
-        layout.addWidget(QLabel("คำที่อ่าน TTS:"))
-        layout.addWidget(read_entry)
+        read_row.addWidget(read_entry, 1)
+        btn_read_preview = QPushButton("🔊")
+        btn_read_preview.setFixedSize(34, 30)
+        btn_read_preview.setToolTip("ทดสอบอ่านคำที่จะอ่าน")
+        btn_read_preview.setStyleSheet("border: 1px solid #2a2f45; border-radius: 4px; background: #1a1f33; padding: 0px; font-size: 15px;")
+        btn_read_preview.setCursor(Qt.PointingHandCursor)
+        btn_read_preview.clicked.connect(lambda: self._preview_tts_with_loading(btn_read_preview, read_entry.text()))
+        read_row.addWidget(btn_read_preview)
+        layout.addLayout(read_row)
         # ★ buttons
         btn_row = QHBoxLayout()
         btn_row.addStretch()
@@ -361,7 +507,37 @@ class NGReplaceDialog(QDialog):
         self._update_count()
 
     def _update_count(self):
-        self.count_label.setText(f"{self.table.rowCount()} คำ")
+        """นับเฉพาะแถวที่มีข้อมูล + ไม่ถูกซ่อนโดย search filter"""
+        visible_with_data = 0
+        total_with_data = 0
+        for row in range(self.table.rowCount()):
+            w0 = self.table.cellWidget(row, 0)
+            src = w0._edit.text().strip() if w0 and hasattr(w0, '_edit') else ''
+            if not src:
+                continue
+            total_with_data += 1
+            if not self.table.isRowHidden(row):
+                visible_with_data += 1
+        search = self.search_entry.text().strip().lower() if hasattr(self, 'search_entry') else ''
+        if search:
+            self.count_label.setText(f"{visible_with_data} / {total_with_data} คำ")
+        else:
+            self.count_label.setText(f"{total_with_data} คำ")
+
+    def _filter_rows(self):
+        """กรองแถวตามคำค้นหา (คำเดิม / คำที่แสดง / คำที่อ่าน)"""
+        search = self.search_entry.text().strip().lower()
+        for row in range(self.table.rowCount()):
+            # อ่าน text จาก QLineEdit ในทุกคอลัมน์
+            texts = []
+            for col in range(3):  # col 0,1,2 (skip 3 = delete button)
+                w = self.table.cellWidget(row, col)
+                if w and hasattr(w, '_edit'):
+                    texts.append(w._edit.text().lower())
+            combined = ' '.join(texts)
+            should_show = (not search) or (search in combined)
+            self.table.setRowHidden(row, not should_show)
+        self._update_count()
 
     def _save(self):
         """บันทึก"""
@@ -395,4 +571,6 @@ class NGReplaceDialog(QDialog):
                 self.parent_app.pipeline.set_filter(self.settings.to_text_filter())
         except Exception as e:
             logger.error(f"Failed to save: {e}")
+        # ★ update snapshot หลัง save (กัน closeEvent เตือนซ้ำ)
+        self._original_data = self._collect_current_data()
         self.accept()

@@ -782,64 +782,84 @@ class GameOverlayServer:
     # ------------------------------------------------------------------ #
     def _build_config(self) -> dict:
         s = self.settings
-        theme = getattr(s, "game_overlay_theme", "default")
-        theme_css = get_theme_css(theme, getattr(s, "game_overlay_custom_css", ""))
+        # ★ อ่าน appearance mode + mode-specific config (เหมือน v1)
+        #    mode_configs[mode] มีค่า styling เฉพาะของ mode นั้น → override flat settings
+        appearance_mode = getattr(s, "game_overlay_appearance_mode", "default")
+        mode_configs = getattr(s, "game_overlay_mode_configs", {}) or {}
+        mc = dict(mode_configs.get(appearance_mode, {}))  # mode-specific overrides
+
+        # helper: อ่านจาก mode config ก่อน → fallback flat settings
+        def mc_get(key, flat_key, default):
+            if key in mc:
+                return mc[key]
+            return getattr(s, flat_key, default)
+
+        # theme + CSS — อ่านจาก mode config ของ theme mode (ถ้าเป็น theme mode)
+        if appearance_mode == "theme":
+            theme = mc.get("theme", getattr(s, "game_overlay_theme", "default"))
+        else:
+            theme = "default"  # default/special/character → ไม่มี theme CSS
+        theme_css = get_theme_css(theme, getattr(s, "game_overlay_custom_css", "")) if theme != "default" else ""
         custom_css = getattr(s, "game_overlay_custom_css", "")
+
+        # balloon/character mode flags (จาก appearance mode)
+        balloon_mode = (appearance_mode == "special")
+        character_mode = (appearance_mode == "character")
+
         return {
             "theme": theme,
             "theme_css": theme_css,
             "custom_css": custom_css,
-            "font_size": getattr(s, "game_overlay_font_size", 14),
-            "emote_size": getattr(s, "game_overlay_emote_size", 24),
-            "animation": getattr(s, "game_overlay_anim_in", "fade"),
-            "exit_animation": getattr(s, "game_overlay_anim_out", "fade_out"),
-            "max_messages": getattr(s, "game_overlay_max_rows", 15),
+            # ★ styling อ่านจาก mode config ก่อน → fallback flat
+            "font_size": mc_get("font_size", "game_overlay_font_size", 14),
+            "emote_size": mc_get("emote_size", "game_overlay_emote_size", 24),
+            "animation": mc_get("anim_in", "game_overlay_anim_in", "fade"),
+            "exit_animation": mc_get("anim_out", "game_overlay_anim_out", "fade_out"),
+            "max_messages": mc_get("max_rows", "game_overlay_max_rows", 15),
             "direction": getattr(s, "game_overlay_direction", "bottom"),
-            "theme": getattr(s, "game_overlay_theme", "default"),
-            "show_logo": getattr(s, "game_overlay_show_logo", True),
-            "show_timestamp": getattr(s, "game_overlay_show_timestamp", False),
-            "auto_hide": getattr(s, "game_overlay_auto_hide", True),
-            "hide_after": getattr(s, "game_overlay_hide_after", 8.0),
-            "font_family": getattr(s, "game_overlay_font_family", "Kanit"),
-            "font_weight": getattr(s, "game_overlay_font_weight", "500"),
-            "text_color": getattr(s, "game_overlay_text_color", "#ffffff"),
+            "show_logo": mc_get("show_logo", "game_overlay_show_logo", True),
+            "show_timestamp": mc_get("show_timestamp", "game_overlay_show_timestamp", False),
+            "auto_hide": mc_get("auto_hide", "game_overlay_auto_hide", True),
+            "hide_after": mc_get("hide_after", "game_overlay_hide_after", 8.0),
+            "font_family": mc_get("font_family", "game_overlay_font_family", "Kanit"),
+            "font_weight": mc_get("font_weight", "game_overlay_font_weight", "500"),
+            "text_color": mc_get("text_color", "game_overlay_text_color", "#ffffff"),
             "color_sub": getattr(s, "game_overlay_color_sub", "#22c55e"),
             "color_bits": getattr(s, "game_overlay_color_bits", "#f59e0b"),
             "color_donate": getattr(s, "game_overlay_color_donate", "#22c55e"),
             "color_system": getattr(s, "game_overlay_color_system", "#9ca3af"),
-            # Translator — แสดงต้นฉบับ [xxx] ในวงเล็บ
             "show_original": getattr(s, "game_overlay_show_original", True),
-            # Channel Points redemption — แสดง reward redemption
             "show_redeem": getattr(s, "game_overlay_show_redeem", True),
-            "text_stroke": getattr(s, "game_overlay_text_stroke", False),
-            "text_stroke_color": getattr(s, "game_overlay_text_stroke_color", "#000000"),
-            "text_stroke_width": getattr(s, "game_overlay_text_stroke_width", 2),
-            "text_shadow": getattr(s, "game_overlay_text_shadow", True),
-            "text_shadow_color": getattr(s, "game_overlay_text_shadow_color", "#000000"),
-            "text_shadow_blur": getattr(s, "game_overlay_text_shadow_blur", 3),
-            "layout": getattr(s, "game_overlay_layout", "inline"),
-            "box_enabled": getattr(s, "game_overlay_box_enabled", True),
-            "box_bg_color": getattr(s, "game_overlay_box_bg_color", "#0a0e1a"),
-            "box_bg_opacity": getattr(s, "game_overlay_box_bg_opacity", 0.55),
-            "box_radius": getattr(s, "game_overlay_box_radius", 8),
-            "box_border": getattr(s, "game_overlay_box_border", False),
-            "box_border_color": getattr(s, "game_overlay_box_border_color", "#7c3aed"),
-            "box_border_width": getattr(s, "game_overlay_box_border_width", 1),
-            "box_shadow": getattr(s, "game_overlay_box_shadow", True),
-            "box_blur": float(getattr(s, "game_overlay_box_blur", 0) or 0),
+            "text_stroke": mc_get("text_stroke", "game_overlay_text_stroke", False),
+            "text_stroke_color": mc_get("text_stroke_color", "game_overlay_text_stroke_color", "#000000"),
+            "text_stroke_width": mc_get("text_stroke_width", "game_overlay_text_stroke_width", 2),
+            "text_shadow": mc_get("text_shadow", "game_overlay_text_shadow", True),
+            "text_shadow_color": mc_get("text_shadow_color", "game_overlay_text_shadow_color", "#000000"),
+            "text_shadow_blur": mc_get("text_shadow_blur", "game_overlay_text_shadow_blur", 3),
+            "layout": mc_get("layout", "game_overlay_layout", "inline"),
+            # box settings — อ่านจาก mode config ก่อน
+            "box_enabled": mc_get("box_enabled", "game_overlay_box_enabled", False),
+            "box_bg_color": mc_get("box_bg_color", "game_overlay_box_bg_color", "#0a0e1a"),
+            "box_bg_opacity": mc_get("box_bg_opacity", "game_overlay_box_bg_opacity", 0.55),
+            "box_radius": mc_get("box_radius", "game_overlay_box_radius", 8),
+            "box_border": mc_get("box_border", "game_overlay_box_border", False),
+            "box_border_color": mc_get("box_border_color", "game_overlay_box_border_color", "#7c3aed"),
+            "box_border_width": mc_get("box_border_width", "game_overlay_box_border_width", 1),
+            "box_shadow": mc_get("box_shadow", "game_overlay_box_shadow", False),
+            "box_blur": float(mc_get("box_blur", "game_overlay_box_blur", 0) or 0),
             "box_glow": (
-                False if getattr(s, "game_overlay_balloon_mode", False)
-                else getattr(s, "game_overlay_box_glow", False)
+                False if balloon_mode
+                else mc_get("box_glow", "game_overlay_box_glow", False)
             ),
-            "box_glow_color": getattr(s, "game_overlay_box_glow_color", "#7c3aed"),
+            "box_glow_color": mc_get("box_glow_color", "game_overlay_box_glow_color", "#7c3aed"),
             "box_width": getattr(s, "game_overlay_box_width", "fit"),
-            "msg_spacing": getattr(s, "game_overlay_msg_spacing", 4.0),
-            "msg_only": getattr(s, "game_overlay_layout", "inline") == "message_only",
-            "balloon_mode": getattr(s, "game_overlay_balloon_mode", False),
-            "balloon_hide_after": getattr(s, "game_overlay_balloon_hide_after", 5.0),
-            "balloon_bg_opacity": getattr(s, "game_overlay_balloon_bg_opacity", 0.95),
+            "msg_spacing": mc_get("msg_spacing", "game_overlay_msg_spacing", 4.0),
+            "msg_only": mc_get("layout", "game_overlay_layout", "inline") == "message_only",
+            "balloon_mode": balloon_mode,
+            "balloon_hide_after": mc_get("balloon_hide_after", "game_overlay_balloon_hide_after", 5.0),
+            "balloon_bg_opacity": mc_get("balloon_bg_opacity", "game_overlay_balloon_bg_opacity", 0.95),
             # Character Talk
-            "character_mode": getattr(s, "game_overlay_character_mode", False),
+            "character_mode": character_mode,
             "character_hide_after": getattr(s, "character_hide_after", 6.0),
             "character_size": getattr(s, "character_size", 120),
             "character_max_on_screen": getattr(s, "character_max_on_screen", 8),

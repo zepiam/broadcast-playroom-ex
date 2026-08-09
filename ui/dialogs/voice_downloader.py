@@ -1,7 +1,7 @@
 """voice_downloader.py — Voice Downloader dialog (RVC models)"""
 import logging
 import threading
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer, QObject
 from PySide6.QtWidgets import (
     QDialog, QWidget, QFrame, QLabel, QPushButton, QLineEdit, QVBoxLayout,
     QHBoxLayout, QScrollArea, QProgressBar, QComboBox,
@@ -26,21 +26,21 @@ class VoiceRow(QFrame):
         layout.setContentsMargins(10, 6, 10, 6)
         layout.setSpacing(10)
 
-        # ★ Name + category
+        # ★ Name + category + progress
         name = getattr(voice, 'name', '?')
         category = getattr(voice, 'category', '')
         size_mb = getattr(voice, 'size', 0) // (1024 * 1024) if getattr(voice, 'size', 0) else 0
         info = QVBoxLayout()
         info.setSpacing(0)
-        name_label = QLabel(name)
-        name_label.setStyleSheet("font-weight: 600; color: #e5e7eb;")
+        self.name_label = QLabel(name)
+        self.name_label.setStyleSheet("font-weight: 600; color: #e5e7eb;")
         meta = f"{category}"
         if size_mb:
             meta += f" • {size_mb} MB"
-        cat_label = QLabel(meta)
-        cat_label.setStyleSheet("font-size: 11px; color: #6b7280;")
-        info.addWidget(name_label)
-        info.addWidget(cat_label)
+        self.cat_label = QLabel(meta)
+        self.cat_label.setStyleSheet("font-size: 13px; color: #6b7280;")
+        info.addWidget(self.name_label)
+        info.addWidget(self.cat_label)
         layout.addLayout(info, 1)
 
         # ★ Downloaded state
@@ -52,22 +52,28 @@ class VoiceRow(QFrame):
             pass
 
         self.btn = QPushButton()
-        self.btn.setFixedHeight(30)
-        self.btn.setFixedWidth(80)
+        self.btn.setFixedSize(34, 30)
         self.btn.setCursor(Qt.PointingHandCursor)
+        self.btn.setStyleSheet("padding: 0px; font-size: 16px; border-radius: 4px;")
         if self.downloaded:
-            self.btn.setText("🗑 ลบ")
-            self.btn.setObjectName("Danger")
+            self.btn.setText("🗑")
+            self.btn.setStyleSheet("padding: 0px; font-size: 16px; border-radius: 4px; background-color: #ef4444; color: white; border: none;")
             self.btn.clicked.connect(lambda: on_delete(voice, self))
         else:
-            self.btn.setText("⬇ ดาวน์โหลด")
-            self.btn.setObjectName("Primary")
+            self.btn.setText("⬇")
+            self.btn.setStyleSheet("padding: 0px; font-size: 16px; border-radius: 4px; background-color: #7c3aed; color: white; border: none;")
             self.btn.clicked.connect(lambda: on_download(voice, self))
         layout.addWidget(self.btn)
 
 
 class VoiceDownloaderDialog(QDialog):
     """Voice Downloader — เลือก + ดาวน์โหลด RVC models"""
+
+    # ★ signal สำหรับ marshal catalog จาก background thread → main thread
+    _catalog_ready = Signal(object)
+    # ★ signal สำหรับ download progress + completion (thread-safe)
+    _dl_progress = Signal(int)
+    _dl_complete = Signal(bool, str)
 
     def __init__(self, parent_app):
         super().__init__(parent_app if isinstance(parent_app, QWidget) else None)
@@ -76,6 +82,9 @@ class VoiceDownloaderDialog(QDialog):
         self.setGeometry(200, 100, 640, 640)
         self.setMinimumSize(480, 480)
         self._voices = []
+        self._catalog_ready.connect(self._on_catalog_ready)
+        self._dl_progress.connect(self._on_dl_progress)
+        self._dl_complete.connect(self._on_dl_complete)
         self._build_ui()
         # ★ fetch catalog async
         QTimer.singleShot(100, self._fetch_catalog)
@@ -92,7 +101,7 @@ class VoiceDownloaderDialog(QDialog):
         hlayout = QHBoxLayout(header)
         hlayout.setContentsMargins(16, 12, 16, 12)
         title = QLabel("⬇️ ดาวน์โหลดเสียง RVC")
-        title.setStyleSheet("font-size: 16px; font-weight: 700; color: #f59e0b;")
+        title.setStyleSheet("font-size: 18px; font-weight: 700; color: #f59e0b;")
         hlayout.addWidget(title)
         hlayout.addStretch()
         # ★ Search
@@ -119,7 +128,7 @@ class VoiceDownloaderDialog(QDialog):
         tab_row.addWidget(self.category_combo)
         tab_row.addStretch()
         self.count_label = QLabel("0 เสียง")
-        self.count_label.setStyleSheet("color: #9ca3af; font-size: 12px;")
+        self.count_label.setStyleSheet("color: #9ca3af; font-size: 14px;")
         tab_row.addWidget(self.count_label)
         layout.addLayout(tab_row)
 
@@ -136,15 +145,16 @@ class VoiceDownloaderDialog(QDialog):
         layout.addWidget(self.scroll, 1)
 
     def _fetch_catalog(self):
-        """ดึง catalog จาก HuggingFace (async)"""
+        """ดึง catalog จาก HuggingFace (async — ใช้ signal marshal กลับ main thread)"""
+        self.count_label.setText("⏳ กำลังโหลด...")
         def _bg_fetch():
             try:
                 from voice_downloader import get_catalog_voices
                 voices = get_catalog_voices()
-                QTimer.singleShot(0, lambda: self._on_catalog_ready(voices))
+                self._catalog_ready.emit(voices)
             except Exception as e:
                 logger.error(f"Failed to fetch catalog: {e}")
-                QTimer.singleShot(0, lambda: self.count_label.setText(f"❌ โหลดไม่ได้: {e}"))
+                self._catalog_ready.emit([])
 
         threading.Thread(target=_bg_fetch, daemon=True).start()
 
@@ -183,31 +193,77 @@ class VoiceDownloaderDialog(QDialog):
             self._render_voices()
 
     def _on_download(self, voice, row):
-        """ดาวน์โหลดเสียง"""
-        row.btn.setText("... กำลังโหลด")
+        """ดาวน์โหลดเสียง — progress ผ่าน signal (thread-safe)"""
+        row.btn.setText("⏳")
         row.btn.setEnabled(False)
+        self._dl_row = row
+        self._dl_voice = voice
 
         def _bg_download():
             try:
                 from voice_downloader import download_voice
-                download_voice(voice)
-                QTimer.singleShot(0, lambda: self._on_download_done(voice, row, True))
+                from settings import get_base_dir
+                import os
+                dest_dir = os.path.join(get_base_dir(), "rvc_models")
+                last_pct = [-1]
+                def _on_progress(done, total):
+                    if total > 0:
+                        pct = done * 100 // total
+                        if pct != last_pct[0] and pct % 5 == 0:
+                            last_pct[0] = pct
+                            self._dl_progress.emit(pct)
+                download_voice(voice, dest_dir, _on_progress)
+                self._dl_complete.emit(True, "")
             except Exception as e:
                 logger.error(f"Download failed: {e}")
-                QTimer.singleShot(0, lambda: self._on_download_done(voice, row, False, str(e)))
+                self._dl_complete.emit(False, str(e))
 
         threading.Thread(target=_bg_download, daemon=True).start()
 
+    def _on_dl_progress(self, pct):
+        """slot — อัปเดต progress bar ใน cat_label (รับจาก signal)"""
+        row = getattr(self, '_dl_row', None)
+        if row:
+            # ★ แสดง progress ใน cat_label (ใต้ชื่อ) แทนปุ่ม
+            row.cat_label.setText(f"⏳ กำลังดาวน์โหลด... {pct}%")
+            row.cat_label.setStyleSheet("font-size: 13px; color: #06b6d4;")
+
+    def _on_dl_complete(self, success, error):
+        """slot — ดาวน์โหลดเสร็จ (รับจาก signal)"""
+        row = getattr(self, '_dl_row', None)
+        voice = getattr(self, '_dl_voice', None)
+        if row and voice:
+            self._on_download_done(voice, row, success, error)
+
     def _on_download_done(self, voice, row, success, error=""):
         if success:
-            row.btn.setText("🗑 ลบ")
+            row.btn.setText("🗑")
             row.btn.setObjectName("Danger")
             row.btn.setEnabled(True)
             row.downloaded = True
+            # ★ คืน cat_label เดิม
+            size_mb = getattr(voice, 'size', 0) // (1024 * 1024) if getattr(voice, 'size', 0) else 0
+            meta = getattr(voice, 'category', '')
+            if size_mb:
+                meta += f" • {size_mb} MB"
+            row.cat_label.setText("✅ " + meta)
+            row.cat_label.setStyleSheet("font-size: 13px; color: #10b981;")
         else:
-            row.btn.setText("❌ ล้มเหลว")
-            QTimer.singleShot(2000, lambda: row.btn.setText("⬇ ดาวน์โหลด"))
+            row.btn.setText("⬇")
             row.btn.setEnabled(True)
+            # ★ แสดง error ใน cat_label
+            err_short = error[:50] + "..." if len(error) > 50 else error
+            row.cat_label.setText(f"❌ {err_short}")
+            row.cat_label.setStyleSheet("font-size: 13px; color: #ef4444;")
+            # คืนหลัง 3 วิ
+            size_mb = getattr(voice, 'size', 0) // (1024 * 1024) if getattr(voice, 'size', 0) else 0
+            meta = getattr(voice, 'category', '')
+            if size_mb:
+                meta += f" • {size_mb} MB"
+            QTimer.singleShot(3000, lambda m=meta: (
+                row.cat_label.setText(m),
+                row.cat_label.setStyleSheet("font-size: 13px; color: #6b7280;")
+            ))
         # refresh style
         row.btn.style().unpolish(row.btn)
         row.btn.style().polish(row.btn)

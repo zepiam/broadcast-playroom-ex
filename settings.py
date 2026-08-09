@@ -18,7 +18,8 @@ from dataclasses import dataclass, field
 from notification_manager import NotificationConfig, NotificationSound
 from text_filter import SecretCode, TextFilter
 
-CACHE_DIR = os.path.join(os.path.expanduser("~"), ".tts-for-livestream")
+from data_dir import get_data_dir
+CACHE_DIR = get_data_dir()
 SETTINGS_FILE = os.path.join(CACHE_DIR, "settings.json")
 
 # base edge-tts voice (no RVC) — เสียงเดียวที่มีตั้งแต่ต้น ไม่ต้องลงเพิ่ม
@@ -200,10 +201,24 @@ class AppSettings:
 
     # ---- reading ----
     voice_id: str = BASE_VOICE_ID  # "premwadee" หรือ rvc model id
+    # ★ TTS engine choice — "edge" (edge-tts, online) | "omnivoice" (offline, zero-shot, RTX only)
+    #   default = "omnivoice" สำหรับ Full build (มี torch); Lite build จะ fallback เป็น "edge" อัตโนมัติ
+    tts_engine: str = "omnivoice"
+    # ★ OmniVoice voice design — "male" | "female" | "child" | "auto"
+    omnivoice_voice: str = "female"
+    # ★ edge-tts voice — "premwadee" (หญิง) | "niwat" (ชาย)
+    edge_voice: str = "premwadee"
+    # ★ OmniVoice short word policy — คำเดี่ยวสั้นกว่า min_length → ไม่อ่าน (default)
+    #   แต่ถ้าอยู่ใน whitelist → อ่าน (ยกเว้น)
+    #   0 = ปิด (อ่านทุกคำ)
+    omnivoice_skip_enabled: bool = True  # ★ default ON — คนไม่ชอบไปกดปิดเอง
+    omnivoice_skip_min_length: int = 3
+    # ★ whitelist คำเดียวที่สั้นแต่อ่านได้ (เช่น "ได้" "มี" "ไป" "กิน")
+    omnivoice_short_whitelist: list[str] = field(default_factory=lambda: ["ได้", "มี", "ไป", "กิน", "ดี", "ใช่"])
     read_author: bool = True
     read_message: bool = True
     rate: int = 0  # %
-    volume: int = 0  # %
+    volume: int = 100  # master volume 0-100 (ใช้ player.set_volume — รองรับทุก engine)
     rvc_f0method: str = "rmvpe"  # "rmvpe" | "crepe" | "harvest" | "pm"
     rvc_pitch: int = 0  # semitones (-12 ถึง +12) — เลื่อนระดับเสียง RVC
 
@@ -253,7 +268,7 @@ class AppSettings:
     # 4c — กรองลิงก์/โค้ด/ยาวผิดปกติ
     filter_urls: bool = True
     filter_code_blocks: bool = True
-    max_msg_length: int = 99999  # ★ ไม่จำกัด (เดิม 500)
+    max_msg_length: int = 500  # ★ default จำกัด 500 ตัวอักษร (0 = ไม่จำกัด)
     # 4d — auto-throttle ตอน chat ระเบิด
     global_rate_threshold: int = 99999  # ★ ปิด (เดิม 100)
     throttle_keep_percent: int = 100    # ★ เก็บ 100% (เดิม 50)
@@ -263,6 +278,14 @@ class AppSettings:
     show_timestamp: bool = False  # แสดงเวลา [HH:MM:SS] ในแชท
     chat_font_scale: int = 1  # ขนาดฟอนต์ Live Chat/Popout: step 1-5 (เพิ่มทีละ 8pt ต่อ step)
     chat_animated_emotes: bool = False  # แสดง emote ขยับ (animated) ใน Live Chat/Popout
+    show_system_messages: bool = True  # แสดงสถานะเชื่อมต่อ (✅/⚪/⚠️) ใน Live Chat
+    # ---- Live Chat appearance (เฟืองใน chat panel header) ----
+    chat_show_platform_icon: bool = True       # แสดงไอคอนแพลตฟอร์มหน้าชื่อ
+    chat_author_color_mode: str = "platform"   # "platform" (สีตามแพลตฟอร์ม) | "random" (สีสุ่มคงที่ต่อคน)
+    chat_show_timestamp: bool = False          # แสดง timestamp ด้านหลังชื่อผู้โพส
+    chat_emote_size: int = 28                  # ขนาด emote ใน Live Chat (px)
+    chat_font_family: str = "Kanit"            # Google Font สำหรับ Live Chat/Popout
+    chat_zebra_stripes: bool = False           # สีพื้นหลังสลับ (zebra) สำหรับแยกข้อความ
 
     # ---- overlay (OBS browser source — เว็บที่ OBS render ทับบนสตรีม) ----
     overlay_enabled: bool = False
@@ -297,7 +320,7 @@ class AppSettings:
     # layout: "inline" (ชื่อ: ข้อความ บรรทัดเดียว) | "stacked" (ชื่อบน / ข้อความล่าง)
     overlay_layout: str = "inline"
     # ข้อ 7 — กล่องข้อความ
-    overlay_box_enabled: bool = True         # เปิด/ปิดกล่อง (ปิด = เหลือแต่ตัวอักษร)
+    overlay_box_enabled: bool = False        # default = ไม่มีกล่อง (แค่ตัวอักษร + เงา)
     overlay_box_bg_color: str = "#0a0e1a"
     overlay_box_bg_opacity: float = 0.55   # 0-1 (0 = โปร่งใส)
     overlay_box_radius: int = 8            # ขอบมน px
@@ -402,7 +425,7 @@ class AppSettings:
     # mode configs — เก็บค่าแยกของแต่ละ appearance mode (persist ถาวร)
     game_overlay_mode_configs: dict = field(default_factory=lambda: {
         "default": {
-            "font_family": "Kanit", "font_weight": "500", "font_size": 14,
+            "font_family": "Kanit", "font_weight": "500", "font_size": 32,
             "emote_size": 24, "text_color": "#ffffff",
             "text_stroke": False, "text_stroke_color": "#000000", "text_stroke_width": 2,
             "text_shadow": True, "text_shadow_color": "#000000", "text_shadow_blur": 3,
@@ -421,8 +444,20 @@ class AppSettings:
         },
         "special": {
             "balloon_mode": True, "balloon_hide_after": 5.0,
-            "font_family": "Kanit", "font_weight": "500", "font_size": 14,
-            "text_color": "#ffffff",
+            "font_family": "Kanit", "font_weight": "500", "font_size": 32,
+            "emote_size": 24, "text_color": "#ffffff",
+            "text_stroke": False, "text_stroke_width": 0,
+            "text_shadow": False, "text_shadow_blur": 0,
+            "balloon_bg_opacity": 0.95,
+            "layout": "stacked", "anim_in": "bounce", "anim_out": "fade_out",
+            "auto_hide": True, "hide_after": 5.0,
+            "show_logo": False, "show_timestamp": False,
+        },
+        "character": {
+            "font_family": "Kanit", "font_weight": "500", "font_size": 32,
+            "emote_size": 24, "text_color": "#ffffff",
+            "text_stroke": False, "text_stroke_width": 0,
+            "text_shadow": True, "text_shadow_color": "#000000", "text_shadow_blur": 3,
         },
     })
     # position + size
@@ -443,7 +478,7 @@ class AppSettings:
     # font
     game_overlay_font_family: str = "Kanit"
     game_overlay_font_weight: str = "500"
-    game_overlay_font_size: int = 14
+    game_overlay_font_size: int = 32
     game_overlay_emote_size: int = 24  # px — ขนาด emote ใน overlay
     game_overlay_text_color: str = "#ffffff"
     # สี author สำหรับ event พิเศษ (แยกจากข้อความปกติ)
@@ -499,6 +534,7 @@ class AppSettings:
     character_random_pos: bool = True            # สุ่มตำแหน่งแนวนอน (ไม่เรียงตรงกลาง)
     character_bubble_width: int = 500            # ความกว้าง balloon (400/500/600/700/800)
     game_overlay_animated_emotes: bool = False  # แสดง emote ขยับ (animated) ใน Game Overlay
+    game_overlay_show_system: bool = False  # แสดงสถานะเชื่อมต่อ (✅/⚪/⚠️) ใน Game Overlay
     # hotkeys
     game_overlay_hotkey: str = "ctrl+shift+g"  # เปิด/ปิด overlay
     game_overlay_hotkey_edit: str = "ctrl+shift+h"  # edit mode (ย้าย/resize)
@@ -551,6 +587,13 @@ class AppSettings:
     secret_codes: list[dict] = field(default_factory=list)  # [{code, sound_path, volume}]
     secret_code_daily_limit: int = 0  # จำกัดการเล่นเสียงโค้ดลับต่อ user/วัน (0 = ไม่จำกัด)
     code_sound_muted: bool = False  # ปิดเสียงโค้ดลับทั้งหมดชั่วคราว (ไม่เล่น + ไม่ติดคิว)
+    # ── OBS WebSocket auto-refresh ──
+    # ★ refresh browser source อัตโนมัติตอนเปิดโปรแกรม
+    #   แก้ปัญหา: เปิด OBS ก่อน Broadcast Playroom → browser source cache หน้าเก่า → overlay ไม่แสดง
+    obs_ws_enabled: bool = False
+    obs_ws_host: str = "localhost"
+    obs_ws_port: int = 4455              # OBS WebSocket v5 default port
+    obs_ws_password: str = ""
     # ── Auto Translate ──
     auto_translate_enabled: bool = False
     auto_translate_provider: str = "google"  # "google" | "deepl" | "deepseek"
@@ -624,6 +667,12 @@ class AppSettings:
             "tts_volume_tiktok": self.tts_volume_tiktok,
             "tts_volume_kick": self.tts_volume_kick,
             "voice_id": self.voice_id,
+            "tts_engine": self.tts_engine,
+            "omnivoice_voice": self.omnivoice_voice,
+            "edge_voice": self.edge_voice,
+            "omnivoice_skip_enabled": bool(self.omnivoice_skip_enabled),
+            "omnivoice_skip_min_length": int(self.omnivoice_skip_min_length),
+            "omnivoice_short_whitelist": list(self.omnivoice_short_whitelist),
             "read_author": self.read_author,
             "read_message": self.read_message,
             "rate": self.rate,
@@ -662,6 +711,13 @@ class AppSettings:
             "show_timestamp": self.show_timestamp,
             "chat_font_scale": self.chat_font_scale,
             "chat_animated_emotes": self.chat_animated_emotes,
+            "show_system_messages": self.show_system_messages,
+            "chat_show_platform_icon": self.chat_show_platform_icon,
+            "chat_author_color_mode": self.chat_author_color_mode,
+            "chat_show_timestamp": self.chat_show_timestamp,
+            "chat_emote_size": self.chat_emote_size,
+            "chat_font_family": self.chat_font_family,
+            "chat_zebra_stripes": self.chat_zebra_stripes,
             "overlay_enabled": self.overlay_enabled,
             "overlay_port": self.overlay_port,
             "obs_ws_enabled": self.obs_ws_enabled,
@@ -794,6 +850,7 @@ class AppSettings:
             "game_overlay_balloon_hide_after": self.game_overlay_balloon_hide_after,
             "game_overlay_balloon_bg_opacity": self.game_overlay_balloon_bg_opacity,
             "game_overlay_animated_emotes": self.game_overlay_animated_emotes,
+            "game_overlay_show_system": self.game_overlay_show_system,
             "game_overlay_hotkey": self.game_overlay_hotkey,
             "game_overlay_hotkey_edit": self.game_overlay_hotkey_edit,
             "more_overlays": list(self.more_overlays),
@@ -806,6 +863,11 @@ class AppSettings:
             "playroom_enabled": self.playroom_enabled,
             "playroom_port": self.playroom_port,
             "playroom_triggers": list(self.playroom_triggers),
+            # ── OBS WebSocket auto-refresh ──
+            "obs_ws_enabled": self.obs_ws_enabled,
+            "obs_ws_host": self.obs_ws_host,
+            "obs_ws_port": self.obs_ws_port,
+            "obs_ws_password": self.obs_ws_password,
             "blocked_users": list(self.blocked_users),
             "banned_words": list(self.banned_words),
             "banned_word_modes": dict(self.banned_word_modes),
@@ -901,6 +963,35 @@ class AppSettings:
                 setattr(s, vol_field, int(data[vol_field]))
         if "voice_id" in data:
             s.voice_id = data["voice_id"]
+        if "tts_engine" in data:
+            s.tts_engine = str(data["tts_engine"])
+        # ★ Lite build fallback ถูกจัดการที่ runtime (ไม่ใช่ settings load time)
+        #   เพราะ PyInstaller frozen exe อาจยังไม่พร้อม import torch ตอน load_settings
+        if "omnivoice_voice" in data:
+            # ★ migration: "auto" ถูกลบออกแล้ว → default เป็น "female"
+            ov = str(data["omnivoice_voice"])
+            s.omnivoice_voice = ov if ov in ("female", "male", "child") else "female"
+        if "edge_voice" in data:
+            s.edge_voice = str(data["edge_voice"])
+        if "omnivoice_skip_enabled" in data:
+            try:
+                s.omnivoice_skip_enabled = bool(data["omnivoice_skip_enabled"])
+            except Exception:
+                s.omnivoice_skip_enabled = True
+        if "omnivoice_skip_min_length" in data:
+            try:
+                s.omnivoice_skip_min_length = int(data["omnivoice_skip_min_length"])
+            except Exception:
+                s.omnivoice_skip_min_length = 3
+        if "omnivoice_short_whitelist" in data:
+            try:
+                s.omnivoice_short_whitelist = [str(w).strip() for w in list(data["omnivoice_short_whitelist"]) if str(w).strip()]
+            except Exception:
+                s.omnivoice_short_whitelist = ["ได้", "มี", "ไป", "กิน", "ดี", "ใช่"]
+        elif "omnivoice_skip_words" in data:
+            # ★ migration: เดิมเป็น skip_words (blacklist) → ตอนนี้เป็น whitelist
+            #   ใช้ default whitelist แทน เพราะ blacklist เดิมไม่แปลงได้ตรงๆ
+            pass
         if "read_author" in data:
             s.read_author = bool(data["read_author"])
         if "read_message" in data:
@@ -908,7 +999,11 @@ class AppSettings:
         if "rate" in data:
             s.rate = int(data["rate"])
         if "volume" in data:
-            s.volume = int(data["volume"])
+            v = int(data["volume"])
+            # ★ migration: volume เดิมเป็น -50..+50 offset (default 0)
+            #   ตอนนี้เป็น master volume 0-100 (default 100) — ค่าเก่า 0 = เบาสุด
+            #   แปลง: ถ้า <= 0 ให้ใช้ default 100
+            s.volume = v if 0 < v <= 100 else 100
         if "rvc_f0method" in data:
             s.rvc_f0method = data["rvc_f0method"]
         if "rvc_pitch" in data:
@@ -974,7 +1069,7 @@ class AppSettings:
         if "filter_code_blocks" in data:
             s.filter_code_blocks = bool(data["filter_code_blocks"])
         if "max_msg_length" in data:
-            s.max_msg_length = 99999 if int(data["max_msg_length"]) == 500 else int(data["max_msg_length"])
+            s.max_msg_length = int(data["max_msg_length"])
         if "global_rate_threshold" in data:
             s.global_rate_threshold = 99999 if int(data["global_rate_threshold"]) == 100 else int(data["global_rate_threshold"])
         if "throttle_keep_percent" in data:
@@ -990,6 +1085,23 @@ class AppSettings:
                 s.chat_font_scale = 1
         if "chat_animated_emotes" in data:
             s.chat_animated_emotes = bool(data["chat_animated_emotes"])
+        if "show_system_messages" in data:
+            s.show_system_messages = bool(data["show_system_messages"])
+        if "chat_show_platform_icon" in data:
+            s.chat_show_platform_icon = bool(data["chat_show_platform_icon"])
+        if "chat_author_color_mode" in data:
+            s.chat_author_color_mode = str(data["chat_author_color_mode"])
+        if "chat_show_timestamp" in data:
+            s.chat_show_timestamp = bool(data["chat_show_timestamp"])
+        if "chat_emote_size" in data:
+            try:
+                s.chat_emote_size = int(data["chat_emote_size"])
+            except (ValueError, TypeError):
+                s.chat_emote_size = 28
+        if "chat_font_family" in data:
+            s.chat_font_family = str(data["chat_font_family"])
+        if "chat_zebra_stripes" in data:
+            s.chat_zebra_stripes = bool(data["chat_zebra_stripes"])
         # overlay
         if "overlay_enabled" in data:
             s.overlay_enabled = bool(data["overlay_enabled"])
@@ -1186,6 +1298,8 @@ class AppSettings:
             s.game_overlay_balloon_bg_opacity = float(data["game_overlay_balloon_bg_opacity"])
         if "game_overlay_animated_emotes" in data:
             s.game_overlay_animated_emotes = bool(data["game_overlay_animated_emotes"])
+        if "game_overlay_show_system" in data:
+            s.game_overlay_show_system = bool(data["game_overlay_show_system"])
         if "game_overlay_direction" in data:
             s.game_overlay_direction = str(data["game_overlay_direction"])
         if "game_overlay_layout" in data:
@@ -1312,6 +1426,15 @@ class AppSettings:
             # ★ migrate: เพิ่ม widget_ids ให้ entry เก่าที่ไม่มี (default = [] = ทุก widget)
             if "widget_ids" not in t:
                 t["widget_ids"] = []
+        # ── OBS WebSocket auto-refresh ──
+        if "obs_ws_enabled" in data:
+            s.obs_ws_enabled = bool(data["obs_ws_enabled"])
+        if "obs_ws_host" in data:
+            s.obs_ws_host = str(data["obs_ws_host"])
+        if "obs_ws_port" in data:
+            s.obs_ws_port = int(data["obs_ws_port"])
+        if "obs_ws_password" in data:
+            s.obs_ws_password = str(data["obs_ws_password"])
         if "blocked_users" in data:
             s.blocked_users = list(data["blocked_users"])
         if "banned_words" in data:

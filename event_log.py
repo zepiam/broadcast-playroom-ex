@@ -14,7 +14,8 @@ import threading
 from dataclasses import dataclass, asdict
 from datetime import datetime
 
-CACHE_DIR = os.path.join(os.path.expanduser("~"), ".tts-for-livestream")
+from data_dir import get_data_dir
+CACHE_DIR = get_data_dir()
 EVENT_LOG_FILE = os.path.join(CACHE_DIR, "event_log.json")
 
 # event types ที่เป็นไปได้ (ใช้ใน settings filter)
@@ -106,6 +107,12 @@ class EventLog:
         """คืนทุก event (เรียงเก่า→ใหม่)"""
         with self._lock:
             return list(self._entries)
+
+    def get_by_author(self, author: str) -> list[EventEntry]:
+        """คืน events ของ author เท่านั้น (เรียงเก่า→ใหม่)"""
+        author_lower = (author or "").lower()
+        with self._lock:
+            return [e for e in self._entries if e.author.lower() == author_lower]
 
     def get_filtered(self, shown_events) -> list[EventEntry]:
         """คืนเฉพาะ event type ที่อยู่ใน shown_events (เรียงเก่า→ใหม่)

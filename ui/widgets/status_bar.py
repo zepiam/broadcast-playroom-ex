@@ -3,6 +3,28 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QLabel, QHBoxLayout, QProgressBar
 
 
+def _read_version() -> str:
+    """อ่านเวอร์ชั่นจาก version.json (fallback 'v0.0.0')"""
+    import json
+    import os
+    import sys
+    try:
+        install_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
+        for path in (
+            os.path.join(install_dir, "_internal", "version.json"),
+            os.path.join(install_dir, "version.json"),
+        ):
+            if os.path.exists(path):
+                with open(path, encoding='utf-8') as f:
+                    data = json.load(f)
+                ver = data.get("version")
+                if ver:
+                    return f"v{ver}"
+    except Exception:
+        pass
+    return "v0.0.0"
+
+
 class StatusBar(QFrame):
     """Bottom status bar — shows status text + progress bar (for OmniVoice loading)
 
@@ -55,7 +77,7 @@ class StatusBar(QFrame):
         """)
         layout.addWidget(self.progress_bar)
 
-        self.version_label = QLabel("v2.0.0")
+        self.version_label = QLabel(_read_version())
         self.version_label.setStyleSheet("color: #6b7280; font-size: 13px;")
         layout.addWidget(self.version_label)
 

@@ -9,7 +9,7 @@ Layout (ซ้าย → ขวา):
   [Overlay+ ▼]
   [⚙ Settings]
 """
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QVariantAnimation, QSize
 from PySide6.QtWidgets import (
     QFrame, QLabel, QPushButton, QHBoxLayout, QWidget,
     QSlider, QWidgetAction,
@@ -43,6 +43,10 @@ class TopBar(QFrame):
     viewer_overlay_toggled = Signal()                   # เปิด/ปิด Viewer Overlay
     # User manager (เก็บไว้ — เปิดจาก menu อื่นหรือ settings)
     user_manager_clicked = Signal()
+    # ★ Update notification
+    update_clicked = Signal()
+    # ★ Launch OBS (เปิดโปรแกรม OBS หรือ bring-to-front ถ้ารันอยู่แล้ว)
+    obs_launch_clicked = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -57,10 +61,41 @@ class TopBar(QFrame):
         layout.setContentsMargins(12, 0, 12, 0)
         layout.setSpacing(6)
 
-        # ★ Left: platform status dots
-        self._platforms_layout = QHBoxLayout()
-        self._platforms_layout.setSpacing(10)
-        layout.addLayout(self._platforms_layout)
+        # ═══ Left: เปิด OBS (icon จาก obs64.exe) ═══
+        #   ★ กด 1 ครั้ง → เปิด OBS (ถ้ายังไม่รัน) หรือ bring-to-front (ถ้ารันอยู่)
+        self.btn_obs = QPushButton("  OBS")
+        self.btn_obs.setObjectName("OBSButton")
+        self.btn_obs.setFixedHeight(32)
+        self.btn_obs.setCursor(Qt.PointingHandCursor)
+        self.btn_obs.setToolTip("เปิดโปรแกรม OBS (หรือดึงหน้าต่าง OBS ที่ซ่อนไว้ขึ้นมาแสดง)")
+        self.btn_obs.setStyleSheet(
+            "QPushButton { background-color: #1e293b; color: #e2e8f0; border: 1px solid #334155; "
+            "border-radius: 6px; padding: 4px 12px; font-size: 13px; font-weight: 600; }"
+            "QPushButton:hover { background-color: #334155; border-color: #475569; }"
+            "QPushButton:pressed { background-color: #0f172a; }"
+        )
+        # ★ โหลด OBS icon จาก assets/obs_icon.png (extract จาก obs64.exe)
+        import os as _os
+        from PySide6.QtGui import QPixmap, QIcon
+        _icon_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))), "assets", "obs_icon.png")
+        # ★ PyInstaller bundled: assets/ อยู่ใน _internal/assets/
+        try:
+            import sys as _sys
+            if getattr(_sys, 'frozen', False):
+                _internal = _os.path.join(_os.path.dirname(_sys.executable), "_internal")
+                if _os.path.isdir(_internal):
+                    _icon_path = _os.path.join(_internal, "assets", "obs_icon.png")
+        except Exception:
+            pass
+        if _os.path.exists(_icon_path):
+            _obs_pix = QPixmap(_icon_path)
+            if not _obs_pix.isNull():
+                self.btn_obs.setIcon(QIcon(_obs_pix))
+                self.btn_obs.setIconSize(QSize(20, 20))
+        self.btn_obs.clicked.connect(self.obs_launch_clicked.emit)
+        layout.addWidget(self.btn_obs)
+        # ★ default state = ยังไม่เปิด
+        self._obs_running = False
 
         layout.addStretch()
 
@@ -167,6 +202,71 @@ class TopBar(QFrame):
         self.btn_settings.clicked.connect(self.settings_clicked.emit)
         layout.addWidget(self.btn_settings)
 
+        # ═══ 9. 🆕 New Update (ขวาสุด — ซ่อนไว้ แสดงเมื่อมีอัพเดท) ═══
+        self.btn_update = QPushButton("UPDATE")
+        self.btn_update.setFixedHeight(32)
+        self.btn_update.setCursor(Qt.PointingHandCursor)
+        self.btn_update.setToolTip("มีเวอร์ชั่นใหม่ — คลิกเพื่ออัพเดท")
+        self._update_btn_base_style = (
+            # ★ ทรงแคปซูล (border-radius = ครึ่งความสูง) + ไล่เฉดแนวตั้ง + ขอบบาง + เงาใต้
+            "QPushButton { "
+            "background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            " stop:0 #ff4757, stop:1 #ff3344);"
+            " color: white; border: 1px solid rgba(255,255,255,0.25); "
+            "border-radius: 16px; padding: 4px 18px; font-size: 12px; font-weight: 700; "
+            "letter-spacing: 1px; "
+            "} "
+            "QPushButton:hover { "
+            "background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            " stop:0 #ff5b6a, stop:1 #ff4455);"
+            "border: 1px solid rgba(255,255,255,0.4);"
+            "} "
+            "QPushButton:pressed { "
+            "background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            " stop:0 #e03444, stop:1 #cc2a38);"
+            "padding-top: 5px; padding-bottom: 3px;"
+            "}"
+        )
+        self.btn_update.setStyleSheet(self._update_btn_base_style)
+
+        # ★ glow effect (เงาแดงรอบปุ่ม)
+        from PySide6.QtWidgets import QGraphicsDropShadowEffect
+        # ★ Shimmer — แสงขาววิ่งผ่านปุ่ม (เหมือนปุ่ม "Download" ใน App Store)
+        from PySide6.QtWidgets import QGraphicsDropShadowEffect, QGraphicsOpacityEffect
+        from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPixmap, QBrush, QPen
+        from PySide6.QtCore import QRectF, QPointF
+
+        self._update_glow = QGraphicsDropShadowEffect()
+        self._update_glow.setBlurRadius(20)
+        self._update_glow.setColor(QColor(255, 255, 255, 180))  # ขาวนวล
+        self._update_glow.setOffset(0, 0)
+        self._update_glow.setEnabled(False)
+        self.btn_update.setGraphicsEffect(self._update_glow)
+
+        # ★ Shimmer overlay — QLabel โปร่งใสทับบนปุ่ม ให้แสงขาววิ่งผ่าน
+        self._shimmer_label = QLabel(self.btn_update)
+        self._shimmer_label.setGeometry(0, 0, 40, 32)  # แถบแสงกว้าง 40px
+        self._shimmer_label.setStyleSheet(
+            "background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            " stop:0, rgba(255,255,255,0),"
+            " stop:0.5, rgba(255,255,255,120),"
+            " stop:1, rgba(255,255,255,0));"
+            "border-radius: 6px;"
+        )
+        self._shimmer_label.setAttribute(Qt.WA_TransparentForMouseEvents)  # ไม่กิน click
+        self._shimmer_label.setVisible(False)
+        self.btn_update.clicked.connect(self.update_clicked.emit)
+        self.btn_update.setVisible(False)
+        layout.addWidget(self.btn_update)
+
+        # ★ glow pulse animation (เงาขาวนวล)
+        self._update_pulse = QVariantAnimation(self)
+        self._update_pulse.setDuration(700)
+        self._update_pulse.setStartValue(0.0)
+        self._update_pulse.setEndValue(1.0)
+        self._update_pulse.setLoopCount(-1)
+        self._update_pulse.valueChanged.connect(self._on_pulse_update)
+
     # ════════════════════════════════════════════════════════════
     # TTS toggle
     # ════════════════════════════════════════════════════════════
@@ -220,23 +320,18 @@ class TopBar(QFrame):
             self.vol_value_lbl.setText(f"{int(vol)}%")
 
     # ════════════════════════════════════════════════════════════
-    # Translate mode (2-state toggle: translate ↔ multilang)
+    # Translate mode (แสดงสถานะ — คลิกเพื่อเปิด Settings > การแปล)
     # ════════════════════════════════════════════════════════════
     def _toggle_translate(self):
-        """toggle 2-state: translate ↔ multilang"""
-        if self._translate_mode == "translate":
-            self.set_translate_mode("multilang")
-        else:
-            self.set_translate_mode("translate")
-        self.translate_mode_changed.emit(self._translate_mode)
+        """คลิกปุ่ม → เปิด Settings > การแปล (ไม่ toggle โหมดแล้ว)"""
+        self.translate_settings.emit()
 
     def set_translate_mode(self, mode):
-        """set translate mode จากภายนอก + update button
+        """set translate mode จากภายนอก + update button (แสดงสถานะเท่านั้น)
 
-        ★ mode="off" → ซ่อนปุ่มทั้งหมด (กัน user สับสน — ปิดแล้วไม่ควรเห็นปุ่ม)
+        ★ mode="off" → ซ่อนปุ่ม (ปิดแล้วไม่ควรเห็น)
         """
         self._translate_mode = mode
-        # ★ off → ซ่อนปุ่ม translate ทั้งหมด
         if mode == "off":
             self.btn_translate.setVisible(False)
             return
@@ -262,68 +357,81 @@ class TopBar(QFrame):
         self.btn_overlay_plus.set_active(active, state="warning" if active else "")
 
     # ════════════════════════════════════════════════════════════
-    # Platform status (เดิม)
+    # ★ Update notification button (pulse animation)
     # ════════════════════════════════════════════════════════════
-    def add_platform_status(self, platform, color="#6b7280"):
-        """เพิ่ม status indicator สำหรับแพลตฟอร์ม"""
-        widget = QWidget()
-        widget.setStyleSheet("background: transparent;")
-        wlayout = QHBoxLayout(widget)
-        wlayout.setContentsMargins(0, 0, 0, 0)
-        wlayout.setSpacing(4)
-        name_to_key = {
-            "Twitch": "twitch", "YouTube": "youtube", "MyLive": "mylive",
-            "TikTok": "tiktok", "KICK": "kick",
-        }
-        plat_key = name_to_key.get(platform, "")
-        try:
-            from ui.platform_icons import get_platform_pixmap
-            from PySide6.QtGui import QPixmap
-            pix = get_platform_pixmap(plat_key, 16) if plat_key else QPixmap()
-        except Exception:
-            pix = QPixmap()
-        dot = QLabel()
-        dot.setFixedSize(16, 16)
-        if not pix.isNull():
-            dot.setPixmap(pix)
-        else:
-            dot.setFixedSize(10, 10)
-            dot.setStyleSheet(f"background-color: {color}; border-radius: 5px; border: none;")
-        name_lbl = QLabel(platform)
-        name_lbl.setStyleSheet("color: #4b5563; font-size: 14px; background: transparent; border: none;")
-        wlayout.addWidget(dot)
-        wlayout.addWidget(name_lbl)
-        widget.dot = dot
-        widget.name_label = name_lbl
-        widget._platform_key = plat_key
-        self._platforms_layout.addWidget(widget)
-        self.update_platform_status(widget, False)
-        return widget
+    def show_update_button(self, version=""):
+        """แสดงปุ่ม UPDATE + เริ่ม shimmer + glow"""
+        vers = f" v{version}" if version else ""
+        self.btn_update.setText(f"NEW UPDATE{vers}")
+        self.btn_update.setVisible(True)
+        self.btn_update.raise_()
+        self._update_glow.setEnabled(True)
+        if self._shimmer_label:
+            self._shimmer_label.setVisible(True)
+        if self._update_pulse.state() != QVariantAnimation.Running:
+            self._update_pulse.start()
 
-    def update_platform_status(self, platform_widget, connected):
-        """อัปเดตสถานะ — icon + text"""
-        from PySide6.QtWidgets import QGraphicsOpacityEffect
-        dot = platform_widget.dot
-        name_lbl = getattr(platform_widget, 'name_label', None)
-        if connected:
-            if dot.pixmap() is not None and not dot.pixmap().isNull():
-                effect = dot.graphicsEffect()
-                if not isinstance(effect, QGraphicsOpacityEffect):
-                    effect = QGraphicsOpacityEffect(dot)
-                    dot.setGraphicsEffect(effect)
-                effect.setOpacity(1.0)
-            else:
-                dot.setStyleSheet("background-color: #10b981; border-radius: 5px; border: none;")
-            if name_lbl is not None:
-                name_lbl.setStyleSheet("color: #ffffff; font-size: 14px; background: transparent; border: none; font-weight: 600;")
+    def hide_update_button(self):
+        """ซ่อนปุ่ม UPDATE + หยุด animation"""
+        self.btn_update.setVisible(False)
+        self._update_pulse.stop()
+        self._update_glow.setEnabled(False)
+        if self._shimmer_label:
+            self._shimmer_label.setVisible(False)
+        self.btn_update.setStyleSheet(self._update_btn_base_style)
+
+    def _on_pulse_update(self, val):
+        """shimmer + glow — แสงขาววิ่งผ่านปุ่ม + เงาขาวนวลกระพริบ"""
+        import math
+        # sine wave: 0→1→0 → 0=เข้มสุด, 1=หาย
+        alpha = (math.sin(val * math.pi * 2) + 1) / 2
+        glow_alpha = 1.0 - alpha
+        # ★ glow ขาว: นุ่มๆ ไม่แรงเกิน
+        blur = int(8 + glow_alpha * 20)
+        self._update_glow.setBlurRadius(blur)
+        self._update_glow.setColor(QColor(255, 255, 255, int(80 + glow_alpha * 100)))
+
+        # ★ shimmer — ขยับแถบแสงจากซ้ายไปขวาตลอดความกว้างปุ่ม
+        btn_w = self.btn_update.width()
+        if btn_w > 0 and self._shimmer_label:
+            # val 0→1 = รอบ 1 รอบ → แสงวิ่งซ้าย→ขวา→ซ้าย (ping-pong)
+            travel = btn_w + 40  # กว้างพอให้ออกนอกปุ่ม
+            x = int(val * travel) - 20  # offset ให้เริ่มก่อนปุ่ม
+            self._shimmer_label.move(x, 0)
+            self._shimmer_label.setFixedHeight(self.btn_update.height())
+            self._shimmer_label.setVisible(True)
+        # เงาสีแดง: โปร่งใสตาม alpha
+        from PySide6.QtGui import QColor
+        color = QColor(239, 68, 68, int(150 + glow_alpha * 105))
+        self._update_glow.setColor(color)
+
+    # ════════════════════════════════════════════════════════════
+    # OBS button state (poll จาก app.py ทุก 3 วิ)
+    # ════════════════════════════════════════════════════════════
+    def set_obs_running(self, running: bool):
+        """★ เปลี่ยนสถานะปุ่ม OBS — เรียกจาก app.py (poll ทุก 3 วิ)
+
+        running=True  → "กำลังใช้งาน OBS" (สีเขียว)
+        running=False → "เปิด OBS" (สีเทา)
+        """
+        if self._obs_running == running:
+            return  # ไม่เปลี่ยน → ไม่ต้อง update
+        self._obs_running = running
+        if running:
+            self.btn_obs.setText("  กำลังใช้งาน OBS")
+            self.btn_obs.setStyleSheet(
+                "QPushButton { background-color: #064e3b; color: #6ee7b7; border: 1px solid #10b981; "
+                "border-radius: 6px; padding: 4px 12px; font-size: 13px; font-weight: 600; }"
+                "QPushButton:hover { background-color: #065f46; border-color: #34d399; }"
+                "QPushButton:pressed { background-color: #064e3b; }"
+            )
+            self.btn_obs.setToolTip("OBS กำลังรันอยู่ — กดเพื่อเปิดหน้าต่าง")
         else:
-            if dot.pixmap() is not None and not dot.pixmap().isNull():
-                effect = dot.graphicsEffect()
-                if not isinstance(effect, QGraphicsOpacityEffect):
-                    effect = QGraphicsOpacityEffect(dot)
-                    dot.setGraphicsEffect(effect)
-                effect.setOpacity(0.3)
-            else:
-                dot.setStyleSheet("background-color: #4b5563; border-radius: 5px; border: none;")
-            if name_lbl is not None:
-                name_lbl.setStyleSheet("color: #4b5563; font-size: 14px; background: transparent; border: none;")
+            self.btn_obs.setText("  เปิด OBS")
+            self.btn_obs.setStyleSheet(
+                "QPushButton { background-color: #1e293b; color: #e2e8f0; border: 1px solid #334155; "
+                "border-radius: 6px; padding: 4px 12px; font-size: 13px; font-weight: 600; }"
+                "QPushButton:hover { background-color: #334155; border-color: #475569; }"
+                "QPushButton:pressed { background-color: #0f172a; }"
+            )
+            self.btn_obs.setToolTip("เปิดโปรแกรม OBS")

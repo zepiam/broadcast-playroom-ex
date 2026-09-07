@@ -37,6 +37,9 @@ class PlatformCard(QFrame):
     disconnect_requested = Signal(str)
     mute_toggled = Signal(str, bool)  # platform, muted
     volume_changed = Signal(str, int)  # platform, volume
+    edit_stream_requested = Signal(str)  # ★ platform key — เปิดหน้า edit stream info
+    refresh_stream_requested = Signal(str)  # ★ platform key — ดึง title ใหม่ตามคำสั่ง (ไม่ auto)
+    go_requested = Signal(str)  # ★ platform key — เปิดหน้าช่อง/ห้อง live ในเบราว์เซอร์
 
     def __init__(self, platform_key, label, icon="📺", parent=None):
         super().__init__(parent)
@@ -44,9 +47,15 @@ class PlatformCard(QFrame):
         self.setObjectName("Card")
         self._connected = False
         self._muted = False
+        self._stream_start_time = None  # ★ timestamp ที่ stream เริ่ม (สำหรับนับเวลา)
         self._build_ui(label, icon)
-        # ★ ปรับขนาดอัตโนมัติตามเนื้อหา (ไม่กำหนด fixed/min สูง)
+        # ★ ปรับขนาดอัตโนมัติตามเนื้อหา
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        # ★ timer สำหรับอัปเดตเวลาสตรีมทุก 1 นาที
+        from PySide6.QtCore import QTimer
+        self._uptime_timer = QTimer(self)
+        self._uptime_timer.setInterval(60000)  # ทุก 1 นาที
+        self._uptime_timer.timeout.connect(self._update_uptime)
 
     def _build_ui(self, label, icon):
         layout = QVBoxLayout(self)
@@ -76,11 +85,65 @@ class PlatformCard(QFrame):
         self.name_label = QLabel(label)
         self.name_label.setStyleSheet("font-weight: 600; color: #e5e7eb; font-size: 14px;")
         self.name_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        # ★ ปุ่ม GO (🚀 เปิดหน้าช่อง/ห้อง live ในเบราว์เซอร์ — แสดงเมื่อเชื่อมต่อแล้ว)
+        from PySide6.QtWidgets import QToolButton
+        self.go_btn = QToolButton()
+        self.go_btn.setText("🚀")
+        self.go_btn.setToolTip("เปิดหน้าช่อง/ห้อง live ของแพลตฟอร์มนี้ในเบราว์เซอร์")
+        self.go_btn.setStyleSheet(
+            "QToolButton { background: transparent; border: none; font-size: 12px; padding: 0 2px; }"
+            "QToolButton:hover { background: rgba(34,197,94,0.2); border-radius: 3px; }"
+        )
+        self.go_btn.setCursor(Qt.PointingHandCursor)
+        self.go_btn.setVisible(False)
+        self.go_btn.clicked.connect(lambda: self.go_requested.emit(self.platform_key))
+        name_row = QHBoxLayout()
+        name_row.setContentsMargins(0, 0, 0, 0)
+        name_row.setSpacing(4)
+        name_row.addWidget(self.name_label)
+        name_row.addWidget(self.go_btn)
         self.status_label = QLabel("ยังไม่เชื่อมต่อ")
         self.status_label.setStyleSheet("font-size: 12px; color: #6b7280;")
-        info.addWidget(self.name_label)
+        # ★ stream title (แสดงเมื่อเชื่อมต่อสำเร็จ — ดึงจาก live stream จริง)
+        self.stream_title_label = QLabel("")
+        self.stream_title_label.setStyleSheet("font-size: 11px; color: #9ca3af; font-style: italic;")
+        self.stream_title_label.setWordWrap(False)
+        self.stream_title_label.setVisible(False)
+        info.addLayout(name_row)
         info.addWidget(self.status_label)
+        # ★ title + refresh + Edit อยู่ในแถวเดียวกัน — title ชิดซ้าย, refresh + Edit ชิดขวาของการ์ด
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(4)
+        title_row.addWidget(self.stream_title_label, 1)
+        # ★ ปุ่ม refresh title (กดเพื่อดึง title ใหม่ — ไม่ auto refresh)
+        from PySide6.QtWidgets import QPushButton, QToolButton
+        self.refresh_btn = QToolButton()
+        self.refresh_btn.setText("🔄")
+        self.refresh_btn.setToolTip("ดึง Title ใหม่จากแพลตฟอร์ม")
+        self.refresh_btn.setStyleSheet("""
+            QToolButton { background: transparent; border: none; font-size: 11px; padding: 0 2px; }
+            QToolButton:hover { background: rgba(124,58,237,0.15); border-radius: 3px; }
+        """)
+        self.refresh_btn.setCursor(Qt.PointingHandCursor)
+        self.refresh_btn.setVisible(False)
+        self.refresh_btn.clicked.connect(lambda: self.refresh_stream_requested.emit(self.platform_key))
+        title_row.addWidget(self.refresh_btn)
+        self.edit_link_label = QLabel('<span style="color:#7c3aed; text-decoration: underline;">Edit</span>')
+        self.edit_link_label.setTextFormat(Qt.RichText)
+        self.edit_link_label.setStyleSheet("font-size: 11px; background: transparent;")
+        self.edit_link_label.setCursor(Qt.PointingHandCursor)
+        self.edit_link_label.setVisible(False)
+        self.edit_link_label.mousePressEvent = lambda e: self.edit_stream_requested.emit(self.platform_key)
+        title_row.addWidget(self.edit_link_label)
+        info.addLayout(title_row)
         row1.addLayout(info, 1)
+        # ★ viewer count (ฝั่งขวา — แสดงเมื่อเชื่อมต่อแล้วได้รับยอดจริง)
+        self.viewer_label = QLabel("")
+        self.viewer_label.setStyleSheet("font-size: 12px; color: #9ca3af; font-weight: 600; background: transparent; border: none;")
+        self.viewer_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.viewer_label.setVisible(False)  # ★ ซ่อนตอนเริ่ม (ยังไม่มียอด)
+        row1.addWidget(self.viewer_label)
         layout.addLayout(row1)
 
         # ★ Row 2: [connect/disconnect (stretch)] [mute button]
@@ -88,8 +151,9 @@ class PlatformCard(QFrame):
         row2 = QHBoxLayout()
         row2.setSpacing(6)
         self.btn = QPushButton("เชื่อมต่อ")
-        self.btn.setFixedHeight(26)
+        self.btn.setFixedHeight(22)
         self.btn.setCursor(Qt.PointingHandCursor)
+        self.btn.setStyleSheet("font-size: 11px; padding: 1px 8px;")
         self.btn.clicked.connect(self._on_btn)
         row2.addWidget(self.btn, 1)
 
@@ -122,9 +186,44 @@ class PlatformCard(QFrame):
             self.disconnect_requested.emit(self.platform_key)
 
     def _on_mute(self):
+        # ★ ปุ่มควรถูก disable ระหว่าง master mute อยู่แล้ว (set_master_muted) —
+        #   guard นี้กันไว้เผื่อ event หลุดมาได้ทางอื่น
+        if getattr(self, '_master_muted', False):
+            return
         self._muted = not getattr(self, '_muted', False)
         self.mute_btn.setText("🔇" if self._muted else "🔊")
         self.mute_toggled.emit(self.platform_key, self._muted)
+
+    def set_muted(self, muted: bool):
+        """★ ตั้งสถานะ mute เฉพาะแพลตฟอร์มนี้จากภายนอก (เช่น restore จาก settings ตอน
+        rebuild การ์ด) — ไม่ emit mute_toggled (ค่าจาก settings อยู่แล้ว ไม่ต้อง save ซ้ำ)
+
+        เดิมใช้ mute_btn.setChecked() ซึ่งไม่มีผล เพราะปุ่มนี้ไม่ได้ setCheckable(True)
+        → ค่า mute ที่เคยตั้งไว้ไม่เคย restore กลับมาจริงหลัง rebuild
+        """
+        self._muted = bool(muted)
+        if not getattr(self, '_master_muted', False):
+            self.mute_btn.setText("🔇" if self._muted else "🔊")
+
+    def set_master_muted(self, master_muted: bool):
+        """★ Sync กับปุ่ม master TTS mute ("ปิดอ่าน" บน topbar)
+
+        - master mute เปิด → บังคับไอคอนเป็น 🔇 + ปิดปุ่ม (แก้กลับได้ทาง
+          "ปิดอ่าน" → "อ่านแชท" เท่านั้น ไม่ใช่กดปุ่มลำโพงรายแพลตฟอร์ม)
+        - master mute ปิด → คืนปุ่ม/ไอคอนตามสถานะ mute เฉพาะแพลตฟอร์มของตัวเอง (self._muted)
+        """
+        self._master_muted = master_muted
+        if master_muted:
+            self.mute_btn.setText("🔇")
+            self.mute_btn.setEnabled(False)
+            self.mute_btn.setToolTip(
+                "ปิดเสียง TTS ทั้งหมดอยู่ (ปุ่ม \"ปิดอ่าน\" บนแถบด้านบน) — "
+                "เปิด \"อ่านแชท\" กลับก่อน ถึงจะปรับทีละแพลตฟอร์มได้"
+            )
+        else:
+            self.mute_btn.setEnabled(True)
+            self.mute_btn.setText("🔇" if getattr(self, '_muted', False) else "🔊")
+            self.mute_btn.setToolTip("ปิดเสียง TTS ของแพลตฟอร์มนี้")
 
     def set_connecting(self):
         """แสดงสถานะกำลังเชื่อมต่อ"""
@@ -142,14 +241,110 @@ class PlatformCard(QFrame):
             self.btn.setObjectName("Danger")
             self.status_label.setText("✅ เชื่อมต่อแล้ว")
             self.status_label.setStyleSheet("font-size: 12px; color: #10b981;")
+            self.viewer_label.setText("👥 0")
+            self.viewer_label.setVisible(True)
+            self.go_btn.setVisible(True)
         else:
             self.btn.setText("เชื่อมต่อ")
             self.btn.setObjectName("")
             self.status_label.setText("ยังไม่เชื่อมต่อ")
+            # (repolish อยู่ท้ายฟังก์ชัน — ครอบทั้งสอง branch)
             self.status_label.setStyleSheet("font-size: 12px; color: #6b7280;")
+            self.viewer_label.setVisible(False)
+            self.viewer_label.setText("")
+            self.go_btn.setVisible(False)
+            self.stream_title_label.setVisible(False)
+            self.stream_title_label.setText("")
+            self.refresh_btn.setVisible(False)
+            self.edit_link_label.setVisible(False)
+            self._uptime_timer.stop()
+            self._stream_start_time = None
+        # ★ setObjectName เปลี่ยนตัว selector ของ QSS (#Danger) แต่ Qt ไม่ re-evaluate
+        #   สไตล์ให้อัตโนมัติ — ต้อง unpolish/polish บังคับ ไม่งั้นขอบปุ่มค้างสีเดิม
+        #   (บางทีถึงหลุดเอง เพราะ event อื่น เช่น hover/resize ไปกระตุ้น repolish ให้บังเอิญ)
+        self.btn.style().unpolish(self.btn)
+        self.btn.style().polish(self.btn)
+
+    def set_stream_title(self, title: str):
+        """★ แสดง title ของ live stream ในการ์ด + refresh/Edit ปุ่ม (ชิดขวา)
+
+        title ชิดซ้าย, 🔄 refresh (ทุกแพลตฟอร์ม) + Edit (Twitch only) ชิดขวาของการ์ด
+        """
+        if title:
+            short = title[:50] + "…" if len(title) > 50 else title
+            self.stream_title_label.setTextFormat(Qt.PlainText)
+            self.stream_title_label.setText(f"📺 {short}")
+            self.stream_title_label.setVisible(True)
+            # ★ refresh ปุ่ม — แสดงทุกแพลตฟอร์ม (กดดึง title ใหม่)
+            self.refresh_btn.setVisible(True)
+            # ★ Edit — Twitch (เว็บ) + KICK (API ในโปรแกรม) + YouTube (Live Dashboard)
+            if self.platform_key in ("twitch", "kick", "youtube"):
+                self.edit_link_label.setVisible(True)
+            else:
+                self.edit_link_label.setVisible(False)
+        else:
+            self.stream_title_label.setVisible(False)
+            self.stream_title_label.setText("")
+            self.refresh_btn.setVisible(False)
+            self.edit_link_label.setVisible(False)
+
+    def set_stream_start_time(self, start_time):
+        """★ ตั้งเวลาเริ่มสตรีม → เริ่มนับ uptime
+
+        Args:
+            start_time: datetime object หรือ ISO string หรือ None (ใช้เวลาปัจจุบัน)
+        """
+        from datetime import datetime, timezone
+        if start_time is None:
+            self._stream_start_time = datetime.now(timezone.utc)
+        elif isinstance(start_time, str):
+            try:
+                self._stream_start_time = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+            except Exception:
+                self._stream_start_time = datetime.now(timezone.utc)
+        elif hasattr(start_time, 'timestamp'):
+            self._stream_start_time = start_time
+        else:
+            self._stream_start_time = datetime.now(timezone.utc)
+        self._update_uptime()
+        self._uptime_timer.start()
+
+    def _update_uptime(self):
+        """★ อัปเดตเวลาสตรีม (แสดงใน status_label ถ้าเชื่อมต่อแล้ว)"""
+        if not self._connected or not self._stream_start_time:
+            return
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        diff = now - self._stream_start_time
+        hours = int(diff.total_seconds() // 3600)
+        minutes = int((diff.total_seconds() % 3600) // 60)
+        if hours > 0:
+            uptime = f"⏱ {hours}ชม.{minutes:02d}น."
+        else:
+            uptime = f"⏱ {minutes}นาที"
+        # ★ แสดง uptime ต่อจาก status (เช่น "✅ เชื่อมต่อแล้ว · ⏱ 15นาที")
+        self.status_label.setText(f"✅ เชื่อมต่อแล้ว · {uptime}")
         # refresh style
         self.btn.style().unpolish(self.btn)
         self.btn.style().polish(self.btn)
+
+    def set_viewer_count(self, count, hidden=False):
+        """★ แสดงยอดคนดูในการ์ด (เรียกจาก app._update_viewer_ui)
+
+        - ไม่ได้เชื่อมต่อ → ซ่อน
+        - hidden=True → แสดง "👥 --"
+        - เชื่อมต่อแล้ว → แสดง "👥 {count}" เสมอ (รวม 0)
+        """
+        if not self._connected:
+            self.viewer_label.setVisible(False)
+            self.viewer_label.setText("")
+            return
+        if hidden:
+            self.viewer_label.setText("👥 --")
+            self.viewer_label.setVisible(True)
+            return
+        self.viewer_label.setText(f"👥 {count:,}")
+        self.viewer_label.setVisible(True)
 
 
 class Sidebar(QFrame):
@@ -436,6 +631,14 @@ class Sidebar(QFrame):
         card = PlatformCard(key, label, icon, self)
         self.platforms_container.addWidget(card)
         return card
+
+    def clear_platforms(self):
+        """★ ลบ platform cards ทั้งหมด (เรียกก่อน rebuild)"""
+        while self.platforms_container.count():
+            item = self.platforms_container.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
 
     def _make_text_toggle(self, text: str) -> QPushButton:
         """สร้าง text label ที่คลิกได้ (flat, no border) — ใช้แบบ Azure/Omni และ หญิง/ชาย

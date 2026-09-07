@@ -363,3 +363,107 @@ Redesign User Manager เป็น list + Author Modal แบบใหม่ท�
 - `event_log.get_all()` → list[EventEntry]
 - `donate_tracker.get_user(author)` → {platform: {field: value}, total_donate_count: int}
 - `donate_tracker.all_users()` → {author_lower: data}
+
+---
+
+## 📋 สรุปงานล่าสุด (2026-08-10 — ก่อน compact)
+
+### GitHub Repo
+- URL: `https://github.com/zepiam/broadcast-playroom-ex` (PUBLIC)
+- Token: (Classic, scope: repo) — เก็บนอก repo แล้ว ห้ามเขียนค่าจริงกลับลงไฟล์นี้
+- Release v2.0.1: https://github.com/zepiam/broadcast-playroom-ex/releases/tag/v2.0.1
+- version.json อัปโหลดเป็น release asset แล้ว
+- Auto-update ใช้ GitHub API `releases/latest` (ไม่ใช่ download URL ตรง)
+
+### Auto-Update System
+- `updater.py` — ดาวน์โหลด version.json จาก GitHub API releases/latest
+- Auto-check 10 วินาทีหลังเปิดโปรแกรม (เงียบ — แสดงใน status bar)
+- ปุ่ม "🔄 เช็คอัพเดท" ในหน้าเกี่ยวกับ (แสดง dialog + เปิด browser)
+- **วิธีอัพเดทเวอร์ชั่นใหม่**:
+  1. แก่ version.json → "version": "2.x.x"
+  2. Build exe ใหม่
+  3. git push
+  4. สร้าง release + อัปโหลด version.json เป็น asset:
+     ```bash
+     curl -s -X POST -H "Authorization: token ghp_..." -H "Content-Type: application/octet-stream" --data-binary @version.json "https://uploads.github.com/repos/zepiam/broadcast-playroom-ex/releases/<RELEASE_ID>/assets?name=version.json"
+     ```
+
+### Portable Data Directory
+- `data_dir.py` — ข้อมูลทั้งหมดอยู่ใน `data/` ข้าง exe (portable)
+- Migration: ย้ายจาก `~/.tts-for-livestream/` → `./data/` อัตโนมัติ (ครั้งเดียว)
+- ไฟล์ใน data/: settings.json, message_history.json, event_log.json, donate_tracker.json, layout.json, character_images/, emote_cache/, voices/
+
+### ฟอนต์ภาษาไทย
+- โหลด Kanit + NotoSansThai (fallback) จาก `assets/fonts/`
+- QSS: `font-family: 'Kanit', 'Noto Sans Thai', 'Segoe UI', sans-serif`
+- รองรับ PyInstaller frozen path (`_internal/assets/fonts/`)
+
+### User Manager + Author Modal (Redesign)
+- `ui/dialogs/user_manager.py` — list view: name + stats summary + คลิก 👤
+- `ui/dialogs/author_modal.py` — Author Modal ใหม่:
+  - สถิติ: 💬 message count + 🎉 events + 💎 donation
+  - Donation history (หน้าแยก — แยกสกุลเงิน bits/THB/sub)
+  - Message history (load more +20, pagination)
+  - Export log (.txt)
+  - Block/unblock (menu: block_all/block_tts/unblock)
+  - Rename
+- Backend APIs:
+  - `message_history.get_messages_by_author(author, limit=20, offset=0)`
+  - `message_history.count(author)` — ใช้ `_total_counts` (ตลอดกาล ไม่ cap 500)
+  - `event_log.get_by_author(author)`
+  - `donate_tracker.get_user(author)` / `all_users()`
+
+### Bug ที่แก้ล่าสุด
+1. `message_history.record()` — ส่ง `(author, platform, text, emotes, emote_urls)` ไม่ใช่ `msg` object
+2. `event_log.record()` — ลำดับ `(platform, author, event_type, amount)` ไม่ใช่สลับ
+3. `donate_tracker.record_donation()` — ลำดับ `(author, platform, event_type, amount)` ไม่ใช่สลับ
+4. message_history count cap 500 → `_total_counts` นับตลอดกาล
+5. NG Words: `_add_ng_word` / `_del_ng_row` เรียก `_auto_save()` หลังเพิ่ม/ลบ
+6. NG Words: เช็ค `filter_text` ก่อน `add_message` → banned ไม่แสดงใน Live Chat
+7. Blocklist (block_all): เช็ค `is_user_blocked` ก่อน `add_message` → ไม่แสดงใน Live Chat
+8. Playroom limit/day: เพิ่ม `valueChanged.connect(_auto_save)`
+9. Playroom cards: default collapsed
+10. OBS test button: ใช้ Qt Signal แทน QTimer.singleShot (cross-thread)
+11. Event system messages: แสดงใน Live Chat เป็น event row (ไม่ใช่ system)
+12. OmniVoice short word: fallback ไป Azure แทน skip (engine_choice = "edge")
+13. Event Debug Mode: เห็นเฉพาะ dev (sys.frozen check)
+
+### Settings Dialog Side Menu (ลำดับใหม่)
+```
+🔌 แพลตฟอร์ม
+🔊 TTS
+🌐 การแปล
+🎮 Playroom
+🎨 Canvas
+🔌 OBS WebSocket
+🔔 แจ้งเตือน
+🚫 NG Words
+🔄 Replace
+🚫 Blocklist & Spam
+🪟 Overlay+
+💚 สนับสนุน          ← ใหม่ (PromptPay + True Money + รายชื่อผู้สนับสนุน)
+ℹ️ เกี่ยวกับ
+```
+
+### หน้าเกี่ยวกับ (About) — เนื้อหาใหม่
+- Title: "Broadcast Playroom 2"
+- Subtitle: "รวบข้อมูลแชท และ อ่านแชทจากเว็บไลฟ์สตรีม ด้วยเสียงสังเคราะห์"
+- 10 paragraphs (Azure vs OmniVoice + RVC + Lite/Full)
+- ฟอนต์ 15px (ขยายจาก 13px)
+- `about_content.md` — ไฟล์สำหรับ user แก้ข้อความ
+
+### Version
+- ปัจจุบัน: **v2.0.1**
+- version.json: version + changelog + repo URL + lite/full download URLs
+
+### ไฟล์ใหม่ที่สร้าง
+- `data_dir.py` — portable data directory helper
+- `ui/dialogs/author_modal.py` — Author Modal (redesign)
+- `ui/dialogs/omni_skip.py` — OmniVoice short word settings
+- `about_content.md` — About section content (editable)
+
+### สิ่งที่ยังไม่ได้ทำ (backlog)
+- Full build ยังไม่ได้ build v2.0.1 (Lite build แล้ว)
+- รายชื่อผู้สนับสนุน — ยังว่าง (รอข้อมูลจาก user)
+- Lite build ยังไม่ได้ทดสอบฟอนต์ในเครื่องใหม่
+- event system messages ยังไม่ได้ทดสอบในเครื่องใหม่

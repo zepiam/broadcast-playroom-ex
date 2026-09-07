@@ -171,6 +171,15 @@ class AppSettings:
     mylive_url: str = ""  # เลข stream MyLive เช่น "162006" หรือ URL /streams/...
     tiktok_username: str = ""  # @username TikTok LIVE (ไม่ต้องมี @)
     kick_channel: str = ""  # KICK slug (username) เช่น "trainwreckstv"
+    # ★ KICK OAuth (ส่งแชท + bot + แก้ชื่อห้อง)
+    kick_oauth_token: str = ""        # access token
+    kick_oauth_refresh: str = ""      # refresh token (หมุนเวียน — เก็บอันใหม่ทับเสมอ)
+    kick_token_expiry_ts: float = 0.0 # ★ เวลา (unix) ที่ token หมดอายุ (2 ชม. — ต่ออายุอัตโนมัติ)
+    kick_bot_username: str = ""       # ชื่อบัญชีจาก OAuth (auto-filled)
+    kick_user_id: int = 0             # broadcaster_user_id (ใช้ส่ง type=user)
+    # ★ Announcement — ประกาศจากเจ้าของโปรแกรม (เจ้าของใช้ token เผยแพร่, user แค่ดู)
+    announce_gh_token: str = ""  # fine-grained PAT (จำกัด repo เดียว + Contents rw) — ใช้เฉพาะเครื่องเจ้าของ
+    announce_dismissed_id: str = ""  # id ของประกาศที่ user กดปิดล่าสุด
     auto_connect: bool = False  # เชื่อมต่ออัตโนมัติตอนเปิดโปรแกรม
     # ★ auto-connect per platform
     auto_connect_twitch: bool = False
@@ -193,11 +202,63 @@ class AppSettings:
     # สถานะหุบ/ขยายของส่วน platform cards ใน sidebar (default ขยาย)
     platforms_collapsed: bool = False
     # วอลุ่ม TTS แยกต่อแพลตฟอร์ม (override ค่า volume หลัก — None = ใช้ค่า volume หลัก)
-    tts_volume_twitch: int = 0    # % offset (-50 ถึง +50)
-    tts_volume_youtube: int = 0
-    tts_volume_mylive: int = 0
-    tts_volume_tiktok: int = 0
-    tts_volume_kick: int = 0
+    tts_volume_twitch: int = 100    # 0-100 (100 = no change)
+    tts_volume_youtube: int = 100
+    tts_volume_mylive: int = 100
+    tts_volume_tiktok: int = 100
+    tts_volume_kick: int = 100
+    # ★ Twitch OAuth (ส่งแชท + bot) — ถ้าว่าง = anonymous (อ่านอย่างเดียว)
+    twitch_oauth_token: str = ""        # access token (เก็บตรงๆ — จะใช้ต่อจากนี้)
+    twitch_oauth_refresh: str = ""      # refresh token (แลก token ใหม่เมื่อหมดอายุ)
+    twitch_token_expiry_ts: float = 0.0 # ★ เวลา (unix) ที่ token หมดอายุ — ใช้นับวันแสดงบนการ์ด
+    twitch_bot_username: str = ""       # username จาก OAuth (auto-filled)
+    twitch_bot_enabled: bool = False    # เปิด/ปิด bot
+    ask_post_result: bool = True        # ★ ASK — โพสผลสรุปโหวตลงแชทเมื่อจบโหวต
+    ask_presets: list = field(default_factory=list)  # ★ [{name, question, choices, answer_mode}]
+    twitch_bot_name: str = "Baitoei-Bot"  # ★ ชื่อบอท (label ในโปรแกรม — ใช้ดัก TTS ไม่อ่าน)
+    twitch_bot_commands: dict = field(default_factory=lambda: {
+        "!dc": "Discord: https://discord.gg/xxx",
+        "!social": "Follow: Twitter @xxx | YouTube xxx",
+    })
+    twitch_bot_timers: list = field(default_factory=list)  # [{"text":"...", "interval_min":10}]
+    # ★ Event responses (บอทตอบอัตโนมัติเมื่อมี Sub/Bits/Raid/Follow)
+    #   ใช้ placeholders: {user} = ชื่อคน, {amount} = จำนวน, {raid_count} = ยอดคนดูที่มา
+    twitch_bot_event_sub: str = "ขอบคุณ {user} สำหรับการ Sub! 💜"
+    twitch_bot_event_resub: str = "ขอบคุณ {user} ที่ Sub ต่อเนื่อง {months} เดือน! 💜"
+    twitch_bot_event_bits: str = "ขอบคุณ {user} สำหรับ {amount} bits! 💎"
+    twitch_bot_event_raid: str = "ขอบคุณ {user} สำหรับการ Raid พา {raid_count} คนมา! 🎉"
+    twitch_bot_event_follow: str = "ขอบคุณ {user} ที่ติดตาม! ❤️"
+    twitch_bot_events_enabled: bool = True  # เปิด/ปิด event responses รวม
+    # ★ ให้ Bot ทำงานที่แพลตฟอร์มไหนบ้าง (ปิดเฉพาะแพลตฟอร์มได้ เช่น โดนป่วนที่ KICK)
+    bot_platforms: dict = field(default_factory=lambda: {"twitch": True, "youtube": True, "kick": True})
+    # ★ Bot blacklist — บอทดังๆ ที่ไม่ต้องอ่าน TTS (แต่แสดงใน Live Chat)
+    #   ★ overlay_bot_hide = True → ซ่อนบอทเหล่านี้จาก Overlay ด้วย
+    tts_bot_blacklist: list = field(default_factory=lambda: [
+        "nightbot", "streamelements", "streamlabs", "moobot",
+        "wizebot", "fossabot", "deepbot", "phantombot", "sery_bot",
+        "buttsbot", "kapsulebot",
+    ])
+    overlay_hide_bots: bool = True  # ★ ซ่อนบอทจาก Overlay (default = ซ่อน)
+    # ★ YouTube OAuth (ส่งแชท + bot)
+    youtube_oauth_token: str = ""
+    youtube_oauth_refresh: str = ""
+    youtube_channel_name: str = ""
+    youtube_channel_id: str = ""  # ★ UCxxxx — เช็คว่าเป็นห้องเราไหม (กัน bot โพสในห้องคนอื่น)
+    youtube_bot_enabled: bool = False
+    youtube_bot_commands: dict = field(default_factory=lambda: {
+        "!dc": "Discord: https://discord.gg/xxx",
+        "!social": "Follow: Twitter @xxx | YouTube xxx",
+    })
+    youtube_bot_timers: list = field(default_factory=list)
+    youtube_bot_event_sub: str = "ขอบคุณ {user} สำหรับการ Join Membership! 💜"
+    youtube_bot_event_superchat: str = "ขอบคุณ {user} สำหรับ Super Chat ฿{amount}! 💰"
+    youtube_bot_event_member: str = "ยินดีต้อนรับสมาชิกใหม่ {user}! 🎉"
+    youtube_bot_events_enabled: bool = True
+    # ★ YouTube quota tracking
+    youtube_quota_used: int = 0
+    youtube_quota_date: str = ""
+    youtube_quota_exceeded: bool = False
+    youtube_quota_reset_at: float = 0
 
     # ---- reading ----
     voice_id: str = BASE_VOICE_ID  # "premwadee" หรือ rvc model id
@@ -215,8 +276,10 @@ class AppSettings:
     omnivoice_skip_min_length: int = 3
     # ★ whitelist คำเดียวที่สั้นแต่อ่านได้ (เช่น "ได้" "มี" "ไป" "กิน")
     omnivoice_short_whitelist: list[str] = field(default_factory=lambda: ["ได้", "มี", "ไป", "กิน", "ดี", "ใช่"])
-    read_author: bool = True
+    read_author: bool = False  # ★ default = อ่านแต่ข้อความเท่านั้น (อ่านชื่อเป็นตัวเลือก)
     read_message: bool = True
+    # ★ อ่านข้อความที่เราพิมพ์บนหน้าเว็บ (Twitch/KICK) — default เปิด (อ่านเสมอ)
+    read_own_web_messages: bool = True
     rate: int = 0  # %
     volume: int = 100  # master volume 0-100 (ใช้ player.set_volume — รองรับทุก engine)
     rvc_f0method: str = "rmvpe"  # "rmvpe" | "crepe" | "harvest" | "pm"
@@ -279,13 +342,15 @@ class AppSettings:
     chat_font_scale: int = 1  # ขนาดฟอนต์ Live Chat/Popout: step 1-5 (เพิ่มทีละ 8pt ต่อ step)
     chat_animated_emotes: bool = False  # แสดง emote ขยับ (animated) ใน Live Chat/Popout
     show_system_messages: bool = True  # แสดงสถานะเชื่อมต่อ (✅/⚪/⚠️) ใน Live Chat
+    # ★ checkbox "TTS" ข้างปุ่มส่งในช่องพิมพ์ — ให้อ่านออกเสียงข้อความของตัวเอง (โปรแกรม+เว็บ)
+    chat_input_read_tts: bool = False  # default = ไม่อ่าน / จำค่าล่าสุดที่ผู้ใช้ติ๊กไว้
     # ---- Live Chat appearance (เฟืองใน chat panel header) ----
     chat_show_platform_icon: bool = True       # แสดงไอคอนแพลตฟอร์มหน้าชื่อ
     chat_author_color_mode: str = "platform"   # "platform" (สีตามแพลตฟอร์ม) | "random" (สีสุ่มคงที่ต่อคน)
     chat_show_timestamp: bool = False          # แสดง timestamp ด้านหลังชื่อผู้โพส
     chat_emote_size: int = 28                  # ขนาด emote ใน Live Chat (px)
     chat_font_family: str = "Kanit"            # Google Font สำหรับ Live Chat/Popout
-    chat_zebra_stripes: bool = False           # สีพื้นหลังสลับ (zebra) สำหรับแยกข้อความ
+    chat_zebra_stripes: bool = True            # สีพื้นหลังสลับ (zebra) — default เปิด
 
     # ---- overlay (OBS browser source — เว็บที่ OBS render ทับบนสตรีม) ----
     overlay_enabled: bool = False
@@ -295,6 +360,9 @@ class AppSettings:
     obs_ws_host: str = "localhost"
     obs_ws_port: int = 4455
     obs_ws_password: str = ""
+    # ── Supporters API (ดึงรายชื่อผู้สนับสนุน + admin) ──
+    supporters_api_url: str = "https://men9ch.com/api"  # base URL (api.php/submit.php/approve.php)
+    supporters_admin_secret: str = ""  # admin secret (ดูจาก config.php บน server)
     overlay_animation: str = "fade"  # หนึ่งใน OVERLAY_ANIMATIONS (เข้า)
     overlay_exit_animation: str = "fade_out"  # หนึ่งใน OVERLAY_EXIT_ANIMATIONS (ออก)
     overlay_font_size: int = 18   # px (12-48)
@@ -562,21 +630,19 @@ class AppSettings:
     playroom_port: int = 8766              # port แยกจาก chat overlay (8765)
     # triggers: list of {code, daily_limit, widget_ids, clips: [{name, path, weight}]}
     # แต่ละ trigger = collection ของวิดีโอเป็นของตัวเอง + daily limit แยก
-    # widget_ids: [] = ทุก widget (backward compat), ถ้าระบุ = เฉพาะ widget เหล่านั้น
-    playroom_triggers: list = field(default_factory=lambda: [
-        {
-            "code": "#fortune",
-            "daily_limit": 3,
-            "widget_ids": [],
-            "clips": [
-                {"name": "good", "path": "playroom/media/good.mp4", "weight": 30},
-                {"name": "normal", "path": "playroom/media/normal.mp4", "weight": 50},
-                {"name": "bad", "path": "playroom/media/bad.mp4", "weight": 20},
-            ],
-        },
-    ])
+    # widget_ids: [] = ทุก widget (backward compat), ถ้าระบุ = เฉพาะ widget เหล่านัั้น
+    # ★ default ว่าง — ให้ user เพิ่ม trigger + clip เอง (ตัวอย่าง #fortune ถูกถอดออก
+    #   เพราะ path วิดีโอ default หาไม่เจอบน exe → กดทดสอบแล้วจอดำ)
+    playroom_triggers: list = field(default_factory=list)
 
     # ---- filter (เก็บฝั่งเอง ไม่ใช่ TextFilter object เพื่อ JSON-friendly) ----
+    # ★ บอทแชทยอดนิยมในสังคมสตรีมเมอร์ — seed เป็น Blocklist เริ่มต้น (บล็อก TTS เท่านั้น)
+    #   กัน TTS อ่านข้อความประกาศ/คำสั่งของบอทที่เข้าห้อง (ครั้งเดียว — user ลบได้ ไม่เด้งกลับ)
+    DEFAULT_BOT_BLOCKLIST = [
+        "nightbot", "streamelements", "streamlabs", "moobot", "fossabot",
+        "wizebot", "deepbot", "phantombot", "botrixoficial", "sery_bot",
+    ]
+    bot_blocklist_seeded: bool = False  # ★ flag กัน seed ซ้ำ (ลบแล้วไม่กลับมาเอง)
     blocked_users: list[str] = field(default_factory=list)
     banned_words: list[str] = field(default_factory=lambda: ["ควย"])
     # per-word mode: {word_lower: "hide" | "show_no_tts"}
@@ -636,6 +702,13 @@ class AppSettings:
     notifications: dict = field(default_factory=dict)
     notification: dict = field(default_factory=dict)  # legacy flat (สำหรับ backward compat)
 
+    def save_settings(self) -> None:
+        """★ method wrapper — เรียก module-level save_settings(self)
+        (app.py หลายจุดเรียก self.settings.save_settings() — ก่อนหน้านี้ AttributeError เงียบๆ
+         ทำให้ค่าที่ toggle ไม่ถูก persist)
+        """
+        save_settings(self)
+
     def to_dict(self) -> dict:
         return {
             "platform": self.platform,
@@ -644,6 +717,13 @@ class AppSettings:
             "mylive_url": self.mylive_url,
             "tiktok_username": self.tiktok_username,
             "kick_channel": self.kick_channel,
+            "kick_oauth_token": self.kick_oauth_token,
+            "kick_oauth_refresh": self.kick_oauth_refresh,
+            "kick_token_expiry_ts": float(self.kick_token_expiry_ts or 0.0),
+            "kick_bot_username": self.kick_bot_username,
+            "kick_user_id": int(self.kick_user_id or 0),
+            "announce_gh_token": self.announce_gh_token,
+            "announce_dismissed_id": self.announce_dismissed_id,
             "auto_connect": self.auto_connect,
             "auto_connect_twitch": self.auto_connect_twitch,
             "auto_connect_youtube": self.auto_connect_youtube,
@@ -666,6 +746,42 @@ class AppSettings:
             "tts_volume_mylive": self.tts_volume_mylive,
             "tts_volume_tiktok": self.tts_volume_tiktok,
             "tts_volume_kick": self.tts_volume_kick,
+            # ★ Twitch OAuth + bot
+            "twitch_oauth_token": self.twitch_oauth_token,
+            "twitch_oauth_refresh": self.twitch_oauth_refresh,
+            "twitch_token_expiry_ts": float(self.twitch_token_expiry_ts or 0.0),
+            "twitch_bot_username": self.twitch_bot_username,
+            "twitch_bot_enabled": bool(self.twitch_bot_enabled),
+            "ask_post_result": bool(self.ask_post_result),
+            "ask_presets": list(self.ask_presets),
+            "twitch_bot_name": self.twitch_bot_name,
+            "twitch_bot_commands": self.twitch_bot_commands,
+            "twitch_bot_timers": self.twitch_bot_timers,
+            "twitch_bot_event_sub": self.twitch_bot_event_sub,
+            "twitch_bot_event_resub": self.twitch_bot_event_resub,
+            "twitch_bot_event_bits": self.twitch_bot_event_bits,
+            "twitch_bot_event_raid": self.twitch_bot_event_raid,
+            "twitch_bot_event_follow": self.twitch_bot_event_follow,
+            "twitch_bot_events_enabled": bool(self.twitch_bot_events_enabled),
+            "bot_platforms": dict(self.bot_platforms or {}),
+            "tts_bot_blacklist": self.tts_bot_blacklist,
+            "overlay_hide_bots": bool(self.overlay_hide_bots),
+            # ★ YouTube OAuth + bot + quota
+            "youtube_oauth_token": self.youtube_oauth_token,
+            "youtube_oauth_refresh": self.youtube_oauth_refresh,
+            "youtube_channel_name": self.youtube_channel_name,
+            "youtube_channel_id": self.youtube_channel_id,
+            "youtube_bot_enabled": bool(self.youtube_bot_enabled),
+            "youtube_bot_commands": self.youtube_bot_commands,
+            "youtube_bot_timers": self.youtube_bot_timers,
+            "youtube_bot_event_sub": self.youtube_bot_event_sub,
+            "youtube_bot_event_superchat": self.youtube_bot_event_superchat,
+            "youtube_bot_event_member": self.youtube_bot_event_member,
+            "youtube_bot_events_enabled": bool(self.youtube_bot_events_enabled),
+            "youtube_quota_used": int(self.youtube_quota_used),
+            "youtube_quota_date": self.youtube_quota_date,
+            "youtube_quota_exceeded": bool(self.youtube_quota_exceeded),
+            "youtube_quota_reset_at": float(self.youtube_quota_reset_at),
             "voice_id": self.voice_id,
             "tts_engine": self.tts_engine,
             "omnivoice_voice": self.omnivoice_voice,
@@ -675,6 +791,7 @@ class AppSettings:
             "omnivoice_short_whitelist": list(self.omnivoice_short_whitelist),
             "read_author": self.read_author,
             "read_message": self.read_message,
+            "read_own_web_messages": self.read_own_web_messages,
             "rate": self.rate,
             "volume": self.volume,
             "rvc_f0method": self.rvc_f0method,
@@ -712,6 +829,7 @@ class AppSettings:
             "chat_font_scale": self.chat_font_scale,
             "chat_animated_emotes": self.chat_animated_emotes,
             "show_system_messages": self.show_system_messages,
+            "chat_input_read_tts": self.chat_input_read_tts,
             "chat_show_platform_icon": self.chat_show_platform_icon,
             "chat_author_color_mode": self.chat_author_color_mode,
             "chat_show_timestamp": self.chat_show_timestamp,
@@ -724,6 +842,8 @@ class AppSettings:
             "obs_ws_host": self.obs_ws_host,
             "obs_ws_port": self.obs_ws_port,
             "obs_ws_password": self.obs_ws_password,
+            "supporters_api_url": self.supporters_api_url,
+            "supporters_admin_secret": self.supporters_admin_secret,
             "overlay_animation": self.overlay_animation,
             "overlay_exit_animation": self.overlay_exit_animation,
             "overlay_font_size": self.overlay_font_size,
@@ -869,6 +989,7 @@ class AppSettings:
             "obs_ws_port": self.obs_ws_port,
             "obs_ws_password": self.obs_ws_password,
             "blocked_users": list(self.blocked_users),
+            "bot_blocklist_seeded": bool(self.bot_blocklist_seeded),
             "banned_words": list(self.banned_words),
             "banned_word_modes": dict(self.banned_word_modes),
             "replace_words": dict(self.replace_words),
@@ -929,6 +1050,20 @@ class AppSettings:
             s.tiktok_username = str(data["tiktok_username"])
         if "kick_channel" in data:
             s.kick_channel = str(data["kick_channel"])
+        if "kick_oauth_token" in data:
+            s.kick_oauth_token = str(data["kick_oauth_token"])
+        if "kick_oauth_refresh" in data:
+            s.kick_oauth_refresh = str(data["kick_oauth_refresh"])
+        if "kick_token_expiry_ts" in data:
+            s.kick_token_expiry_ts = float(data["kick_token_expiry_ts"] or 0.0)
+        if "kick_bot_username" in data:
+            s.kick_bot_username = str(data["kick_bot_username"])
+        if "kick_user_id" in data:
+            s.kick_user_id = int(data["kick_user_id"] or 0)
+        if "announce_gh_token" in data:
+            s.announce_gh_token = str(data["announce_gh_token"])
+        if "announce_dismissed_id" in data:
+            s.announce_dismissed_id = str(data["announce_dismissed_id"])
         if "auto_connect" in data:
             s.auto_connect = bool(data["auto_connect"])
         for plat in ("twitch", "youtube", "mylive", "tiktok", "kick"):
@@ -960,7 +1095,74 @@ class AppSettings:
         for vol_field in ("tts_volume_twitch", "tts_volume_youtube",
                            "tts_volume_mylive", "tts_volume_tiktok", "tts_volume_kick"):
             if vol_field in data:
-                setattr(s, vol_field, int(data[vol_field]))
+                val = int(data[vol_field])
+                # ★ migration: ค่าเดิมเป็น 0 (offset -50..+50) → แปลงเป็น 100 (no change)
+                if val <= 0:
+                    val = 100
+                setattr(s, vol_field, val)
+        # ★ Twitch OAuth + bot
+        if "twitch_oauth_token" in data:
+            s.twitch_oauth_token = str(data["twitch_oauth_token"])
+        if "twitch_token_expiry_ts" in data:
+            s.twitch_token_expiry_ts = float(data["twitch_token_expiry_ts"] or 0.0)
+        if "twitch_oauth_refresh" in data:
+            s.twitch_oauth_refresh = str(data["twitch_oauth_refresh"])
+        if "twitch_bot_username" in data:
+            s.twitch_bot_username = str(data["twitch_bot_username"])
+        if "twitch_bot_enabled" in data:
+            s.twitch_bot_enabled = bool(data["twitch_bot_enabled"])
+        if "ask_post_result" in data:
+            s.ask_post_result = bool(data["ask_post_result"])
+        if "ask_presets" in data:
+            s.ask_presets = list(data["ask_presets"] or [])
+        if "twitch_bot_name" in data:
+            s.twitch_bot_name = str(data["twitch_bot_name"])
+        if "twitch_bot_commands" in data:
+            s.twitch_bot_commands = data["twitch_bot_commands"]
+        if "twitch_bot_timers" in data:
+            s.twitch_bot_timers = data["twitch_bot_timers"]
+        if "twitch_bot_event_sub" in data:
+            s.twitch_bot_event_sub = str(data["twitch_bot_event_sub"])
+        if "twitch_bot_event_resub" in data:
+            s.twitch_bot_event_resub = str(data["twitch_bot_event_resub"])
+        if "twitch_bot_event_bits" in data:
+            s.twitch_bot_event_bits = str(data["twitch_bot_event_bits"])
+        if "twitch_bot_event_raid" in data:
+            s.twitch_bot_event_raid = str(data["twitch_bot_event_raid"])
+        if "twitch_bot_event_follow" in data:
+            s.twitch_bot_event_follow = str(data["twitch_bot_event_follow"])
+        if "twitch_bot_events_enabled" in data:
+            s.twitch_bot_events_enabled = bool(data["twitch_bot_events_enabled"])
+        if "bot_platforms" in data:
+            _bp = {"twitch": True, "youtube": True, "kick": True}
+            _bp.update({k: bool(v) for k, v in (data["bot_platforms"] or {}).items()
+                        if k in _bp})
+            s.bot_platforms = _bp
+        if "tts_bot_blacklist" in data:
+            s.tts_bot_blacklist = list(data["tts_bot_blacklist"])
+        if "overlay_hide_bots" in data:
+            s.overlay_hide_bots = bool(data["overlay_hide_bots"])
+        # ★ YouTube OAuth + bot + quota
+        for ykey in ("youtube_oauth_token", "youtube_oauth_refresh", "youtube_channel_name",
+                     "youtube_channel_id",
+                     "youtube_bot_event_sub", "youtube_bot_event_superchat", "youtube_bot_event_member",
+                     "youtube_quota_date"):
+            if ykey in data:
+                setattr(s, ykey, str(data[ykey]))
+        if "youtube_bot_enabled" in data:
+            s.youtube_bot_enabled = bool(data["youtube_bot_enabled"])
+        if "youtube_bot_commands" in data:
+            s.youtube_bot_commands = data["youtube_bot_commands"]
+        if "youtube_bot_timers" in data:
+            s.youtube_bot_timers = data["youtube_bot_timers"]
+        if "youtube_bot_events_enabled" in data:
+            s.youtube_bot_events_enabled = bool(data["youtube_bot_events_enabled"])
+        if "youtube_quota_used" in data:
+            s.youtube_quota_used = int(data["youtube_quota_used"])
+        if "youtube_quota_exceeded" in data:
+            s.youtube_quota_exceeded = bool(data["youtube_quota_exceeded"])
+        if "youtube_quota_reset_at" in data:
+            s.youtube_quota_reset_at = float(data["youtube_quota_reset_at"])
         if "voice_id" in data:
             s.voice_id = data["voice_id"]
         if "tts_engine" in data:
@@ -994,15 +1196,15 @@ class AppSettings:
             pass
         if "read_author" in data:
             s.read_author = bool(data["read_author"])
+        if "read_own_web_messages" in data:
+            s.read_own_web_messages = bool(data["read_own_web_messages"])
         if "read_message" in data:
             s.read_message = bool(data["read_message"])
         if "rate" in data:
             s.rate = int(data["rate"])
         if "volume" in data:
             v = int(data["volume"])
-            # ★ migration: volume เดิมเป็น -50..+50 offset (default 0)
-            #   ตอนนี้เป็น master volume 0-100 (default 100) — ค่าเก่า 0 = เบาสุด
-            #   แปลง: ถ้า <= 0 ให้ใช้ default 100
+            # ★ migration: ค่าเดิมอาจเป็น offset (-50..+50) → ถ้า <= 0 ใช้ 100
             s.volume = v if 0 < v <= 100 else 100
         if "rvc_f0method" in data:
             s.rvc_f0method = data["rvc_f0method"]
@@ -1087,6 +1289,8 @@ class AppSettings:
             s.chat_animated_emotes = bool(data["chat_animated_emotes"])
         if "show_system_messages" in data:
             s.show_system_messages = bool(data["show_system_messages"])
+        if "chat_input_read_tts" in data:
+            s.chat_input_read_tts = bool(data["chat_input_read_tts"])
         if "chat_show_platform_icon" in data:
             s.chat_show_platform_icon = bool(data["chat_show_platform_icon"])
         if "chat_author_color_mode" in data:
@@ -1115,6 +1319,10 @@ class AppSettings:
             s.obs_ws_port = int(data["obs_ws_port"])
         if "obs_ws_password" in data:
             s.obs_ws_password = str(data["obs_ws_password"])
+        if "supporters_api_url" in data:
+            s.supporters_api_url = str(data["supporters_api_url"])
+        if "supporters_admin_secret" in data:
+            s.supporters_admin_secret = str(data["supporters_admin_secret"])
         if "overlay_animation" in data:
             s.overlay_animation = str(data["overlay_animation"])
         if "overlay_font_size" in data:
@@ -1370,7 +1578,12 @@ class AppSettings:
         if "composer_enabled" in data:
             s.composer_enabled = bool(data["composer_enabled"])
         if "composer_port" in data:
-            try: s.composer_port = int(data["composer_port"])
+            try:
+                p = int(data["composer_port"])
+                # ★ migrate เก่า → 8808 เป็น 8801 (unify default — กัน dev/exe ใช้คนละ port)
+                if p == 8808:
+                    p = 8801
+                s.composer_port = p
             except Exception: s.composer_port = 8801
         if "composer_canvas_size" in data:
             v = str(data["composer_canvas_size"])
@@ -1435,8 +1648,26 @@ class AppSettings:
             s.obs_ws_port = int(data["obs_ws_port"])
         if "obs_ws_password" in data:
             s.obs_ws_password = str(data["obs_ws_password"])
+        if "supporters_api_url" in data:
+            s.supporters_api_url = str(data["supporters_api_url"])
+        if "supporters_admin_secret" in data:
+            s.supporters_admin_secret = str(data["supporters_admin_secret"])
         if "blocked_users" in data:
             s.blocked_users = list(data["blocked_users"])
+        if "bot_blocklist_seeded" in data:
+            s.bot_blocklist_seeded = bool(data["bot_blocklist_seeded"])
+        # ★ seed บอทยอดนิยมเข้า Blocklist ครั้งเดียว (บล็อก TTS เท่านั้น)
+        #   ผู้ใช้เก่าอัพเดทมาก็ได้ / ลบทิ้งแล้วจะไม่ถูกเพิ่มกลับ (เช็คจาก flag)
+        if not s.bot_blocklist_seeded:
+            existing = set()
+            for u in s.blocked_users:
+                n = (u.get("name", "") if isinstance(u, dict) else str(u)).strip().lower()
+                if n:
+                    existing.add(n)
+            for bot in AppSettings.DEFAULT_BOT_BLOCKLIST:
+                if bot not in existing:
+                    s.blocked_users.append({"name": bot, "hide_overlay": False})
+            s.bot_blocklist_seeded = True
         if "banned_words" in data:
             s.banned_words = list(data["banned_words"])
         if "banned_word_modes" in data:
@@ -1663,9 +1894,6 @@ def load_settings() -> AppSettings:
             except Exception:
                 s.game_overlay_alpha = 1.0
         # migrate v2: reset ทุก opacity เป็น 1.0 (100%) บังคับหลังอัพเดท
-        # ★ user เดิมที่ปรับ opacity ไว้ → reset กลับ 100% แล้วค่อยปรับเองใหม่
-        #   ครอบ: overlay_box_bg_opacity (Default), overlay_balloon_bg_opacity (Balloon),
-        #          game_overlay_box_bg_opacity (Default), game_overlay_balloon_bg_opacity (Balloon)
         if not data.get("_opacity_reset_v2"):
             for _field in ("overlay_box_bg_opacity", "overlay_balloon_bg_opacity",
                            "game_overlay_box_bg_opacity", "game_overlay_balloon_bg_opacity"):
@@ -1673,6 +1901,22 @@ def load_settings() -> AppSettings:
                     setattr(s, _field, 1.0)
                 except Exception:
                     pass
+        # ★ v2.4.2 migration — บังคับ default: Azure ผู้หญิง + อ่านทุกภาษา (ครั้งแรกเท่านั้น)
+        if not data.get("_v242_defaults_set"):
+            s.tts_engine = "omnivoice"
+            s.omnivoice_voice = "female"
+            s.edge_voice = "premwadee"
+            s.multilang_enabled = True
+            s.auto_translate_enabled = False
+            # ★ เขียน flag ลง JSON ทันที → กัน migration ทำซ้ำรอบถัดไป
+            try:
+                data["_v242_defaults_set"] = True
+                import json as _json
+                _p = os.path.join(os.path.expanduser("~"), ".tts-for-livestream", "settings.json")
+                with open(_p, "w", encoding="utf-8") as _f:
+                    _json.dump(data, _f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
         return s
     except (json.JSONDecodeError, OSError, TypeError):
         s = AppSettings()
@@ -1687,5 +1931,6 @@ def save_settings(settings: AppSettings) -> None:
     data["_rvc_default_migrated"] = True  # กัน migrate ซ้ำ
     data["_game_overlay_alpha_reset"] = True  # กัน reset alpha ซ้ำ (migration ครั้งเดียว)
     data["_opacity_reset_v2"] = True  # กัน reset opacity ซ้ำ (migration ครั้งเดียว)
+    data["_v242_defaults_set"] = True  # กันบังคับ default ซ้ำ
     with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)

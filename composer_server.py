@@ -17,6 +17,7 @@ Routes:
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import threading
 from typing import Optional
@@ -24,6 +25,8 @@ from typing import Optional
 from aiohttp import web, WSMsgType
 
 from settings import get_base_dir, resolve_character_default_image
+
+logger = logging.getLogger("composer")
 from game_overlay_themes import get_theme_css, get_theme_list
 
 
@@ -38,6 +41,8 @@ class ComposerServer:
         self._runner: Optional[web.AppRunner] = None
         self._site: Optional[web.TCPSite] = None
         self._clients: set = set()
+        self._last_ask_state = None  # ★ ASK state ล่าสุด (ส่งให้ client ใหม่ที่เชื่อมมา)
+        self._ask_demo_handles = []  # ★ ตัวจับเวลา demo auto-flow (vote→result→stop)
         # ★ chat widget clients แยกตาม widget_id (สำหรับ push config/message เฉพาะ widget)
         self._chat_widget_clients: dict[str, set] = {}
         # ★ playroom clients — รับเฉพาะ type:"clip" (ไม่ปนกับ composer/chat clients)
@@ -102,14 +107,18 @@ class ComposerServer:
                 pass
 
     async def _setup(self) -> None:
-        app = web.Application()
+        from server_guard import make_origin_guard_middleware
+        app = web.Application(middlewares=[make_origin_guard_middleware("composer")])
         app.router.add_get("/", self._handle_index)
         app.router.add_get("/editor", self._handle_editor)
         app.router.add_get("/config", self._handle_config)
         app.router.add_post("/save", self._handle_save)
+        app.router.add_get("/export-profile", self._handle_export_profile)
+        app.router.add_post("/import-profile", self._handle_import_profile)
         app.router.add_post("/upload-character-image", self._handle_upload_char_image)
         app.router.add_get("/demo", self._handle_demo)
         app.router.add_post("/demo-one", self._handle_demo_one)
+        app.router.add_post("/ask-demo", self._handle_ask_demo)
         app.router.add_get("/chat-widget", self._handle_chat_widget)
         app.router.add_get("/chat-config", self._handle_chat_config)
         app.router.add_get("/character/{job}", self._handle_character_img)
@@ -125,29 +134,76 @@ class ComposerServer:
         app.router.add_get("/playroom-widget", self._handle_playroom_widget)
         app.router.add_get("/clip/{name}", self._handle_clip)
         app.router.add_get("/playroom-test", self._handle_playroom_test)
-        app.router.add_get("/open-playroom-settings", self._handle_open_playroom_settings)
+        # ★ POST — กัน GET-through-<img> CSRF (origin guard คุม POST แล้ว)
+        app.router.add_post("/open-playroom-settings", self._handle_open_playroom_settings)
         # ★ save playroom widget trigger selection (checkbox ใน composer settings modal)
         app.router.add_post("/save-playroom-triggers", self._handle_save_playroom_triggers)
         # ★ now_playing widget — serve album cover จาก np_cache
         app.router.add_get("/now-playing-art", self._handle_now_playing_art)
         app.router.add_get("/now-playing-state", self._handle_now_playing_state)
+        # ★ avatar widget — TTS speaking state (สำหรับ client reconnect)
+        app.router.add_get("/avatar-state", self._handle_avatar_state)
+        # ★ avatar preset — serve bundled avatar images (man/girl default)
+        app.router.add_get("/avatar-preset/{name}/{role}", self._handle_avatar_preset)
+        # ★ donate goal state (reconnect recovery)
+        app.router.add_get("/donate-goal-state", self._handle_donate_goal_state)
+        # ★ easydonate API key test
+        app.router.add_post("/easydonate-test", self._handle_easydonate_test)
+        # ★ mic devices list (Python sounddevice — แก้ OBS Browser Source ไม่เข้าถึงไมค์)
+        app.router.add_get("/mic-devices", self._handle_mic_devices)
+        # ★ mic level polling (สำหรับ settings meter — กัน WS หลุด)
+        app.router.add_get("/mic-level", self._handle_mic_level)
         app.router.add_get("/ws", self._handle_ws)
         self._runner = web.AppRunner(app)
         await self._runner.setup()
-        self._site = web.TCPSite(self._runner, "127.0.0.1", self.port)
-        try:
-            await self._site.start()
-            self._started = True
-        except OSError as e:
-            self._start_error = f"port {self.port} ไม่ว่าง: {e}"
+        # ★ ลอง port ที่ตั้งค่าไว้ก่อน → ถ้าไม่ว่าง ลอง port ถัดไปสูงสุด 10 port
+        #   กันปัญหา port ชนกับโปรแกรมอื่น (เช่น Discord, streaming apps)
+        start_port = self.port
+        for attempt in range(10):
+            port_try = start_port + attempt
+            self._site = web.TCPSite(self._runner, "127.0.0.1", port_try)
+            try:
+                await self._site.start()
+                self.port = port_try  # ★ อัปเดต port จริงที่ใช้
+                self._started = True
+                if attempt > 0:
+                    logger.info(f"Composer server: port {start_port} ไม่ว่าง → ใช้ port {port_try} แทน")
+                return
+            except OSError:
+                continue
+        self._start_error = f"ไม่สามารถเปิด composer server ได้ (port {start_port}-{start_port+9} ไม่ว่างทั้งหมด)"
 
     # ── routes ──
     async def _handle_index(self, request):
-        """serve composer.html (overlay ปกติ ใส่ใน OBS)"""
+        """serve composer.html (overlay ปกติ ใส่ใน OBS)
+        ★ gzip ถ้า client รองรับ — ลด 467KB → ~100KB (OBS โหลดเร็วขึ้นมาก)
+        """
         html = self._read_composer_html()
+        body = html.encode('utf-8')
+        ae = request.headers.get('Accept-Encoding', '')
+        if 'gzip' in ae and len(body) > 1024:
+            import gzip as _gz
+            compressed = _gz.compress(body, 6)
+            if len(compressed) < len(body) * 0.9:
+                return web.Response(
+                    body=compressed,
+                    headers={
+                        "Content-Type": "text/html; charset=utf-8",
+                        "Content-Encoding": "gzip",
+                        "Vary": "Accept-Encoding",
+                        "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+                        "Pragma": "no-cache",
+                        "Expires": "0",
+                    },
+                )
         return web.Response(
-            text=html, content_type="text/html",
-            headers=self._no_cache_headers(),
+            body=body,
+            headers={
+                "Content-Type": "text/html; charset=utf-8",
+                "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
         )
 
     async def _handle_editor(self, request):
@@ -178,16 +234,32 @@ class ComposerServer:
 
         # ป้องกันข้อมุลผิดรูปแบบ — validate พื้นฐาน
         clean_widgets = []
-        valid_types = {"chat", "alert", "viewer", "clock", "image", "playroom", "webcam", "text", "video", "now_playing", "emote_party"}
+        valid_types = {"chat", "alert", "viewer", "clock", "image", "playroom", "webcam", "text", "video", "now_playing", "emote_party", "avatar", "donate_goal", "ask"}
         for i, w in enumerate(widgets if isinstance(widgets, list) else []):
             if not isinstance(w, dict):
                 continue
             wt = str(w.get("type", ""))
             if wt not in valid_types:
                 continue
+
+            # ★ dg_api_key — config ที่ broadcast เป็น "__MASKED__" (กันรั่วผ่าน /config + WS)
+            #   ถ้า client ส่งกลับมาเป็น masked หรือว่าง → คงค่าเดิมจาก settings (แก้ไขค่าอื่นได้โดยไม่ทำ key หาย)
+            _dg_key_final = ""
+            if wt == "donate_goal":
+                _dg_key_raw = str(w.get("dg_api_key", "") or "").strip()
+                if _dg_key_raw and _dg_key_raw != "__MASKED__":
+                    _dg_key_final = _dg_key_raw
+                else:
+                    _wid = str(w.get("id", ""))
+                    for _ow in (getattr(self.settings, "composer_widgets", None) or []):
+                        if isinstance(_ow, dict) and _ow.get("id") == _wid:
+                            _dg_key_final = str(_ow.get("dg_api_key", "") or "")
+                            break
+
             clean_widgets.append({
                 "id": str(w.get("id", f"w{i}")),
                 "type": wt,
+                "name": str(w.get("name", "")),
                 "x": int(w.get("x", 0)),
                 "y": int(w.get("y", 0)),
                 "w": max(50, int(w.get("w", 300))),
@@ -203,9 +275,11 @@ class ComposerServer:
                 # chat: bg_color, bg_opacity, max_messages
                 # clock: format ("HH:MM" | "HH:MM:SS")
                 "font_size": int(w.get("font_size", 16)) if wt != "alert" else 16,
+                "font_family": str(w.get("font_family", "Kanit")) if wt == "chat" else "Kanit",
                 "font_color": str(w.get("font_color", "#ffffff")),
                 "font_weight": str(w.get("font_weight", "600")),
                 "text_stroke": bool(w.get("text_stroke", True)),
+                "text_stroke_type": str(w.get("text_stroke_type", "inner")),
                 "text_stroke_color": str(w.get("text_stroke_color", "#000000")),
                 "text_stroke_width": int(w.get("text_stroke_width", 2)),
                 "text_shadow": bool(w.get("text_shadow", True)) if wt == "chat" else True,
@@ -224,14 +298,20 @@ class ComposerServer:
                 "exit_animation": str(w.get("exit_animation", "fade_out")) if wt == "chat" else "fade_out",
                 "auto_hide": bool(w.get("auto_hide", False)) if wt == "chat" else False,
                 "hide_after": int(w.get("hide_after", 8)) if wt == "chat" else 8,
+                "chat_align": str(w.get("chat_align", "left")) if wt == "chat" else "left",
                 # ── chat appearance mode + theme (iframe overlay.html reuse) ──
                 "appearance_mode": str(w.get("appearance_mode", "default")) if wt == "chat" else "default",
                 "theme": str(w.get("theme", "default")) if wt == "chat" else "default",
                 "custom_css": str(w.get("custom_css", "")) if wt == "chat" else "",
+                "custom_css_enabled": bool(w.get("custom_css_enabled", False)) if wt == "chat" else False,
+                "emote_size": int(w.get("emote_size", 28)) if wt == "chat" else 28,
                 # ── box settings (default + theme modes) ──
                 "box_enabled": bool(w.get("box_enabled", True)) if wt == "chat" else True,
                 "box_width": str(w.get("box_width", "fit")) if wt == "chat" else "fit",
                 "box_radius": int(w.get("box_radius", 8)) if wt == "chat" else 8,
+                "box_padding": max(0, min(40, int(w.get("box_padding", 8)))) if wt == "chat" else 8,
+                "chat_padding": max(0, min(60, int(w.get("chat_padding", 12)))) if wt == "chat" else 12,
+                "msg_spacing": max(0, min(30, int(w.get("msg_spacing", 4)))) if wt == "chat" else 4,
                 "box_border": bool(w.get("box_border", False)) if wt == "chat" else False,
                 "box_border_color": str(w.get("box_border_color", "#ffffff")),
                 "box_border_width": int(w.get("box_border_width", 1)) if wt == "chat" else 1,
@@ -240,14 +320,46 @@ class ComposerServer:
                 "box_glow_color": str(w.get("box_glow_color", "#a855f7")),
                 # ── balloon settings (mode=balloon) ──
                 "balloon_hide_after": int(w.get("balloon_hide_after", 5)) if wt == "chat" else 5,
+                # ── danmaku slider settings (mode=slider) ──
+                "slider_font_family": str(w.get("slider_font_family", "Kanit")) if wt == "chat" else "Kanit",
+                "slider_font_weight": str(w.get("slider_font_weight", "700")) if wt == "chat" else "700",
+                "slider_font_size": int(w.get("slider_font_size", 24)) if wt == "chat" else 24,
+                "slider_text_color": str(w.get("slider_text_color", "#ffffff")) if wt == "chat" else "#ffffff",
+                "slider_text_stroke": bool(w.get("slider_text_stroke", False)) if wt == "chat" else False,
+                "slider_text_stroke_color": str(w.get("slider_text_stroke_color", "#000000")) if wt == "chat" else "#000000",
+                "slider_text_stroke_width": int(w.get("slider_text_stroke_width", 2)) if wt == "chat" else 2,
+                "slider_text_shadow": bool(w.get("slider_text_shadow", True)) if wt == "chat" else True,
+                "slider_text_shadow_color": str(w.get("slider_text_shadow_color", "#000000")) if wt == "chat" else "#000000",
+                "slider_text_shadow_blur": int(w.get("slider_text_shadow_blur", 3)) if wt == "chat" else 3,
+                "slider_emote_size": int(w.get("slider_emote_size", 28)) if wt == "chat" else 28,
+                "slider_duration": float(w.get("slider_duration", 5)) if wt == "chat" else 5,
+                "slider_show_logo": bool(w.get("slider_show_logo", True)) if wt == "chat" else True,
+                "slider_lane_height": int(w.get("slider_lane_height", 40)) if wt == "chat" else 40,
+                "slider_zone": str(w.get("slider_zone", "middle")) if wt == "chat" else "middle",
                 "balloon_bg_opacity": max(0.1, min(1.0, float(w.get("balloon_bg_opacity", 0.95)))) if wt == "chat" else 0.95,
                 "balloon_font_size": int(w.get("balloon_font_size", 18)) if wt == "chat" else 18,
-                "balloon_text_color": str(w.get("balloon_text_color", "#1a1a2e")),
+                "balloon_text_color": str(w.get("balloon_text_color", "#1a1a2e")) if wt == "chat" else "#1a1a2e",
+                "balloon_font_family": str(w.get("balloon_font_family", "Kanit")) if wt == "chat" else "Kanit",
+                "balloon_font_weight": str(w.get("balloon_font_weight", "600")) if wt == "chat" else "600",
+                "balloon_emote_size": int(w.get("balloon_emote_size", 28)) if wt == "chat" else 28,
                 # ── character talk settings (mode=character) ──
                 "character_bubble_width": int(w.get("character_bubble_width", 500)) if wt == "chat" else 500,
                 "character_size": int(w.get("character_size", 120)) if wt == "chat" else 120,
                 "character_hide_after": float(w.get("character_hide_after", 6)) if wt == "chat" else 6,
                 "character_max_on_screen": int(w.get("character_max_on_screen", 8)) if wt == "chat" else 8,
+                "character_font_family": str(w.get("character_font_family", "Kanit")) if wt == "chat" else "Kanit",
+                "character_font_weight": str(w.get("character_font_weight", "600")) if wt == "chat" else "600",
+                "character_font_color": str(w.get("character_font_color", "#1a1a2e")) if wt == "chat" else "#1a1a2e",
+                "character_stroke": bool(w.get("character_stroke", False)) if wt == "chat" else False,
+                "character_stroke_width": int(w.get("character_stroke_width", 2)) if wt == "chat" else 2,
+                "character_stroke_color": str(w.get("character_stroke_color", "#000000")) if wt == "chat" else "#000000",
+                "character_shadow": bool(w.get("character_shadow", False)) if wt == "chat" else False,
+                "character_shadow_blur": int(w.get("character_shadow_blur", 3)) if wt == "chat" else 3,
+                "character_shadow_color": str(w.get("character_shadow_color", "#000000")) if wt == "chat" else "#000000",
+                "character_emote_size": int(w.get("character_emote_size", 28)) if wt == "chat" else 28,
+                "character_name_font_family": str(w.get("character_name_font_family", "Kanit")) if wt == "chat" else "Kanit",
+                "character_name_font_weight": str(w.get("character_name_font_weight", "600")) if wt == "chat" else "600",
+                "character_name_color": str(w.get("character_name_color", "#ffffff")) if wt == "chat" else "#ffffff",
                 "character_random_pos": bool(w.get("character_random_pos", True)) if wt == "chat" else True,
                 "character_name_size": int(w.get("character_name_size", 11)) if wt == "chat" else 11,
                 "character_name_stroke": bool(w.get("character_name_stroke", True)) if wt == "chat" else True,
@@ -269,7 +381,13 @@ class ComposerServer:
                 "text_interval_unit": str(w.get("text_interval_unit", "seconds")) if wt == "text" else "seconds",
                 "text_align": str(w.get("text_align", "center")) if wt == "text" else "center",
                 "text_scroll_speed": max(1, min(20, int(w.get("text_scroll_speed", 10)))) if wt == "text" else 10,
+                "text_scroll_delay": max(1, min(30, float(w.get("text_scroll_delay", 2)))) if wt == "text" else 2,
                 "text_theme": str(w.get("text_theme", "default")) if wt == "text" else "default",
+                # ── text widget background ──
+                "text_bg_enabled": bool(w.get("text_bg_enabled", False)) if wt == "text" else False,
+                "text_bg_color": str(w.get("text_bg_color", "#1a1a2e")) if wt == "text" else "#1a1a2e",
+                "text_bg_opacity": max(0.0, min(1.0, float(w.get("text_bg_opacity", 1.0)))) if wt == "text" else 1.0,
+                "text_bg_radius": max(0, min(30, int(w.get("text_bg_radius", 8)))) if wt == "text" else 8,
                 # ── video widget (เหมือน image widget แต่เป็นวิดีโอ loop) ──
                 "video_url": str(w.get("video_url", "")) if wt == "video" else "",
                 # ── color key (playroom + video) — chroma key ตัดสีพื้นหลัง ──
@@ -279,6 +397,10 @@ class ComposerServer:
                 "ck_smoothness": max(0, min(100, int(w.get("ck_smoothness", 30)))) if wt in ("playroom", "video") else 30,
                 # ── clock themes + date settings ──
                 "clock_theme": str(w.get("clock_theme", "default")) if wt == "clock" else "default",
+                "clock_style": str(w.get("clock_style", "none")) if wt == "clock" else "none",
+                # ── clock opacity แยกตามโหมด (Style vs Theme) ──
+                "style_opacity": float(w.get("style_opacity", 1.0)) if wt == "clock" else 1.0,
+                "theme_opacity": float(w.get("theme_opacity", 1.0)) if wt == "clock" else 1.0,
                 "show_date": bool(w.get("show_date", False)) if wt == "clock" else False,
                 "date_format": str(w.get("date_format", "short")) if wt == "clock" else "short",
                 "date_lang": str(w.get("date_lang", "th")) if wt == "clock" else "th",
@@ -288,6 +410,26 @@ class ComposerServer:
                 # ── balloon emote size ──
                 "balloon_emote_size": int(w.get("balloon_emote_size", 28)) if wt == "chat" else 28,
                 # ── viewer widget settings ──
+                "ask_bar_style": str(w.get("ask_bar_style", "classic")) if wt == "ask" else "classic",
+                "ask_frame_style": str(w.get("ask_frame_style", "classic")) if wt == "ask" else "classic",
+                "ask_countdown_style": str(w.get("ask_countdown_style", "text")) if wt == "ask" else "text",
+                "ask_layout": str(w.get("ask_layout", "vright")
+                                  if w.get("ask_layout") in ("vleft", "vright", "hband", "minimal", "card", "bar", "tower")
+                                  else "vright") if wt == "ask" else "vright",
+                "ask_extend_pct": max(20, min(30, int(w.get("ask_extend_pct", 20) or 20))) if wt == "ask" else 20,
+                "ask_min_width": max(220, min(700, int(w.get("ask_min_width", 340) or 340))) if wt == "ask" else 340,
+                "ask_pos_x": max(5, min(95, int(w.get("ask_pos_x", 85) or 85))) if wt == "ask" else 85,
+                "ask_pos_y": max(5, min(95, int(w.get("ask_pos_y", 12) or 12))) if wt == "ask" else 12,
+                "ask_opacity_pct": max(10, min(100, int(w.get("ask_opacity_pct", 100) or 100))) if wt == "ask" else 100,
+                "ask_question_fs": max(12, min(60, int(w.get("ask_question_fs", 24) or 24))) if wt == "ask" else 24,
+                "ask_choice_fs": max(10, min(40, int(w.get("ask_choice_fs", 18) or 18))) if wt == "ask" else 18,
+                "ask_anchor": ("bottom" if str(w.get("ask_anchor", "top")) in ("bottom", "bl", "br", "center") else "top") if wt == "ask" else "top",
+                "ask_theme": str(w.get("ask_theme", "violet")) if wt == "ask" else "violet",
+                "ask_scale": max(0.5, min(2.0, float(w.get("ask_scale", 1.0) or 1.0))) if wt == "ask" else 1.0,
+                "ask_anim_in": str(w.get("ask_anim_in", "fade")) if wt == "ask" else "fade",
+                "ask_anim_out": str(w.get("ask_anim_out", "fade")) if wt == "ask" else "fade",
+                "ask_anim_in_ms": max(200, min(5000, int(w.get("ask_anim_in_ms", w.get("ask_anim_ms", 1200)) or 1200))) if wt == "ask" else 1200,
+                "ask_anim_out_ms": max(200, min(5000, int(w.get("ask_anim_out_ms", w.get("ask_anim_ms", 1200)) or 1200))) if wt == "ask" else 1200,
                 "viewer_mode": str(w.get("viewer_mode", "both")) if wt == "viewer" else "both",
                 "viewer_show_icon": bool(w.get("viewer_show_icon", True)) if wt == "viewer" else True,
                 "viewer_theme": str(w.get("viewer_theme", "default")) if wt == "viewer" else "default",
@@ -301,6 +443,14 @@ class ComposerServer:
                 "fit_mode": str(w.get("fit_mode", "cover")) if wt == "image" else "cover",
                 "transition": str(w.get("transition", "fade")) if wt == "image" else "fade",
                 "shuffle": bool(w.get("shuffle", False)) if wt == "image" else False,
+                "image_mode": str(w.get("image_mode", "slideshow")) if wt == "image" else "slideshow",
+                "timer_interval_sec": int(w.get("timer_interval_sec", 600)) if wt == "image" else 600,
+                "timer_interval_unit": str(w.get("timer_interval_unit", "minutes")) if wt == "image" else "minutes",
+                "timer_slide_duration": int(w.get("timer_slide_duration", 10)) if wt == "image" else 10,
+                "timer_anim_in": str(w.get("timer_anim_in", "fade")) if wt == "image" else "fade",
+                "timer_anim_out": str(w.get("timer_anim_out", "fade")) if wt == "image" else "fade",
+                "timer_anim_in_ms": int(w.get("timer_anim_in_ms", 2000)) if wt == "image" else 2000,
+                "timer_anim_out_ms": int(w.get("timer_anim_out_ms", 2000)) if wt == "image" else 2000,
                 # ── now_playing widget settings ──
                 "np_show_art": bool(w.get("np_show_art", True)) if wt == "now_playing" else True,
                 "np_show_progress": bool(w.get("np_show_progress", True)) if wt == "now_playing" else True,
@@ -311,7 +461,7 @@ class ComposerServer:
                 "np_text_color": str(w.get("np_text_color", "#ffffff")) if wt == "now_playing" else "#ffffff",
                 "np_accent_color": str(w.get("np_accent_color", "#1db954")) if wt == "now_playing" else "#1db954",
                 "np_bg_color": str(w.get("np_bg_color", "#1a1a2e")) if wt == "now_playing" else "#1a1a2e",
-                "np_bg_opacity": max(0.0, min(1.0, float(w.get("np_bg_opacity", 0.85)))) if wt == "now_playing" else 0.85,
+                "np_bg_opacity": max(0.0, min(1.0, float(w.get("np_bg_opacity", 1.0)))) if wt == "now_playing" else 1.0,
                 "np_radius": int(w.get("np_radius", 8)) if wt == "now_playing" else 8,
                 "np_art_radius": int(w.get("np_art_radius", 6)) if wt == "now_playing" else 6,
                 "np_art_size": int(w.get("np_art_size", 48)) if wt == "now_playing" else 48,
@@ -327,8 +477,54 @@ class ComposerServer:
                 "ep_bg_color": str(w.get("ep_bg_color", "#0a0e1a")) if wt == "emote_party" else "#0a0e1a",
                 "ep_bg_opacity": max(0.0, min(1.0, float(w.get("ep_bg_opacity", 0.0)))) if wt == "emote_party" else 0.0,
                 "ep_emoji_enabled": bool(w.get("ep_emoji_enabled", True)) if wt == "emote_party" else True,
-                # ── common: ratio lock (ทุก widget) ──
+                # ── avatar widget settings (PNGTuber-style 4-image) ──
+                # ★ 4 ภาพ: idle / talk / blink-idle / blink-talk
+                #   blink กับ talk ทำงานอิสระ → กระพริบได้ขณะพูด (ตามมาตรฐาน PNGTuber)
+                "avatar_mode": str(w.get("avatar_mode", "tts")) if wt == "avatar" else "tts",  # "tts" | "mic"
+                # ★ avatar_preset: "man" | "girl" | "" (custom = อัพเอง)
+                #   เมื่อเลือก preset → URL ทั้ง 4 จะถูก fill จาก /avatar-preset/{name}/{role}
+                "avatar_preset": str(w.get("avatar_preset", "")) if wt == "avatar" else "",
+                "avatar_idle_url": str(w.get("avatar_idle_url", "")) if wt == "avatar" else "",
+                "avatar_talk_url": str(w.get("avatar_talk_url", "")) if wt == "avatar" else "",
+                "avatar_blink_idle_url": str(w.get("avatar_blink_idle_url", "")) if wt == "avatar" else "",
+                "avatar_blink_talk_url": str(w.get("avatar_blink_talk_url", "")) if wt == "avatar" else "",
+                "avatar_fit_mode": str(w.get("avatar_fit_mode", "contain")) if wt == "avatar" else "contain",
+                "avatar_blink_rate": max(1, min(10, int(w.get("avatar_blink_rate", 4)))) if wt == "avatar" else 4,
+                # ★ mic threshold เป็น dB (-60 = เงียบมาก, 0 = เต็ม) — default -35 dB
+                "avatar_mic_threshold": max(-60, min(0, int(w.get("avatar_mic_threshold", -35)))) if wt == "avatar" else -35,
+                # ★ mic device — เก็บเป็น index (str สำหรับ serialize) จาก Python sounddevice
+                #   ค่าว่าง = system default
+                "avatar_mic_device": str(w.get("avatar_mic_device", "")) if wt == "avatar" else "",
+                # ★ software gain — ขยายสัญญาณ dynamic mic (1-1000, default 100 = +40dB)
+                "avatar_mic_gain": max(1, min(1000, int(w.get("avatar_mic_gain", 100)))) if wt == "avatar" else 100,
+                "avatar_bounce": bool(w.get("avatar_bounce", True)) if wt == "avatar" else True,
+                "avatar_breathing": bool(w.get("avatar_breathing", True)) if wt == "avatar" else True,
+                "avatar_sway": bool(w.get("avatar_sway", True)) if wt == "avatar" else True,
+                # ★ flip (mirror) — สะท้อนภาพแนวนอน/แนวตั้ง
+                "avatar_flip_h": bool(w.get("avatar_flip_h", False)) if wt == "avatar" else False,
+                "avatar_flip_v": bool(w.get("avatar_flip_v", False)) if wt == "avatar" else False,
+                # ── donate_goal widget settings (EasyDonate API) ──
+                "dg_api_key": _dg_key_final if wt == "donate_goal" else "",
+                "dg_goal_amount": max(1, int(w.get("dg_goal_amount", 1000))) if wt == "donate_goal" else 1000,
+                "dg_goal_title": str(w.get("dg_goal_title", "")) if wt == "donate_goal" else "",
+                "dg_start_amount": max(0, int(w.get("dg_start_amount", 0))) if wt == "donate_goal" else 0,
+                "dg_currency": str(w.get("dg_currency", "฿")) if wt == "donate_goal" else "฿",
+                "dg_theme": str(w.get("dg_theme", "neon")) if wt == "donate_goal" else "neon",
+                "dg_color_theme": str(w.get("dg_color_theme", "default")) if wt == "donate_goal" else "default",
+                "dg_color_theme": str(w.get("dg_color_theme", "default")) if wt == "donate_goal" else "default",
+                "dg_bar_color": str(w.get("dg_bar_color", "#10b981")) if wt == "donate_goal" else "#10b981",
+                "dg_bg_color": str(w.get("dg_bg_color", "#1a1a2e")) if wt == "donate_goal" else "#1a1a2e",
+                "dg_font_color": str(w.get("dg_font_color", "#e5e7eb")) if wt == "donate_goal" else "#e5e7eb",
+                "dg_current_color": str(w.get("dg_current_color", "#10b981")) if wt == "donate_goal" else "#10b981",
+                "dg_goal_color": str(w.get("dg_goal_color", "#9ca3af")) if wt == "donate_goal" else "#9ca3af",
+                "dg_show_donor": bool(w.get("dg_show_donor", True)) if wt == "donate_goal" else True,
+                "dg_amount_align": str(w.get("dg_amount_align", "left")) if wt == "donate_goal" else "left",
+                "dg_title_align": str(w.get("dg_title_align", "left")) if wt == "donate_goal" else "left",
+                "dg_font_size": int(w.get("dg_font_size", 16)) if wt == "donate_goal" else 16,
+                "dg_opacity": max(0, min(100, int(w.get("dg_opacity", 100)))) if wt == "donate_goal" else 100,
+                # ── common: ratio lock + widget scale (ทุก widget) ──
                 "lock_ratio": bool(w.get("lock_ratio", False)),
+                "widget_scale": max(0.2, min(3.0, float(w.get("widget_scale", 1.0)))),
             })
 
         # เรียง z-index ใหม่ตามลำดับที่ได้รับ (ตัวแรก = หลังสุด)
@@ -369,10 +565,57 @@ class ComposerServer:
                 pass
         await self._broadcast_safe({"type": "config", "config": self._build_config()})
         # ★ push config update เฉพาะ chat widget ที่เปลี่ยน (overlay.html iframe จะได้ refresh theme/mode)
+        #    ★ เดย์ 100ms กัน race condition (broadcast config ทับ push widget config)
+        import asyncio as _aio2
+        await _aio2.sleep(0.1)
         for w in clean_widgets:
             if w.get("type") == "chat":
                 await self._push_widget_config(w["id"])
         return web.json_response({"ok": True, "widgets": clean_widgets})
+
+    async def _handle_export_profile(self, request):
+        """GET /export-profile → ดาวน์โหลด layout เป็นไฟล์ JSON"""
+        import datetime as _dt
+        cfg = self._build_config()
+        data = {
+            "version": "1.0",
+            "exported_at": _dt.datetime.now().isoformat(),
+            "canvas_size": cfg.get("canvas_size", "1080p"),
+            "canvas_w": cfg.get("canvas_w", 1920),
+            "canvas_h": cfg.get("canvas_h", 1080),
+            "widgets": cfg.get("widgets", []),
+        }
+        return web.json_response(data, headers={
+            "Content-Disposition": 'attachment; filename="composer-profile.json"'
+        })
+
+    async def _handle_import_profile(self, request):
+        """POST /import-profile → โหลด layout จาก JSON → apply + save"""
+        try:
+            data = await request.json()
+            widgets = data.get("widgets", [])
+            canvas_size = data.get("canvas_size", "1080p")
+            # ★ apply widgets
+            self._widgets = widgets
+            self._canvas_size = canvas_size
+            if canvas_size == "720p":
+                self._canvas_w, self._canvas_h = 1280, 720
+            else:
+                self._canvas_w, self._canvas_h = 1920, 1080
+            # ★ save
+            if self.on_save_widgets is not None:
+                try:
+                    self.on_save_widgets(widgets, canvas_size)
+                except Exception:
+                    pass
+            # ★ broadcast config ใหม่
+            await self._broadcast_safe({"type": "config", "config": self._build_config()})
+            for w in widgets:
+                if w.get("type") == "chat":
+                    await self._push_widget_config(w["id"])
+            return web.json_response({"ok": True, "widgets": widgets})
+        except Exception as e:
+            return web.json_response({"ok": False, "error": str(e)}, status=400)
 
     async def _handle_upload_char_image(self, request):
         """POST /upload-character-image — รับรูป (multipart form) เซฟลง cache dir
@@ -483,7 +726,8 @@ class ComposerServer:
         """
         import urllib.request
         eid = request.match_info.get("emote_id", "")
-        if not eid:
+        # ★ validate — กัน path traversal ผ่าน ../ หรือ %2F (อ่าน/ลบไฟล์นอก cache dir)
+        if not eid or not eid.replace("-", "").replace("_", "").isalnum():
             return web.Response(status=400, text="bad emote id")
         want_animated = bool(getattr(self.settings, "overlay_animated_emotes", True))
         cache_dir = os.path.join(os.path.expanduser("~"), ".tts-for-livestream", "emote_cache")
@@ -642,6 +886,14 @@ class ComposerServer:
                     image_data = await part.read()
             if not widget_id or not image_data:
                 return web.json_response({"ok": False, "error": "missing widget_id or image"}, status=400)
+            # ★ จำกัดขนาดไฟล์ 3MB (local อยู่แล้ว — ไม่ต้องห่วง bandwidth)
+            MAX_IMAGE_SIZE = 3 * 1024 * 1024  # 3 MB
+            if len(image_data) > MAX_IMAGE_SIZE:
+                size_mb = len(image_data) / 1024 / 1024
+                return web.json_response({
+                    "ok": False,
+                    "error": f"ไฟล์ใหญ่เกินไป ({size_mb:.1f} MB) — จำกัดสูงสุด 3 MB",
+                }, status=400)
             save_dir = self._widget_image_dir(widget_id)
             os.makedirs(save_dir, exist_ok=True)
             image_id = f"img{int(time.time() * 1000)}"
@@ -666,10 +918,13 @@ class ComposerServer:
             data = await request.json()
             widget_id = data.get("widget_id", "")
             image_id = data.get("image_id", "")
-            ext = data.get("ext", ".png")
+            ext = str(data.get("ext", ".png")).lower()
             # validate (กัน path traversal)
             if not image_id.replace("-", "").replace("_", "").isalnum():
                 return web.json_response({"ok": False, "error": "bad image_id"}, status=400)
+            # ★ whitelist ext — กัน os.remove หลุดออกนอก save_dir ผ่าน "../" ใน ext
+            if ext not in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
+                return web.json_response({"ok": False, "error": "bad ext"}, status=400)
             save_dir = self._widget_image_dir(widget_id)
             path = os.path.join(save_dir, f"{image_id}{ext}")
             if os.path.exists(path):
@@ -769,13 +1024,21 @@ class ComposerServer:
         security: อนุญาตเฉพาะไฟล์ที่อยู่ใน ~/.tts-for-livestream/np_cache เท่านั้น
         """
         path = request.query.get("path", "")
-        if not path or not os.path.isfile(path):
+        if not path:
             return web.Response(status=404, text="not found")
         # security: only allow files inside np_cache
+        # ★ ใช้ realpath + commonpath (path-aware) แทน startswith ธรรมดา
+        #   — กัน sibling dir อย่าง np_cache_backup/ หรือ np_cache_evil/ ที่ขึ้นต้นชื่อเดียวกัน
         np_cache = os.path.join(os.path.expanduser("~"), ".tts-for-livestream", "np_cache")
-        if not os.path.abspath(path).startswith(np_cache):
+        real_path = os.path.realpath(path)
+        real_cache = os.path.realpath(np_cache)
+        try:
+            inside = os.path.commonpath([real_path, real_cache]) == real_cache
+        except ValueError:  # different drive letters on Windows
+            inside = False
+        if not inside or not os.path.isfile(real_path):
             return web.Response(status=403, text="forbidden")
-        return web.FileResponse(path, headers={"Content-Type": "image/jpeg", "Cache-Control": "no-cache"})
+        return web.FileResponse(real_path, headers={"Content-Type": "image/jpeg", "Cache-Control": "no-cache"})
 
     async def _handle_now_playing_state(self, request):
         """GET /now-playing-state → คืน now playing data ล่าสุด (สำหรับ client ที่ refresh หน้า)
@@ -869,20 +1132,32 @@ class ComposerServer:
         widget_id = request.query.get("widget_id", "")
         # ★ ถ้าระบุ widget_id → กรอง triggers เฉพาะที่ widget นี้เปิดอยู่
         triggers = getattr(self.settings, "playroom_triggers", []) or []
-        for trig in triggers:
+
+        def _iter_matching(trigs):
+            """ผ่านเฉพาะ trigger ที่ widget นี้ใช้ (ถ้าระบุ widget_id)
+
+            ★ priority: trigger ที่ระบุ widget_ids ตรงเป็นชุดแรก (specific) —
+              ชุด widget_ids ว่าง (=ทุก widget, backward compat) เป็นชุดหลัง
+              กันบั๊กเดิม: ยิงทดสอบ widget ของ #random แต่ได้ clip ของ #fortune
+              (ที่ widget_ids ว่าง) มาก่อนเสมอ
+            """
+            if not widget_id:
+                yield from trigs
+                return
+            specific = [t for t in trigs
+                        if isinstance(t, dict) and widget_id in (t.get("widget_ids") or [])]
+            wildcard = [t for t in trigs
+                        if isinstance(t, dict) and not (t.get("widget_ids") or [])]
+            yield from specific
+            yield from wildcard
+
+        for trig in _iter_matching(triggers):
             if not isinstance(trig, dict):
                 continue
-            # ★ ถ้าระบุ widget_id → ข้าม trigger ที่ widget นี้ไม่ได้เปิด
-            if widget_id:
-                wids = trig.get("widget_ids", []) or []
-                # ★ backward compat: ถ้า widget_ids ว่าง = เปิดทุก widget
-                if wids and widget_id not in wids:
-                    continue
             clips = trig.get("clips", [])
             if clips and isinstance(clips[0], dict):
                 name = clips[0].get("name", "")
                 if name:
-                    # ★ ส่ง widget_ids เฉพาะถ้าระบุมา (ไม่ระบุ = ทุก widget เหมือนเดิม)
                     target_ids = [widget_id] if widget_id else None
                     self.push_clip(name, widget_ids=target_ids)
                     return web.json_response({"ok": True, "clip": name})
@@ -958,6 +1233,8 @@ class ComposerServer:
         data = {"type": "clip", "url": url, "name": clip_name}
         # ★ รวบรวม target websockets ตาม widget_ids
         targets = self._collect_playroom_targets(widget_ids)
+        # ★ DEBUG — เห็น buckets/targets จริงตอน push
+        logger.info(f"[CLIP-DEBUG] push '{clip_name}' → widget_ids={widget_ids} | buckets={ {k: len(v) for k, v in self._playroom_clients.items()} } | targets={len(targets)}")
         if not targets:
             return
         try:
@@ -1080,6 +1357,9 @@ class ComposerServer:
             self._clients.add(ws)
             try:
                 await ws.send_json({"type": "config", "config": self._build_config()})
+                # ★ ASK state ล่าสุด — client ใหม่ (เช่น OBS refresh) ได้โพลปัจจุบันทันที
+                if self._last_ask_state:
+                    await ws.send_json(self._last_ask_state)
             except Exception:
                 pass
 
@@ -1091,6 +1371,13 @@ class ComposerServer:
                 if msg.type == WSMsgType.TEXT:
                     try:
                         data = msg.json()
+                        # ★ editor ส่ง config ใหม่ → push ไป chat widget iframe ทันที
+                        if data.get("type") == "config" and data.get("config"):
+                            cfg = data["config"]
+                            widgets = cfg.get("widgets", [])
+                            for w in widgets:
+                                if w.get("type") == "chat":
+                                    await self._push_widget_config(w["id"])
                         if data.get("type") == "hello":
                             late_client_kind = data.get("client", "")
                             late_wid = data.get("widget_id", "")
@@ -1174,14 +1461,24 @@ class ComposerServer:
             wset.discard(ws)
 
     async def _broadcast_safe(self, data: dict) -> None:
-        """broadcast จากภายใน async context (เรียกใน handler ได้โดยตรง)"""
-        if not self._clients:
+        """broadcast จากภายใน async context (เรียกใน handler ได้โดยตรง)
+
+        ★ ห้ามการ์ดแค่ _clients — ต้องเช็คทุกกลุ่ม (chat widget iframe / playroom)
+          เคยบั๊ก: ปิดหน้า editor แล้ว demo/ข้อความหายทั้งหมดทั้งที่ widget ยังเปิดอยู่
+        """
+        if not self._clients and not self._chat_widget_clients and not self._playroom_clients:
             return
         await self._broadcast(data)
 
     def _broadcast_threadsafe(self, data: dict) -> None:
-        """broadcast จาก Tk thread → ส่งเข้า event loop ของ server"""
-        if not self._started or not self._clients or self._loop is None:
+        """broadcast จาก pipeline thread → ส่งเข้า event loop ของ server
+
+        ★ เช็คทุกกลุ่ม client (แก้เหมือน _broadcast_safe — เคยบั๊ก: ไม่มี editor
+          เปิดอยู่ → แชทจริงไม่เข้า widget iframe เลย)
+        """
+        if (not self._started or self._loop is None
+                or (not self._clients and not self._chat_widget_clients
+                    and not self._playroom_clients)):
             return
         try:
             asyncio.run_coroutine_threadsafe(self._broadcast(data), self._loop)
@@ -1213,11 +1510,387 @@ class ComposerServer:
         data = {"type": "viewers", "total": int(total or 0), "platforms": platforms or {}}
         self._broadcast_threadsafe(data)
 
+    def _ask_demo_cancel(self) -> None:
+        """ยกเลิกตัวจับเวลา demo ทั้งหมด (เรียกบน event loop ของ server เท่านั้น)"""
+        for h in getattr(self, "_ask_demo_handles", []) or []:
+            try:
+                h.cancel()
+            except Exception:
+                pass
+        self._ask_demo_handles = []
+
+    def _ask_demo_later(self, delay: float, payload: dict) -> None:
+        """จับเวลา broadcast demo ถัดไป (บน event loop)"""
+        import asyncio
+
+        async def _fire():
+            try:
+                msg = {"type": "ask"}
+                msg.update(payload)
+                await self._broadcast_safe(msg)
+            except Exception:
+                pass
+        try:
+            loop = asyncio.get_event_loop()
+            if not hasattr(self, "_ask_demo_handles"):
+                self._ask_demo_handles = []
+            self._ask_demo_handles.append(
+                loop.call_later(delay, lambda: asyncio.ensure_future(_fire())))
+        except Exception:
+            pass
+
+    async def _handle_ask_demo(self, request):
+        """POST /ask-demo {mode: 'vote'|'result'|'stop'} — ฉายโพลตัวอย่าง ASK ทุก client
+
+        ★ broadcast อย่างเดียว ไม่แคช _last_ask_state (โพลจริง push มาจะทับทันที
+          และหน้าที่ refresh กลาง demo ไม่โดนดึง demo ค้างกลับมา)
+        ★ auto-flow: vote ครบเวลา (45s) → สลับเป็นหน้าสรุปผล → 10 วิ → หายไปเอง
+          (หน้าสรุปหายด้วย active=false → client เล่น anim-out ตามที่ตั้งไว้)
+          โพลจริงเริ่ม / กดหยุดมือ → ยกเลิก flow ทันที
+        """
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+        mode = str(data.get("mode", "vote"))
+        import time as _t
+        self._ask_demo_cancel()
+        if mode == "vote":
+            duration = 30  # ★ เดิม 45 วิ — ลด 30% ตาม user (นานเกิน)
+            import random as _rnd
+            # ★ ยอดเริ่มต้น + สุ่มเพิ่มเรื่อย ๆ ทุก 2.5 วิ (18 รอบพอดี 45 วิ)
+            #   → แถบขยับ + ยอดรวมขึ้นสด ๆ ให้เห็นว่าโหวตจริงหน้าตาเป็นยังไง
+            counts = [3, 1, 2, 1]
+            end_ts = _t.time() + duration
+            base = {
+                "active": True, "phase": "voting",
+                "question": "ตัวอย่าง: ชอบช่วงเวลาไหนในการดูไลฟ์?",
+                "choices": ["เช้า", "บ่าย", "เย็น", "ดึก"],
+                "keys": ["A", "B", "C", "D"],
+                "realtime": True,
+                "end_ts": end_ts,
+                "duration_sec": duration,
+            }
+            payload = dict(base, counts=list(counts), total_voters=sum(counts))
+            # ★ รอบสุดท้าย = 27.5 วิ (k=11) — เว้นช่วงก่อน result ที่ 30 วิ
+            #   (กัน race: update ชนกับ result push → หน้าสรุปผลโดนดันกลับ)
+            for k in range(1, 12):
+                for j in range(len(counts)):
+                    counts[j] += _rnd.randint(0, 2)
+                upd = dict(base, counts=list(counts), total_voters=sum(counts))
+                self._ask_demo_later(k * 2.5, upd)
+            # ★ สรุปผลใช้ยอดสุดท้ายที่สุ่มได้จริง (ต่อเนื่องจากช่วงโหวต)
+            result_payload = {
+                "active": True, "phase": "ended",
+                "question": base["question"],
+                "choices": base["choices"],
+                "keys": base["keys"],
+                "counts": list(counts),
+                "total_voters": sum(counts),
+                "realtime": False,
+                "end_ts": None,
+                "duration_sec": None,
+            }
+            # ★ ครบเวลา → สรุปผล → +10 วิ → ปิด
+            self._ask_demo_later(duration, result_payload)
+            self._ask_demo_later(duration + 10, {"active": False})
+        elif mode == "result":
+            payload = {
+                "active": True, "phase": "ended",
+                "question": "ตัวอย่าง: ชอบช่วงเวลาไหนในการดูไลฟ์?",
+                "choices": ["เช้า", "บ่าย", "เย็น", "ดึก"],
+                "keys": ["A", "B", "C", "D"],
+                "counts": [12, 7, 3, 9],
+                "total_voters": 31,
+                "realtime": False,
+                "end_ts": None,
+                "duration_sec": None,
+            }
+            # ★ สรุปผลเดี่ยว → 10 วิ → ปิด
+            self._ask_demo_later(10, {"active": False})
+        else:  # stop
+            payload = {"active": False}
+        msg = {"type": "ask"}
+        msg.update(payload)
+        await self._broadcast_safe(msg)
+        return web.json_response({"ok": True})
+
+    def push_ask_state(self, payload: dict) -> None:
+        """★ push สถานะ ASK (โพล) ไป composer widget — แคชไว้ส่ง client ที่มาใหม่ด้วย"""
+        data = {"type": "ask"}
+        data.update(payload or {})
+        self._last_ask_state = data
+        # ★ โพลจริงมาแล้ว → ยกเลิก demo auto-flow ค้าง (ถ้ามี) บน event loop
+        if self._loop is not None and getattr(self, "_started", False):
+            try:
+                self._loop.call_soon_threadsafe(self._ask_demo_cancel)
+            except Exception:
+                pass
+        self._broadcast_threadsafe(data)
+
     def push_now_playing(self, data: dict) -> None:
         """push now playing data ไป composer widget"""
         payload = {"type": "now_playing"}
         payload.update(data)
         self._broadcast_threadsafe(payload)
+
+    # ═══ Avatar widget — TTS speaking state push ═══
+
+    def push_avatar_state(self, widget_id: str, talking: bool) -> None:
+        """push avatar speaking state ไป composer widget (TTS mode only)
+
+        Args:
+            widget_id: id ของ avatar widget ที่จะอัปเดต (TTS mode)
+            talking: True = กำลังพูด, False = idle
+
+        ★ Mic mode ไม่ใช้ push นี้ — วัด RMS ใน JS เอง (ลด latency)
+        ★ เก็บ last state สำหรับ client ที่ reconnect
+        """
+        payload = {"type": "avatar_state", "widget_id": widget_id, "talking": bool(talking)}
+        # ★ cache last state per widget (สำหรับ /avatar-state endpoint)
+        if not hasattr(self, "_last_avatar_state"):
+            self._last_avatar_state = {}
+        self._last_avatar_state[widget_id] = bool(talking)
+        self._broadcast_threadsafe(payload)
+
+    async def _handle_avatar_state(self, request):
+        """GET /avatar-state → คืน avatar speaking state ล่าสุด (สำหรับ client ที่ refresh/reconnect)
+
+        คืน {widget_id: talking_bool, ...} สำหรับทุก avatar widget ที่เคย push
+        """
+        state = getattr(self, "_last_avatar_state", {})
+        return web.json_response(state or {})
+
+    # ═══ Mic level watcher (Python — แก้ปัญหา OBS Browser Source ไม่เข้าถึงไมค์ได้) ═══
+
+    async def _handle_mic_devices(self, request):
+        """GET /mic-devices → คืนรายการ audio input devices ทั้งหมดจากระบบ
+
+        คืน {devices: [{index, name, channels}, ...], default: int}
+        """
+        try:
+            from mic_level_watcher import list_input_devices, get_default_input_index
+            devices = list_input_devices()
+            default_idx = get_default_input_index()
+            return web.json_response({"devices": devices, "default": default_idx})
+        except Exception as e:
+            return web.json_response({"devices": [], "default": -1, "error": str(e)})
+
+    async def _handle_mic_level(self, request):
+        """GET /mic-level → คืนค่า mic level ล่าสุด (สำหรับ settings meter polling)
+
+        คืน {level: float, age: float} — age = วินาทีที่ผ่านไปหลังอัปเดตล่าสุด
+        ถ้าไม่มี watcher รัน → คืน {level: null}
+        """
+        level = getattr(self, "_last_mic_level", None)
+        last_time = getattr(self, "_last_mic_level_time", None)
+        import time as _t
+        now = _t.time()
+        age = (now - last_time) if last_time else 999
+        return web.json_response({
+            "level": level,
+            "age": round(age, 2),
+            "running": self._mic_watcher is not None and self._mic_watcher.is_running if hasattr(self, '_mic_watcher') else False,
+        })
+
+    def start_mic_watcher(self, device_index, threshold_db, widget_id, gain=100):
+        """เริ่มวัดเสียงไมโครโฟน → push avatar_state + mic_level ไป overlay
+
+        Args:
+            device_index: index ของไมโครโฟน (None = default)
+            threshold_db: dB threshold (-60..0) — เสียงดังกว่านี้ = talking
+            widget_id: id ของ avatar widget ที่จะ push
+        """
+        try:
+            from mic_level_watcher import MicLevelWatcher
+            logger.info(f"start_mic_watcher: device={device_index} threshold={threshold_db}dB widget={widget_id}")
+            # ★ stop existing watcher (ถ้ามี)
+            self.stop_mic_watcher()
+            # ★ talking state tracking — กัน flicker
+            state = {"talking": False, "talking_frames": 0, "silent_frames": 0}
+            # ★ clamp threshold (กันค่าผิดปกติ) — default -35
+            thr = max(-60, min(0, float(threshold_db if threshold_db is not None else -35)))
+            logger.info(f"start_mic_watcher: clamped threshold = {thr}dB")
+            # ★ เก็บ threshold + widget_id สำหรับ browser mic relay fallback
+            self._mic_threshold = thr
+            self._mic_widget_id = widget_id
+            # ★ auto noise floor calibration — วัด noise floor ใน 2 วินาทีแรก
+            calib = {"samples": [], "done": False, "start_time": None}
+            import time as _time
+            # ★ เก็บ device + widget id เพื่อเช็คตอน restart
+            self._mic_watcher_dev = device_index
+            self._mic_watcher_wid = widget_id
+
+            def on_level(db):
+                # ★ calibration phase (2 วินาทีแรก)
+                if not calib["done"]:
+                    if calib["start_time"] is None:
+                        calib["start_time"] = _time.time()
+                    calib["samples"].append(db)
+                    elapsed = _time.time() - calib["start_time"]
+                    if elapsed >= 2.0 and len(calib["samples"]) >= 10:
+                        calib["done"] = True
+                        # หา noise floor = ค่ามัธยฐานของ samples (เสียงเงียบส่วนใหญ่)
+                        import statistics
+                        try:
+                            noise_floor = statistics.median(calib["samples"])
+                        except Exception:
+                            noise_floor = -50
+                        # ★ ถ้า threshold ที่ตั้งต่ำกว่า noise floor → ปรับให้สูงกว่า 5 dB
+                        if thr < noise_floor:
+                            new_thr = noise_floor + 5
+                            if new_thr > 0: new_thr = -5
+                            logger.info(f"auto-calib: noise floor={noise_floor:.1f}dB, threshold {thr:.1f} → {new_thr:.1f}dB")
+                            thr = new_thr
+                            # ★ broadcast ค่า threshold ใหม่
+                            self._broadcast_threadsafe({
+                                "type": "mic_calibrated",
+                                "widget_id": widget_id,
+                                "threshold": round(thr, 1),
+                                "noise_floor": round(noise_floor, 1),
+                            })
+                        else:
+                            logger.info(f"auto-calib: noise floor={noise_floor:.1f}dB, threshold {thr:.1f}dB OK (no change)")
+                # ★ detect talking — ต้องดังกว่า threshold 2 frame ติด / เงียบ 5 frame
+                if db > thr:
+                    state["talking_frames"] += 1
+                    state["silent_frames"] = 0
+                    if state["talking_frames"] >= 2 and not state["talking"]:
+                        state["talking"] = True
+                        self.push_avatar_state(widget_id, True)
+                else:
+                    state["silent_frames"] += 1
+                    state["talking_frames"] = 0
+                    if state["silent_frames"] >= 5 and state["talking"]:
+                        state["talking"] = False
+                        self.push_avatar_state(widget_id, False)
+                # ★ push level ไป meter ด้วย
+                if not hasattr(self, "_mic_level_counter"):
+                    self._mic_level_counter = 0
+                self._mic_level_counter += 1
+                # ★ เก็บค่าล่าสุดไว้ใน server (สำหรับ HTTP polling — กัน WS หลุด)
+                self._last_mic_level = round(db, 1)
+                self._last_mic_level_time = _time.time()
+                if self._mic_level_counter % 3 == 0:
+                    self._broadcast_threadsafe({
+                        "type": "mic_level",
+                        "widget_id": widget_id,
+                        "level": round(db, 1),
+                    })
+
+            self._mic_watcher = MicLevelWatcher(on_level=on_level, device_index=device_index, gain=gain)
+            ok = self._mic_watcher.start()
+            if not ok:
+                logger.warning("MicLevelWatcher failed to start")
+            return ok
+        except Exception as e:
+            logger.error(f"start_mic_watcher failed: {e}")
+            return False
+
+    def stop_mic_watcher(self):
+        """หยุดวัดเสียงไมโครโฟน"""
+        w = getattr(self, "_mic_watcher", None)
+        if w:
+            try:
+                w.stop()
+            except Exception:
+                pass
+            self._mic_watcher = None
+
+    # ═══ Avatar preset — serve bundled avatar images (man/girl default) ═══
+    # ★ mapping: preset name + role → file ใน assets/avatar/
+    #   man1=man idle, man2=man talk, man3=man blink-idle, man4=man blink-talk
+    #   (เหมือนกันสำหรับ girl)
+    AVATAR_PRESETS = {
+        "man": {"idle": "man1", "talk": "man2", "blink_idle": "man3", "blink_talk": "man4"},
+        "girl": {"idle": "girl1", "talk": "girl2", "blink_idle": "girl3", "blink_talk": "girl4"},
+    }
+
+    async def _handle_avatar_preset(self, request):
+        """GET /avatar-preset/{name}/{role} → serve bundled avatar preset image
+
+        name: "man" | "girl"
+        role: "idle" | "talk" | "blink_idle" | "blink_talk"
+        """
+        name = request.match_info.get("name", "").lower()
+        role = request.match_info.get("role", "").lower()
+        preset = self.AVATAR_PRESETS.get(name)
+        if not preset or role not in preset:
+            return web.Response(status=404, text="invalid preset/role")
+        file_base = preset[role]
+        path = os.path.join(get_base_dir(), "assets", "avatar", f"{file_base}.png")
+        if not os.path.exists(path):
+            return web.Response(status=404, text="preset image not found")
+        return web.FileResponse(path, headers={"Cache-Control": "max-age=3600", "Content-Type": "image/png"})
+
+    # ═══ Donate Goal widget — push from EasyDonate watcher ═══
+
+    def push_donate_goal(self, widget_id: str, current: float, goal: float,
+                         last_donor: str = "", last_amount: float = 0, donor_count: int = 0) -> None:
+        """push donate goal update ไป composer widget
+
+        Args:
+            widget_id: id ของ donate_goal widget
+            current: ยอดปัจจุบัน (บาท)
+            goal: เป้าหมาย (บาท)
+            last_donor: ชื่อผู้โดเนทล่าสุด
+            last_amount: ยอดโดเนทล่าสุด
+            donor_count: จำนวนครั้งโดเนท
+        """
+        payload = {
+            "type": "donate_goal",
+            "widget_id": widget_id,
+            "current": float(current),
+            "goal": float(goal),
+            "last_donor": last_donor,
+            "last_amount": float(last_amount),
+            "donor_count": int(donor_count),
+            "percent": min(100, (float(current) / max(1, float(goal))) * 100),
+        }
+        # ★ cache last state (สำหรับ reconnect)
+        if not hasattr(self, "_last_donate_goal"):
+            self._last_donate_goal = {}
+        self._last_donate_goal[widget_id] = payload
+        self._broadcast_threadsafe(payload)
+
+    async def _handle_donate_goal_state(self, request):
+        """GET /donate-goal-state → คืน donate goal state ล่าสุด (สำหรับ reconnect)"""
+        state = getattr(self, "_last_donate_goal", {})
+        return web.json_response(state or {})
+
+    async def _handle_easydonate_test(self, request):
+        """POST /easydonate-test — ทดสอบ EasyDonate API key
+
+        รับ JSON: {api_key: "ezdn_v1_xxx"} หรือ {widget_id: "w123"} (ใช้ key เดิมจาก settings —
+        config ที่ broadcast เป็น masked จึงต้องให้ server ดึงเอง)
+        คืน: {ok: true, username: "xxx"} หรือ {ok: false, error: "..."}
+        """
+        try:
+            data = await request.json()
+            api_key = data.get("api_key", "").strip()
+            # ★ ไม่ได้ส่ง key มาแต่ส่ง widget_id → ใช้ key เดิมจาก settings
+            if not api_key and data.get("widget_id"):
+                _wid = str(data.get("widget_id"))
+                for _w in (getattr(self.settings, "composer_widgets", None) or []):
+                    if isinstance(_w, dict) and _w.get("id") == _wid:
+                        api_key = str(_w.get("dg_api_key", "") or "").strip()
+                        break
+            if not api_key:
+                return web.json_response({"ok": False, "error": "กรุณาใส่ API Key"})
+
+            from easydonate_api import EasyDonateClient
+            client = EasyDonateClient(api_key)
+            me = client.get_me()
+            if me and "id" in me:
+                return web.json_response({
+                    "ok": True,
+                    "username": me.get("username", ""),
+                    "display_name": me.get("displayName", ""),
+                })
+            else:
+                return web.json_response({"ok": False, "error": "API Key ไม่ถูกต้องหรือเชื่อมต่อไม่ได้"})
+        except Exception as e:
+            return web.json_response({"ok": False, "error": str(e)})
 
     def reload_page(self) -> None:
         """push eval_js: location.reload() — บังคับ reload client ทุกตัว (กัน cache ค้าง)"""
@@ -1272,11 +1945,19 @@ class ComposerServer:
     def _build_config(self) -> dict:
         s = self.settings
         canvas = getattr(s, "composer_canvas_size", "1080p")
+        # ★ mask dg_api_key ก่อน broadcast — /config ถูก push ไปทุก WS client
+        #   (รวมเว็บที่เปิดใน browser สามารถเชื่อม WS แบบ cross-origin ได้) → ห้ามส่ง API key จริง
+        widgets_out = []
+        for _w in list(getattr(s, "composer_widgets", []) or []):
+            if isinstance(_w, dict) and _w.get("type") == "donate_goal" and _w.get("dg_api_key"):
+                _w = dict(_w)  # copy — ไม่แต้ข้อมูลต้นทาง
+                _w["dg_api_key"] = "__MASKED__"
+            widgets_out.append(_w)
         return {
             "canvas_size": canvas,
             "canvas_w": 1280 if canvas == "720p" else 1920,
             "canvas_h": 720 if canvas == "720p" else 1080,
-            "widgets": list(getattr(s, "composer_widgets", [])),
+            "widgets": widgets_out,
             "font_family": getattr(s, "game_overlay_font_family", "Kanit"),
             # ★ character jobs + default image (ใช้ใน Character Talk mode)
             "character_jobs": list(getattr(s, "character_jobs", [])),
@@ -1345,14 +2026,21 @@ class ComposerServer:
         theme = w.get("theme", "default")
         custom_css = w.get("custom_css", "")
         # compute theme_css (raw CSS string)
+        # ★ theme ใช้ได้ในทุก mode (ไม่ใช่แค่ mode=theme)
         try:
-            theme_css = get_theme_css(theme, custom_css) if appearance == "theme" else ""
+            theme_css = ""
+            if appearance == "theme" and theme and theme != "default":
+                theme_css = get_theme_css(theme, "")
+            elif appearance == "default" and w.get("custom_css_enabled") and custom_css:
+                # ★ Custom CSS ย้ายมาโหมด Default (เปิดผ่าน checkbox)
+                theme_css = custom_css
         except Exception:
             theme_css = ""
 
         # mode flags ตาม appearance
         balloon_mode = (appearance == "balloon")
         character_mode = (appearance == "character")
+        slider_mode = (appearance == "slider")
 
         config = {
             # mode
@@ -1362,11 +2050,13 @@ class ComposerServer:
             "custom_css": custom_css if theme == "custom" else "",
             "balloon_mode": balloon_mode,
             "character_mode": character_mode,
+            "slider_mode": slider_mode,
             # chat layout/animation (จาก widget)
             "layout": w.get("layout", "inline"),
             "direction": w.get("direction", "bottom"),
             "animation": w.get("animation", "fade"),
             "exit_animation": w.get("exit_animation", "fade_out"),
+            "chat_align": w.get("chat_align", "left"),
             "show_logo": w.get("show_logo", True),
             "show_timestamp": w.get("show_timestamp", False),
             "max_messages": w.get("max_messages", 30),
@@ -1390,6 +2080,8 @@ class ComposerServer:
             "box_bg_color": w.get("bg_color", "#0a0e1a"),
             "box_bg_opacity": w.get("bg_opacity", 0.0),
             "box_radius": w.get("box_radius", 8),
+            "box_padding": w.get("box_padding", 8),
+            "chat_padding": w.get("chat_padding", 12),
             "box_border": w.get("box_border", False),
             "box_border_width": w.get("box_border_width", 1),
             "box_border_color": w.get("box_border_color", "#ffffff"),
@@ -1398,10 +2090,31 @@ class ComposerServer:
             "box_glow": w.get("box_glow", False),
             "box_glow_color": w.get("box_glow_color", "#a855f7"),
             "box_width": w.get("box_width", "fit"),
-            "msg_spacing": 4,
-            # balloon
+            "msg_spacing": w.get("msg_spacing", 4),
+            # balloon (per-widget — แยกจาก default/theme สนิท)
             "balloon_hide_after": w.get("balloon_hide_after", 5),
             "balloon_bg_opacity": w.get("balloon_bg_opacity", 0.95),
+            "balloon_font_family": w.get("balloon_font_family", "Kanit"),
+            "balloon_font_weight": w.get("balloon_font_weight", 600),
+            "balloon_font_size": w.get("balloon_font_size", 18),
+            "balloon_text_color": w.get("balloon_text_color", "#1a1a2e"),
+            "balloon_emote_size": w.get("balloon_emote_size", 28),
+            # ★ text slider (Niconico style — ข้อความเลื่อนขวา→ซ้าย แล้วหายไปเอง)
+            "slider_font_size": w.get("slider_font_size", 24),
+            "slider_font_family": w.get("slider_font_family", "Kanit"),
+            "slider_font_weight": w.get("slider_font_weight", 700),
+            "slider_text_color": w.get("slider_text_color", "#ffffff"),
+            "slider_text_stroke": w.get("slider_text_stroke", False),
+            "slider_text_stroke_color": w.get("slider_text_stroke_color", "#000000"),
+            "slider_text_stroke_width": w.get("slider_text_stroke_width", 2),
+            "slider_text_shadow": w.get("slider_text_shadow", True),
+            "slider_text_shadow_color": w.get("slider_text_shadow_color", "#000000"),
+            "slider_text_shadow_blur": w.get("slider_text_shadow_blur", 3),
+            "slider_duration": w.get("slider_duration", 5.0),
+            "slider_emote_size": w.get("slider_emote_size", 28),
+            "slider_show_logo": w.get("slider_show_logo", True),
+            "slider_lane_height": w.get("slider_lane_height", 40),
+            "slider_zone": w.get("slider_zone", "middle"),
             # event colors (จาก settings ทั่วไป)
             "color_sub": getattr(s, "overlay_color_sub", "#f47fff"),
             "color_bits": getattr(s, "overlay_color_bits", "#ffaa00"),
@@ -1420,6 +2133,19 @@ class ComposerServer:
         if character_mode:
             config.update({
                 "character_mode": True,
+                "character_font_family": w.get("character_font_family", "Kanit"),
+                "character_font_weight": w.get("character_font_weight", 600),
+                "character_font_color": w.get("character_font_color", "#1a1a2e"),
+                "character_stroke": w.get("character_stroke", False),
+                "character_stroke_width": w.get("character_stroke_width", 2),
+                "character_stroke_color": w.get("character_stroke_color", "#000000"),
+                "character_shadow": w.get("character_shadow", False),
+                "character_shadow_blur": w.get("character_shadow_blur", 3),
+                "character_shadow_color": w.get("character_shadow_color", "#000000"),
+                "character_emote_size": w.get("character_emote_size", 28),
+                "character_name_font_family": w.get("character_name_font_family", "Kanit"),
+                "character_name_font_weight": w.get("character_name_font_weight", 600),
+                "character_name_color": w.get("character_name_color", "#ffffff"),
                 "character_size": w.get("character_size", 120),
                 "character_hide_after": w.get("character_hide_after", 6),
                 "character_max_on_screen": w.get("character_max_on_screen", 8),

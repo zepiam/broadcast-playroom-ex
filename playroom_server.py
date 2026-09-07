@@ -68,7 +68,8 @@ class PlayroomServer:
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
 
-        app = web.Application()
+        from server_guard import make_origin_guard_middleware
+        app = web.Application(middlewares=[make_origin_guard_middleware("playroom")])
         app.router.add_get("/", self._handle_index)
         app.router.add_get("/ws", self._handle_ws)
         app.router.add_get("/clip/{name}", self._handle_clip)

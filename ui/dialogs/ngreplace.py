@@ -191,14 +191,6 @@ class NGReplaceDialog(QDialog):
         edit0 = QLineEdit(src)
         edit0.setStyleSheet("border: none; background: transparent; color: #e5e7eb; padding: 0px;")
         l0.addWidget(edit0)
-        btn0 = QPushButton("🔊")
-        btn0.setFixedSize(32, 28)
-        btn0.setToolTip("ฟังคำเดิม")
-        btn0.setStyleSheet("border: 1px solid #2a2f45; border-radius: 4px; background: #1a1f33; padding: 0px; font-size: 15px;")
-        btn0.setCursor(Qt.PointingHandCursor)
-        # ★ อ่าน text จาก QLineEdit ตอนกด (ไม่ใช่ capture ค่าเดิม)
-        btn0.clicked.connect(lambda _, e=edit0, b=btn0: self._preview_tts_with_loading(b, e.text()))
-        l0.addWidget(btn0)
         self.table.setCellWidget(row, 0, w0)
         w0._edit = edit0
 
@@ -300,30 +292,80 @@ class NGReplaceDialog(QDialog):
         """ลบแถวที่เลือก (legacy — ใช้ _delete_row_with_confirm แทน)"""
         pass
 
-    def _preview_tts_with_loading(self, btn, text):
+    def _preview_tts_with_loading(self, btn, text, is_original=False):
         """preview TTS with loading indicator (กันกดรัว)"""
         if not text.strip():
             return
         if btn.text() == "⏳":
             return  # กำลังโหลดอยู่ → ไม่ทำซ้ำ
         btn.setText("⏳")
-        btn.setEnabled(False)
-        # ★ enqueue
-        self._preview_tts_text(text)
-        # ★ reset หลัง 3 วิ (TTS น่าจะเล่นจบแล้ว)
-        QTimer.singleShot(3000, lambda: (btn.setText("🔊"), btn.setEnabled(True)))
+        # ★ เล่น TTS ตรงๆ (ไม่ผ่าน pipeline)
+        self._preview_tts_text(text, is_original=is_original)
+        # ★ reset หลัง 3 วิ
+        QTimer.singleShot(3000, lambda: btn.setText("🔊"))
 
-    def _preview_tts_text(self, text):
-        """เล่นเสียง TTS ของ text"""
+    def _preview_tts_text(self, text, is_original=False):
+        """เล่นเสียง TTS ของ text — ★ เรียก edge-tts ตรงๆ (ไม่ผ่าน pipeline)
+
+        ★ ทั้งคำเดิมและคำอ่านใช้ Premwadee เหมือนกัน (เหมือน v1)
+        ★ ไม่ผ่าน pipeline เด็ดขาด → ไม่แปลภาษา ไม่ multilang ไม่ RVC
+        ★ is_original มีไว้แค่บอกว่าเป็นคำเดิมหรือคำอ่าน (ไม่เปลี่ยน voice)
+        """
         if not text.strip():
             return
-        if self.parent_app and hasattr(self.parent_app, 'pipeline') and self.parent_app.pipeline:
+        import threading
+        # ★ หยุด preview เก่าก่อน (กันซ้อน)
+        if hasattr(self, '_preview_stop'):
+            self._preview_stop.set()
+        self._preview_stop = threading.Event()
+
+        # ★ ใช้ Premwadee เสมอ (เหมือน v1)
+        voice = "th-TH-PremwadeeNeural"
+
+        def _play():
             try:
-                from chat_twitch import ChatMessage
-                msg = ChatMessage(platform='test', author='ทดสอบ', text=text)
-                self.parent_app.pipeline.enqueue(msg)
+                import edge_tts, asyncio, tempfile, os
+                async def _tts():
+                    communicate = edge_tts.Communicate(text, voice)
+                    audio = b""
+                    async for chunk in communicate.stream():
+                        if self._preview_stop.is_set():
+                            return None
+                        if chunk["type"] == "audio":
+                            audio += chunk["data"]
+                    return audio
+                mp3_bytes = asyncio.run(_tts())
+                if not mp3_bytes or self._preview_stop.is_set():
+                    return
+                # save mp3 + play with pygame
+                tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+                tmp.write(mp3_bytes)
+                tmp.close()
+                import pygame
+                try:
+                    pygame.mixer.init()
+                except Exception:
+                    pass
+                if pygame.mixer.get_init():
+                    if pygame.mixer.music.get_busy():
+                        pygame.mixer.music.stop()
+                    pygame.mixer.music.load(tmp.name)
+                    pygame.mixer.music.play()
+                    import time
+                    for _ in range(100):
+                        if not pygame.mixer.music.get_busy() or self._preview_stop.is_set():
+                            break
+                        time.sleep(0.1)
+                    pygame.mixer.music.unload()
+                try:
+                    os.remove(tmp.name)
+                except Exception:
+                    pass
             except Exception as e:
-                logger.error(f"TTS preview failed: {e}")
+                logger.warning(f"TTS preview error: {e}")
+
+        self._preview_thread = threading.Thread(target=_play, daemon=True)
+        self._preview_thread.start()
 
     def _add_row(self):
         """เพิ่มแถวว่าง"""
@@ -345,13 +387,6 @@ class NGReplaceDialog(QDialog):
         src_entry = QLineEdit()
         src_entry.setPlaceholderText("คำเดิม (ที่จะค้นหา)")
         src_row.addWidget(src_entry, 1)
-        btn_src_preview = QPushButton("🔊")
-        btn_src_preview.setFixedSize(34, 30)
-        btn_src_preview.setToolTip("ทดสอบอ่านคำเดิม")
-        btn_src_preview.setStyleSheet("border: 1px solid #2a2f45; border-radius: 4px; background: #1a1f33; padding: 0px; font-size: 15px;")
-        btn_src_preview.setCursor(Qt.PointingHandCursor)
-        btn_src_preview.clicked.connect(lambda: self._preview_tts_with_loading(btn_src_preview, src_entry.text()))
-        src_row.addWidget(btn_src_preview)
         layout.addLayout(src_row)
         # ★ คำที่แสดง
         layout.addWidget(QLabel("คำที่แสดง:"))

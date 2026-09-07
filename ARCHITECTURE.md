@@ -70,15 +70,20 @@
 | ส่วน | เทคโนโลยี | เหตุผล |
 |---|---|---|
 | **ภาษา** | Python 3.10 | รองรับ TTS/AI libraries |
-| **GUI** | customtkinter (Tkinter) | ข้ามแพลตฟอร์ม + เบา |
-| **TTS** | edge-tts | ฟรี + เสียงดี + หลายภาษา |
-| **RVC** | PyTorch + CUDA | Voice conversion (GPU) |
+| **GUI** | **PySide6 (Qt for Python)** | GPU accelerated + ลื่น + ทันสมัย |
+| **TTS** | edge-tts (Azure Neural Voice) | ฟรี + เสียงดี + หลายภาษา |
+| **TTS (offline)** | OmniVoice (k2-fsa) | Zero-shot offline TTS 600+ ภาษา (Full เท่านั้น) |
+| **RVC** | rvc-python + PyTorch + CUDA | Voice conversion (GPU) |
 | **Game Overlay** | PySide6 + QtWebEngine | Transparent window |
 | **OBS Overlay** | aiohttp + WebSocket | Real-time chat |
 | **Translation** | deep-translator + DeepSeek API | Google/DeepL/LLM |
 | **Build** | PyInstaller (onedir) | แจกเป็น exe ไม่ต้องลง Python |
-| **Auto-update** | GitHub Releases + requests/urllib | 4 layer fallback |
-| **Plugin** | YAML config + Python ABC | ปลอดภัย + ยืดหยุ่น |
+| **Auto-update** | GitHub Releases + requests/urllib + QThread | 4-layer SSL fallback |
+| **Supporters** | PHP + JSON + Discord Webhook | ระบบสนับสนุน + approve |
+| **Thread-safety** | Qt Signals + QThread | cross-thread UI updates |
+
+> **หมายเหตุ**: v1 ใช้ CustomTkinter (Tkinter) — v2 เปลี่ยนเป็น PySide6 (Qt) ทั้งหมด
+> Logic (TTS/RVC/chat/translation/overlay) ใช้ร่วมกับ v1
 
 ---
 
@@ -86,12 +91,12 @@
 
 | | Lite | Full |
 |---|---|---|
-| **ขนาด** | ~900 MB | ~5.7 GB |
+| **ขนาด** | ~1 GB | ~7 GB |
+| **TTS** | Edge-TTS (Azure) | Edge-TTS + **OmniVoice** (offline) |
 | **RVC** | ❌ | ✅ (PyTorch + CUDA) |
-| **TTS** | edge-tts (Premwadee) | edge-tts + RVC voices |
-| **GPU** | ไม่จำเป็น | NVIDIA + CUDA (หรือ CPU ช้า) |
-| **Mixed Voice** | ✅ | ✅ + RVC convert |
+| **GPU** | ไม่จำเป็น | NVIDIA RTX/GTX + CUDA (หรือ CPU ช้า) |
 | **RAM** | ~4 GB | ~8 GB |
+| **เหมาะกับ** | ทุกคน | มีการ์ดจอ RTX/GTX |
 
 ---
 
@@ -115,10 +120,28 @@ text → filter (NG/Replace) → translate (ถ้าเปิด) → detect la
 
 ### 3. Auto-Update
 ```
-เปิดโปรแกรม → 5 วิ → เช็ค version.json จาก GitHub
-  → เทียบเวอร์ชั่น → มีใหม่ → popup
-  → กดอัพเดท → ดาวน์โหลด patch zip (9-33 MB)
-  → แตกไฟล์ทับ → รีสตาร์ท
+เปิดโปรแกรม → 5 วิ → QThread เช็ค version.json จาก GitHub
+  → เทียบเวอร์ชั่น → มีใหม่ → แสดงปุ่ม "New Update" แดงกระพริบ
+  → user กดปุ่ม → dialog changelog → กดอัพเดท
+  → ดาวน์โหลด patch zip (11-63 MB) → batch script
+  → รอ exe ปิด → xcopy แตกไฟล์ทับ → restart เป็นเวอร์ชั่นใหม่อัตโนมัติ
+```
+
+### 4. Supporters System (ผู้สนับสนุน)
+```
+ผู้สนับสนุน: โปรแกรม/เว็บ → กรอก + แนบสลิป → submit.php
+  → server เก็บ pending.json + ส่ง Discord webhook (@mention)
+  → admin คลิกลิงก์ Discord → approve.php → กด Approve
+  → server ย้าย pending → approved.json
+  → โปรแกรมดึง api.php → แสดงชื่อในตาราง
+```
+
+### 5. โค้ดลับ (Secret Code)
+```
+viewer พิมพ์ "!wow สวัสดี" → chat_queue.enqueue()
+  → regex match !wow → ตัดออกจาก text
+  → TTS อ่าน "สวัสดี"
+  → หลัง TTS จบ → เล่นไฟล์เสียง wow.mp3 (volume ตามที่ตั้ง)
 ```
 
 ---

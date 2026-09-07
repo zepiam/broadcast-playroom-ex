@@ -78,7 +78,8 @@ class OverlayServer:
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
 
-        app = web.Application()
+        from server_guard import make_origin_guard_middleware
+        app = web.Application(middlewares=[make_origin_guard_middleware("overlay")])
         app.router.add_get("/", self._handle_index)
         app.router.add_get("/config", self._handle_config)
         app.router.add_get("/ws", self._handle_ws)
@@ -209,7 +210,8 @@ class OverlayServer:
         import aiohttp.web as web
         import urllib.request
         eid = request.match_info.get("emote_id", "")
-        if not eid:
+        # ★ validate — กัน path traversal ผ่าน ../ หรือ %2F (อ่าน/ลบไฟล์นอก cache dir)
+        if not eid or not eid.replace("-", "").replace("_", "").isalnum():
             return web.Response(status=400, text="bad emote id")
         # อ่าน setting — animated หรือ static
         want_animated = bool(getattr(self.settings, "overlay_animated_emotes", True))

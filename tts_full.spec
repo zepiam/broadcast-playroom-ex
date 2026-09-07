@@ -79,7 +79,7 @@ a = Analysis(
     hiddenimports=[
         'edge_tts', 'aiohttp', 'aiohttp.web',
         'pygame', 'pygame.mixer',
-        'pedalboard', 'numpy', 'soundfile', '_sounddevice',
+        'pedalboard', 'numpy', 'soundfile', '_sounddevice', 'sounddevice', 'pyaudio',
         'TikTokLive', 'TikTokLive.client', 'TikTokLive.client.client',
         'TikTokLive.client.web', 'TikTokLive.events', 'TikTokLive.proto',
         'TikTokLive.proto.custom_proto', 'betterproto2', 'betterproto2.cased',
@@ -106,6 +106,9 @@ a = Analysis(
         'now_playing', 'winsdk',
         'obsws_python', 'obs_refresh',
         'omnivoice_engine', 'rvc_engine', 'engine_plugin_loader',
+        # ★ v2.5.0 — Chat Bot + OAuth + OBS + Single Instance
+        'twitch_oauth', 'twitch_bot', 'youtube_oauth', 'kick_oauth', 'announcement', 'server_guard',
+        'single_instance', 'obs_launcher',
     ] + _requests_subs + _urllib3_subs + _rvc_hidden + _fairseq_hidden + _omni_hidden + _tf_hidden,
     hookspath=[],
     hooksconfig={},
@@ -124,7 +127,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='BroadcastPlayroom_Full',
+    name='Broadcast Playroom Full',
     icon='assets/icon_full.ico' if os.path.exists('assets/icon_full.ico') else None,
     debug=False,
     bootloader_ignore_signals=False,
@@ -146,5 +149,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name='BroadcastPlayroom_Full',
+    name='Broadcast Playroom Full',
 )

@@ -182,12 +182,22 @@ function connectWs() {
   // ★ แนบ widget_id เพื่อให้ server จับกลุ่มตาม widget (ใช้สำหรับ per-widget triggers)
   ws.onopen = () => {
     try { ws.send(JSON.stringify({type:'hello', client:'playroom', widget_id: _prWidgetId})); } catch(e) {}
+    // ★ debug — แสดง state บน overlay (เห็นทันทีว่าเชื่อมได้ไหม + อยู่ bucket ไหน)
+    statusEl.textContent = 'WS เชื่อมแล้ว (id:' + (_prWidgetId || '_all') + ')';
+    statusEl.classList.add('show');
   };
   ws.onmessage = (ev) => {
     const data = JSON.parse(ev.data);
+    // ★ debug — เห็นว่าได้รับอะไรจริง
+    statusEl.textContent = 'ได้รับ: ' + (data.type || '?') + ' → ' + (data.name || data.url || '');
+    statusEl.classList.add('show');
     if (data.type === 'clip') enqueueClip(data.url, data.name);
   };
-  ws.onclose = () => setTimeout(connectWs, 1500);
+  ws.onclose = () => {
+    statusEl.textContent = 'WS หลุด — กำลังเชื่อมใหม่...';
+    statusEl.classList.add('show');
+    setTimeout(connectWs, 1500);
+  };
   ws.onerror = () => ws.close();
 }
 

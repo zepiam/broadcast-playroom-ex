@@ -75,7 +75,8 @@ class ViewerOverlayServer:
                 pass
 
     async def _setup(self) -> None:
-        app = web.Application()
+        from server_guard import make_origin_guard_middleware
+        app = web.Application(middlewares=[make_origin_guard_middleware("viewer_overlay")])
         app.router.add_get("/", self._handle_index)
         app.router.add_get("/config", self._handle_config)
         app.router.add_get("/logo/{platform}", self._handle_logo)

@@ -2,7 +2,7 @@
 REM ════════════════════════════════════════════════════════════════════
 REM  build_full.bat — Build Broadcast Playroom (Full version)
 REM  ★ ไม่ลบ build/ cache → rebuild เร็ว 5-10x (3-5 นาที แทน 30-40 นาที)
-REM  Result: dist/BroadcastPlayroom_Full/ folder
+REM  Result: dist/Broadcast Playroom Full/ folder
 REM ════════════════════════════════════════════════════════════════════
 setlocal
 
@@ -29,8 +29,8 @@ if errorlevel 1 (
 echo.
 
 echo [2/2] Build complete!
-echo   Output: dist\BroadcastPlayroom_Full\
-echo   Exe:    dist\BroadcastPlayroom_Full\BroadcastPlayroom_Full.exe
+echo   Output: dist\Broadcast Playroom Full\
+echo   Exe:    dist\Broadcast Playroom Full\Broadcast Playroom Full.exe
 echo.
 echo   Tip: หาก rebuild แล้วผลลัพธ์ไม่เปลี่ยน ให้ลบ build\tts_full\ เอง
 echo        ถ้า spec เปลี่ยนแบบ major ให้ลบ build\ ทิ้งแล้ว build ใหม่

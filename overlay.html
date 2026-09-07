@@ -24,6 +24,7 @@
   --text-shadow: 0 1px 3px rgba(0,0,0,0.9);
   --box-bg: rgba(10,14,26,0.55);
   --box-radius: 8px;
+  --box-padding: 6px 10px;
   --box-border: none;
   --box-shadow: 0 2px 8px rgba(0,0,0,0.3);
   --box-blur: 0;
@@ -57,7 +58,7 @@ html, body {
   height: 100%;
 }
 #chat {
-  padding: 12px;
+  padding: var(--chat-padding, 12px);
   height: 100%;
   overflow: hidden;
   display: flex;
@@ -70,7 +71,7 @@ html, body {
   display: flex;
   align-items: flex-start;
   gap: 6px;
-  padding: 6px 10px;
+  padding: var(--box-padding);
   margin-bottom: var(--msg-gap);
   width: var(--box-width);
   max-width: 100%;
@@ -226,6 +227,70 @@ html, body {
   display: block;
   padding: 0;
 }
+
+/* ═══ Text Slider mode — แบบ Niconico/Bilibili (ข้อความเลื่อนขวา→ซ้าย แล้วหายไปเอง) ═══ */
+#chat.mode-slider {
+  position: relative;
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+/* ซ่อน .msg ปกติทั้งหมด (slider ใช้ element ของตัวเอง — ไม่มีกล่อง/โลโก้/ชื่อ) */
+#chat.mode-slider > .msg { display: none !important; }
+/* ★ โลโก้แพลตฟอร์มหน้าข้อความ (ปิดได้ — ปิดแล้วเป็น text ล้วนแบบ niconico แท้) */
+.slider-msg img.emote {
+  height: var(--slider-emote-size, 28px);
+  width: auto;
+  vertical-align: -0.2em;
+  margin: 0 2px;
+}
+/* ★ [rainbow] — สายรุ้งวิ่งสลับสีไปเรื่อยๆ */
+.slider-msg .rainbow-text {
+  background: linear-gradient(90deg,
+    #ff0000, #ff8800, #ffff00, #00ff00, #0088ff, #8800ff, #ff0000);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: rainbow-slide 2s linear infinite;
+}
+@keyframes rainbow-slide {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+.slider-msg img.slider-logo {
+  height: 0.95em;
+  width: auto;
+  vertical-align: -0.12em;
+  margin-right: 7px;
+  object-fit: contain;
+}
+.slider-msg {
+  position: absolute;
+  left: 100%;
+  white-space: nowrap;
+  line-height: 1.2;
+  color: var(--slider-text-color, #ffffff);
+  font-family: var(--slider-font-family, "Kanit", sans-serif);
+  font-size: var(--slider-font-size, 24px);
+  font-weight: var(--slider-font-weight, 700);
+  -webkit-text-stroke: var(--slider-text-stroke, 0 transparent);
+  paint-order: stroke fill;
+  text-shadow: var(--slider-text-shadow, 0 1px 3px #000000);
+  pointer-events: none;
+  animation-name: a-slider-move;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+  will-change: transform;
+}
+/* ★ ระยะเลื่อน = กว้าง container + กว้างข้อความ (set ต่อข้อความผ่าน --slide-dist) */
+@keyframes a-slider-move {
+  from { transform: translateX(0); }
+  to   { transform: translateX(var(--slide-dist, -200vw)); }
+}
+
 /* แต่ละตัวละคร slot */
 #chat.mode-character .char-slot {
   display: flex;
@@ -273,6 +338,9 @@ html, body {
 }
 /* ชื่อตัวละคร (เล็กๆ ใต้รูป) */
 #chat.mode-character .char-name {
+  font-family: var(--char-name-family, "Kanit", sans-serif);
+  font-weight: var(--char-name-weight, 600);
+  color: var(--char-name-color, #ffffff);
   font-size: var(--char-name-size, 11px);
   color: var(--text-color);
   text-shadow: var(--char-name-shadow, 0 1px 2px #000);
@@ -517,12 +585,22 @@ let config = {
   msg_only: false, balloon_mode: false, balloon_hide_after: 5,
   character_mode: false, character_hide_after: 6, character_size: 120,
   character_max_on_screen: 8, character_jobs: [], character_bubble_width: 500,
+  // ★ text slider (Niconico style)
+  slider_mode: false, slider_font_size: 24, slider_font_family: 'Kanit',
+  slider_font_weight: 700, slider_text_color: '#ffffff',
+  slider_text_stroke: false, slider_text_stroke_color: '#000000', slider_text_stroke_width: 2,
+  slider_text_shadow: true, slider_text_shadow_color: '#000000',
+  slider_text_shadow_blur: 3, slider_duration: 5, slider_show_logo: true,
+  slider_zone: 'middle',
+  slider_lane_height: 40,
   show_original: true,  // Translator — แสดงต้นฉบับ [xxx] ในวงเล็บ
   show_redeem: true,    // Channel Points — แสดง reward redemption
 };
 let loadedFont = '';
 // balloon mode: เก็บตำแหน่งบอลลูนที่กำลังแสดงอยู่ (เพื่อหลีกทับกัน)
 let balloonSlots = [];  // [{el, x, y, w, h}]
+// ★ slider mode: จอง lane ต่อข้อความ (กันข้อความใหม่ทับหัวข้อความเก่าในแถวเดียวกัน)
+let sliderLanes = [];   // [laneIndex] = {el, until(ms)}
 
 // ★ อ่าน widget_id จาก query string (ถ้าถูกโหลดใน chat widget iframe ของ composer)
 const _WIDGET_ID = new URLSearchParams(location.search).get('id') || '';
@@ -552,6 +630,7 @@ function applyConfig(c) {
   const oldGlow = config.box_glow;
   const oldCharacterMode = config.character_mode;
   const oldBalloonMode = config.balloon_mode;
+  const oldSliderMode = config.slider_mode;
   config = Object.assign(config, c);
   // ── apply theme + custom CSS ทันที ──
   // สำคัญ: ใช้ remove + re-create style element (บังคับ browser re-evaluate CSS)
@@ -596,9 +675,27 @@ function applyConfig(c) {
   root.setProperty('--text-shadow', config.text_shadow
     ? `0 1px ${config.text_shadow_blur}px ${config.text_shadow_color}` : 'none');
   // ★ per-mode text styling (balloon + character) — แยกจาก default
+  //   ★ per-widget config (จาก chat widget settings) ชนะ shared mode_configs
   const mc = config.mode_configs || {};
-  const balloon = mc.special || {};
-  const character = mc.character || {};
+  const balloon = Object.assign({}, mc.special || {}, {
+    font_family: config.balloon_font_family || (mc.special || {}).font_family,
+    font_weight: config.balloon_font_weight || (mc.special || {}).font_weight,
+    font_size: config.balloon_font_size || (mc.special || {}).font_size,
+    text_color: config.balloon_text_color || (mc.special || {}).text_color,
+    emote_size: config.balloon_emote_size || (mc.special || {}).emote_size,
+  });
+  const character = Object.assign({}, mc.character || {}, {
+    font_family: config.character_font_family || (mc.character || {}).font_family,
+    font_weight: config.character_font_weight || (mc.character || {}).font_weight,
+    text_color: config.character_font_color || (mc.character || {}).text_color,
+    text_stroke: config.character_stroke !== undefined ? config.character_stroke : (mc.character || {}).text_stroke,
+    text_stroke_width: config.character_stroke_width || (mc.character || {}).text_stroke_width,
+    text_stroke_color: config.character_stroke_color || (mc.character || {}).text_stroke_color,
+    text_shadow: config.character_shadow !== undefined ? config.character_shadow : (mc.character || {}).text_shadow,
+    text_shadow_blur: config.character_shadow_blur || (mc.character || {}).text_shadow_blur,
+    text_shadow_color: config.character_shadow_color || (mc.character || {}).text_shadow_color,
+    emote_size: config.character_emote_size || (mc.character || {}).emote_size,
+  });
   // Balloon vars
   root.setProperty('--balloon-font-size', (balloon.font_size || 18) + 'px');
   root.setProperty('--balloon-font-family', `"${balloon.font_family || 'Kanit'}", sans-serif`);
@@ -646,11 +743,21 @@ function applyConfig(c) {
   // box width: fit (ชิดข้อความ) หรือ wide (กว้างเต็ม)
   root.setProperty('--box-width', config.box_width === 'wide' ? '100%' : 'fit-content');
   root.setProperty('--msg-gap', (config.msg_spacing || 4) + 'px');
+  // ★ box padding — ปรับระยะขอบภายในกล่องข้อความได้ (default 8px)
+  const bp = config.box_padding != null ? config.box_padding : 8;
+  root.setProperty('--box-padding', bp + 'px');
+  // ★ chat padding — ระยะห่างระหว่างกรอบ widget กับข้อความ (default 12px)
+  const cp = config.chat_padding != null ? config.chat_padding : 12;
+  root.setProperty('--chat-padding', cp + 'px');
   // font family (dynamic Google Font load)
   loadFont(config.font_family);
   document.body.style.fontFamily = `"${config.font_family}","Leelawadee UI","Segoe UI",Tahoma,sans-serif`;
   // direction
   chatEl.classList.toggle('direction-top', config.direction === 'top');
+  // ★ alignment — ชิดซ้าย/กลาง/ขวา
+  const align = config.chat_align || 'left';
+  chatEl.style.textAlign = align;
+  chatEl.style.alignItems = (align === 'center') ? 'center' : (align === 'right' ? 'flex-end' : 'flex-start');
   // balloon mode toggle
   chatEl.classList.toggle('mode-balloon', config.balloon_mode === true);
   // ★ เปลี่ยนออกจาก balloon mode → เคลียร์ balloon ที่ค้างอยู่ทันที (กันค้างจนกว่าจะหมดเวลา)
@@ -663,8 +770,28 @@ function applyConfig(c) {
   if (oldCharacterMode === true && config.character_mode !== true) {
     clearAllCharSlots();
   }
+  // ★ Text Slider mode toggle (Niconico style)
+  chatEl.classList.toggle('mode-slider', config.slider_mode === true);
+  if (oldSliderMode === true && config.slider_mode !== true) {
+    clearAllSliderMsgs();
+  }
+  // ★ slider CSS vars
+  root.setProperty('--slider-font-size', (config.slider_font_size || 24) + 'px');
+  root.setProperty('--slider-font-family', `"${config.slider_font_family || 'Kanit'}", sans-serif`);
+  root.setProperty('--slider-font-weight', config.slider_font_weight || 700);
+  root.setProperty('--slider-text-color', config.slider_text_color || '#ffffff');
+  root.setProperty('--slider-text-stroke', config.slider_text_stroke
+    ? `${config.slider_text_stroke_width || 2}px ${config.slider_text_stroke_color || '#000000'}`
+    : '0 transparent');
+  root.setProperty('--slider-emote-size', (config.slider_emote_size || 28) + 'px');
+  root.setProperty('--slider-text-shadow', config.slider_text_shadow === false
+    ? 'none'
+    : `0 1px ${config.slider_text_shadow_blur ?? 3}px ${config.slider_text_shadow_color || '#000000'}`);
   root.setProperty('--char-size', (config.character_size || 120) + 'px');
   root.setProperty('--char-name-size', (config.character_name_size || 11) + 'px');
+  root.setProperty('--char-name-family', `"${config.character_name_font_family || 'Kanit'}", sans-serif`);
+  root.setProperty('--char-name-weight', config.character_name_font_weight || 600);
+  root.setProperty('--char-name-color', config.character_name_color || '#ffffff');
   root.setProperty('--char-name-stroke', config.character_name_stroke
     ? `${config.character_name_stroke_width || 1}px ${config.character_name_stroke_color || '#000000'}` : '0 transparent');
   root.setProperty('--char-name-shadow', config.character_name_shadow
@@ -728,6 +855,134 @@ function clearAllBalloons() {
     el.classList.add('exiting');
     setTimeout(() => { if (el.parentNode) el.remove(); }, 300);
   });
+}
+
+// ════════════════════════════════════════════════════════════
+// ★ Text Slider mode (Niconico/Bilibili) — ข้อความเลื่อนขวา→ซ้ายแล้วหายไปเอง
+//   ไม่มี timer — จบเมื่อพ้นขอบซ้าย (animationend) / lane กันข้อความทับกัน
+// ════════════════════════════════════════════════════════════
+function clearAllSliderMsgs() {
+  chatEl.querySelectorAll('.slider-msg').forEach(el => el.remove());
+  sliderLanes = [];
+}
+
+function spawnSliderMessage(msg) {
+  // ★ ใช้ raw_text ก่อน (กรณี emote ล้วน) — เป็น text ล้วนไม่มี HTML (ใช้ textContent = กัน injection)
+  let plain = (msg.raw_text || msg.text || msg.system_text || '').toString().trim();
+  if (!plain) return;
+  if (plain.length > 140) plain = plain.slice(0, 140) + '…';
+  const div = document.createElement('div');
+  div.className = 'slider-msg';
+  // ★ โลโก้แพลตฟอร์มหน้าข้อความ (เปิด/ปิดได้ — เริ่มต้นเปิด)
+  if (config.slider_show_logo !== false && msg.platform) {
+    const img = document.createElement('img');
+    img.className = 'slider-logo';
+    img.src = '/logo/' + encodeURIComponent(msg.platform);
+    img.onerror = () => img.remove();
+    div.appendChild(img);
+  }
+  // ★ }color{ prefix — ผู้ชมใส่สีข้อความ เช่น }red{สวัสดี / }rainbow{hello
+  //   ใช้ }xxx{ เพราะไม่มีใครพิมพ์แบบนี้ในแชทปกติ (กันดักเจอข้อความธรรมดา)
+  //   strip prefix ออกจากข้อความ แล้ว apply สีให้ span
+  const COLOR_MAP = {
+    red: '#ff4444', blue: '#4488ff', green: '#44ff44', yellow: '#ffee44',
+    purple: '#bb44ff', pink: '#ff44bb', orange: '#ff8844', cyan: '#44ffff',
+    white: '#ffffff', black: '#111111', gray: '#888888',
+  };
+  let colorOverride = null;
+  let isRainbow = false;
+  const cm = plain.match(/^\}([a-zA-Z]+)\{\s*/);
+  if (cm) {
+    const tag = cm[1].toLowerCase();
+    if (tag === 'rainbow') {
+      isRainbow = true;
+      plain = plain.slice(cm[0].length);
+      if (msg.raw_text) msg.raw_text = msg.raw_text.replace(cm[0], '');
+      if (msg.text) msg.text = msg.text.replace(cm[0], '');
+    } else if (COLOR_MAP[tag]) {
+      colorOverride = COLOR_MAP[tag];
+      plain = plain.slice(cm[0].length);
+      if (msg.raw_text) msg.raw_text = msg.raw_text.replace(cm[0], '');
+      if (msg.text) msg.text = msg.text.replace(cm[0], '');
+    }
+  }
+
+  // ★ ข้อความ + emote ปนกัน (renderContent = ตัวเดียวกับแชทปกติ — กัน injection แล้ว)
+  const span = document.createElement('span');
+  span.className = 'text';
+  renderContent(span, msg);
+  if (!span.childNodes.length) span.textContent = plain;  // fallback ข้อความธรรมดา
+  // ★ apply สี / rainbow
+  if (isRainbow) {
+    span.classList.add('rainbow-text');
+    span.style.textShadow = 'none';  // rainbow ใช้ gradient ไม่ต้องมี shadow ทับ
+    span.style.webkitTextStroke = '0 transparent';
+  } else if (colorOverride) {
+    span.style.color = colorOverride;
+    span.style.setProperty('color', colorOverride, 'important');
+  }
+  div.appendChild(span);   // ★ span ต้อง append เข้า div (บั๊กเมื่อวาน: ลืมบรรทัดนี้ → เห็นแค่โลโก้ลอย)
+  chatEl.appendChild(div);
+  // ★ ความเร็วแบบนิโคนิโคต้นฉบับ: ทุกข้อความใช้เวลาบนจอเท่ากัน (default 4 วิ)
+  //   → ข้อความยาวเลื่อนเร็วกว่าเอง (ตามสไตล์ danmaku แท้)
+  const cw = chatEl.clientWidth || window.innerWidth;
+  const tw = div.offsetWidth || 100;
+  const dur = Math.min(20, Math.max(1.5, Number(config.slider_duration) || 5));
+  div.style.setProperty('--slide-dist', (-(cw + tw)) + 'px');
+  div.style.animationDuration = dur + 's';
+  // ★ จัด lane แบบนิโคนิโค — โซนกลางจอ (32%-88% ของความสูง กันชิดบนสุด/ติดล่าง)
+  //   + สุ่มเลือกแถวว่าง (ไม่ซ้อนข้อความเก่า และไม่เรียงติดบนเป็นแถวเดียว)
+  const laneH = Math.max(18, Number(config.slider_lane_height) ||
+                            Math.ceil((Number(config.slider_font_size) || 24) * 1.6));
+  const H = chatEl.clientHeight || window.innerHeight;
+  // ★ โซนแสดงผล: top (30%) / middle (40%) / bottom (30%) / full (ทั้งจอ)
+  const zone = config.slider_zone || 'middle';
+  let bandTop, bandBottom;
+  const PAD = Math.ceil(laneH * 0.6);  // ★ ระยะห่างจากขอบบน/ล่าง (กันแชทติดขอบสุด)
+  if (zone === 'top') {
+    bandTop = PAD; bandBottom = Math.floor(H * 0.30) - PAD;
+  } else if (zone === 'top50') {
+    bandTop = PAD; bandBottom = Math.floor(H * 0.50) - PAD;
+  } else if (zone === 'bottom50') {
+    bandTop = Math.floor(H * 0.50) + PAD; bandBottom = H - PAD;
+  } else if (zone === 'bottom') {
+    bandTop = Math.floor(H * 0.70) + PAD; bandBottom = H - PAD;
+  } else if (zone === 'full') {
+    bandTop = PAD; bandBottom = H - PAD;
+  } else {
+    bandTop = Math.floor(H * 0.30) + PAD;
+    bandBottom = Math.floor(H * 0.70) - PAD;
+  }
+  if (bandBottom <= bandTop) bandBottom = bandTop + laneH; // กัน band ติดลบ
+  const lanes = Math.max(1, Math.floor((bandBottom - bandTop) / laneH));
+  const now = performance.now();
+  const free = [];
+  for (let i = 0; i < lanes; i++) {
+    const L = sliderLanes[i];
+    if (!L || now >= L.until) free.push(i);
+  }
+  let lane;
+  if (free.length) {
+    lane = free[Math.floor(Math.random() * free.length)];
+  } else {
+    // ทุกแถวไม่ว่าง → ยืมแถวที่ข้อความเก่าเดินไปไกลสุด (ลดการทับหัวกัน)
+    let best = 0, bestUntil = Infinity;
+    for (let i = 0; i < lanes; i++) {
+      const L = sliderLanes[i];
+      if (L && L.until < bestUntil) { bestUntil = L.until; best = i; }
+    }
+    lane = best;
+  }
+  div.style.top = (bandTop + lane * laneH) + 'px';
+  // ★ จอง lane จนกว่าหางข้อความจะเข้าจอพ้นทางเข้า (สัดส่วนของ dur) + เผื่อ 300ms
+  sliderLanes[lane] = { el: div, until: now + dur * 1000 * (tw / (cw + tw)) + 300 };
+  div.addEventListener('animationend', () => {
+    div.remove();
+    if (sliderLanes[lane] && sliderLanes[lane].el === div) sliderLanes[lane] = null;
+  });
+  // ★ cap 60 ตัวบนจอ (กัน burst แชทด์มากกิน memory)
+  const all = chatEl.querySelectorAll('.slider-msg');
+  if (all.length > 60) all[0].remove();
 }
 
 function loadFont(family) {
@@ -796,6 +1051,12 @@ function connectWs() {
 }
 
 function addMessage(msg) {
+  // ★ Text Slider mode — เส้นทางของตัวเอง ไม่สร้าง .msg ปกติเลย
+  //   (ไม่มีกล่อง/โลโก้/ชื่อ/timer — แค่เลื่อนแล้วหาย)
+  if (config.slider_mode) {
+    spawnSliderMessage(msg);
+    return;
+  }
   const el = document.createElement('div');
   el.className = 'msg anim-' + (config.animation || 'fade');
   if (config.box_glow) el.classList.add('box-glow-on');

@@ -2,6 +2,9 @@
 data/
 dist/
 build/
+# Build output for GitHub Release assets (patch/full zips + version.json) —
+# uploaded directly to Releases, never committed to the source repo (large binaries)
+release/
 __pycache__/
 *.pyc
 *.egg-info/
@@ -23,3 +26,12 @@ Thumbs.db
 site-packages/
 ffmpeg.exe
 test_*.wav
+
+# Secrets — never commit (real OAuth client secrets embedded here for the shipped app)
+twitch_oauth.py
+kick_oauth.py
+youtube_oauth.py
+
+# Supporters backend (PHP, deployed separately to men9ch.com) — unrelated to
+# app version releases on GitHub, keep entirely out of this repo
+server/

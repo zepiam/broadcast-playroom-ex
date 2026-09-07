@@ -3,7 +3,7 @@
 เปลี่ยนจาก tab แบบเดิม → sidebar layout (ซ้ายเลือกหมวด → ขวาแสดง content)
 """
 import logging
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer, QEvent
 from PySide6.QtWidgets import (
     QDialog, QWidget, QFrame, QLabel, QPushButton, QLineEdit, QCheckBox,
     QVBoxLayout, QHBoxLayout, QGridLayout, QScrollArea,
@@ -12,6 +12,20 @@ from PySide6.QtWidgets import (
     QButtonGroup, QRadioButton,
     QTableWidget, QTableWidgetItem,
 )
+
+
+class _ClickableLabel(QLabel):
+    """QLabel ที่คลิกได้ — emit clicked signal (ลองรับทั้ง click และ release)"""
+    clicked = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_MouseTracking, False)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
 
 logger = logging.getLogger("settings")
 
@@ -31,6 +45,15 @@ class SettingsDialog(QDialog):
         self.setGeometry(150, 110, 980, 720)
         self.setMinimumSize(880, 640)
         self.setModal(True)
+        # ★ Twitch OAuth handlers (จะถูก setup จาก app.py หลังสร้าง dialog)
+        self._twitch_oauth_connect_handler = None
+        self._twitch_oauth_disconnect_handler = None
+        self._twitch_oauth_refresh = None
+        self._kick_oauth_connect_handler = None
+        self._kick_oauth_disconnect_handler = None
+        self._youtube_oauth_connect_handler = None
+        self._youtube_oauth_disconnect_handler = None
+        self._youtube_oauth_refresh = None
         self._build_ui()
         self._load_values()
 
@@ -63,9 +86,9 @@ class SettingsDialog(QDialog):
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(0)
 
-        # ★ Left sidebar (category list)
+        # ★ Left sidebar (category list) — ขยายจาก 200 → 220 กัน sidescroll
         self.sidebar = QListWidget()
-        self.sidebar.setFixedWidth(200)
+        self.sidebar.setFixedWidth(220)
         self.sidebar.setObjectName("SettingsSidebar")
         self.sidebar.setStyleSheet("""
             QListWidget {
@@ -100,12 +123,26 @@ class SettingsDialog(QDialog):
             ("🚫 NG Words", "ng"),
             ("🔄 Replace", "replace"),
             ("🚫 Blocklist & Spam", "block"),
+            ("🎟 โค้ดลับ", "secret_code"),
             ("🪟 Overlay+", "overlay_plus"),
+            ("🤖 Chat Bot", "twitch_bot"),
+            ("📢 ประกาศถึงผู้ใช้", "announce"),
+            ("💚 สนับสนุน", "supporters"),
             ("ℹ️ เกี่ยวกับ", "about"),
         ]
         for label, key in categories:
             item = QListWidgetItem(label)
             item.setData(Qt.UserRole, key)
+            # ★ เพิ่ม Twitch icon สำหรับ Chat Bot section
+            if key == "twitch_bot":
+                try:
+                    from ui.platform_icons import get_platform_pixmap
+                    pix = get_platform_pixmap("twitch", 16)
+                    if not pix.isNull():
+                        from PySide6.QtGui import QIcon
+                        item.setIcon(QIcon(pix))
+                except Exception:
+                    pass
             self.sidebar.addItem(item)
         self.sidebar.setCurrentRow(0)
         self.sidebar.currentRowChanged.connect(self._on_category_change)
@@ -135,7 +172,11 @@ class SettingsDialog(QDialog):
         self._build_ng_section()
         self._build_replace_section()
         self._build_block_section()
+        self._build_secret_code_section()
         self._build_overlay_plus_section()
+        self._build_twitch_bot_section()
+        self._build_announce_section()
+        self._build_supporters_section()
         self._build_about_section()
 
         # ★ Show first section
@@ -166,7 +207,7 @@ class SettingsDialog(QDialog):
         # QLineEdit → editingFinished
         for attr in ['tw_channel', 'yt_id', 'ml_url', 'tt_user', 'kc_channel',
                       'at_apikey', 'at_host',
-                      'obs_ws_host', 'obs_ws_password']:
+                      'obs_ws_host', 'obs_ws_password', 'ann_token', 'ann_url']:
             w = getattr(self, attr, None)
             if w and hasattr(w, 'editingFinished'):
                 w.editingFinished.connect(self._auto_save)
@@ -175,7 +216,7 @@ class SettingsDialog(QDialog):
                       'tw_show', 'yt_show', 'ml_show', 'tt_show', 'kc_show',
                       'playroom_enabled', 'mode_translate', 'mode_multilang',
                       'at_enabled', 'ml_enabled', 'mv_enabled',
-                      'read_author', 'read_message',
+                      'read_author', 'read_message', 'read_own_web',
                       'obs_ws_enabled']:
             w = getattr(self, attr, None)
             if w and hasattr(w, 'stateChanged'):
@@ -210,10 +251,18 @@ class SettingsDialog(QDialog):
         self._show_section(key)
 
     def _show_section(self, key):
-        """แสดง section ที่เลือก (QStackedWidget — แสดงทีละอัน)"""
+        """แสดง section ที่เลือก (QStackedWidget — แสดงทีละอัน)
+        ★ sync sidebar highlight ด้วย (กัน sidebar ค้างที่หน้าเดิม)
+        """
         widget = self._sections.get(key)
         if widget:
             self.content_stack.setCurrentWidget(widget)
+            # ★ sync sidebar — หา row ที่ตรงกับ key แล้วไฮไลท์
+            for i in range(self.sidebar.count()):
+                item = self.sidebar.item(i)
+                if item and item.data(Qt.UserRole) == key:
+                    self.sidebar.setCurrentRow(i)
+                    break
 
     def _add_section(self, key, title, description=""):
         """สร้าง section ใหม่ + เพิ่มเข้า QStackedWidget
@@ -285,22 +334,138 @@ class SettingsDialog(QDialog):
         self.tw_channel = QLineEdit()
         self.tw_channel.setPlaceholderText("เช่น men9ch")
         _platform_row("Twitch:", self.tw_channel, 'tw_auto', 'tw_show')
+
+        # ★ Twitch OAuth (ส่งแชท + Bot) — ปุ่มเชื่อมต่อ + สถานะ
+        tw_oauth_card = QFrame()
+        tw_oauth_card.setStyleSheet(
+            "QFrame { background: #1e293b; border: 1px solid #334155; border-radius: 8px; }"
+        )
+        tw_oauth_layout = QVBoxLayout(tw_oauth_card)
+        tw_oauth_layout.setContentsMargins(12, 10, 12, 10)
+        tw_oauth_layout.setSpacing(6)
+
+        tw_oauth_title = QLabel("🔐 ล็อกอิน Twitch (ส่งแชท + Bot)")
+        tw_oauth_title.setStyleSheet("font-weight: 600; color: #f59e0b; border: none;")
+        tw_oauth_layout.addWidget(tw_oauth_title)
+
+        self.tw_oauth_status = QLabel("⏳ กำลังตรวจสอบ...")
+        self.tw_oauth_status.setWordWrap(True)
+        self.tw_oauth_status.setStyleSheet("color: #94a3b8; font-size: 12px; border: none;")
+        tw_oauth_layout.addWidget(self.tw_oauth_status)
+
+        tw_oauth_btn_row = QHBoxLayout()
+        self.btn_tw_connect = QPushButton("🔗 เชื่อมต่อ Twitch")
+        self.btn_tw_connect.setCursor(Qt.PointingHandCursor)
+        self.btn_tw_connect.setStyleSheet(
+            "QPushButton { background: #334155; color: #e2e8f0; border: 1px solid #475569; "
+            "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
+            "QPushButton:hover { background: #475569; }"
+        )
+        self.btn_tw_disconnect = QPushButton("⚪ ยกเลิกการเชื่อมต่อ")
+        self.btn_tw_disconnect.setCursor(Qt.PointingHandCursor)
+        self.btn_tw_disconnect.setStyleSheet(
+            "QPushButton { background: #dc2626; color: white; border: none; "
+            "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
+            "QPushButton:hover { background: #b91c1c; }"
+        )
+        # ★ ปุ่ม "ตั้งค่า Chat Bot" — แสดงหลังเชื่อมต่อสำเร็จ → เด้งไป section Chat Bot
+        self.btn_tw_bot_settings = QPushButton("🤖 ตั้งค่า Chat Bot")
+        self.btn_tw_bot_settings.setCursor(Qt.PointingHandCursor)
+        self.btn_tw_bot_settings.setStyleSheet(
+            "QPushButton { background: #7c3aed; color: white; border: none; "
+            "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
+            "QPushButton:hover { background: #6d28d9; }"
+        )
+        self.btn_tw_bot_settings.setVisible(False)  # ★ ซ่อนจนกว่าจะเชื่อมต่อสำเร็จ
+        self.btn_tw_bot_settings.clicked.connect(self._goto_chat_bot_section)
+
+        tw_oauth_btn_row.addWidget(self.btn_tw_connect)
+        tw_oauth_btn_row.addWidget(self.btn_tw_disconnect)
+        tw_oauth_btn_row.addWidget(self.btn_tw_bot_settings)
+        tw_oauth_btn_row.addStretch()
+        tw_oauth_layout.addLayout(tw_oauth_btn_row)
+        # ★ เชื่อมปุ่ม
+        self.btn_tw_connect.clicked.connect(self._on_tw_connect_clicked)
+        self.btn_tw_disconnect.clicked.connect(self._on_tw_disconnect_clicked)
+
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, tw_oauth_card
+        )
+
         # YouTube
         self.yt_id = QLineEdit()
-        self.yt_id.setPlaceholderText("Video ID หรือ URL")
+        self.yt_id.setPlaceholderText("@ชื่อช่อง เช่น @MeN9CH (แนะนำ — หาห้อง live เอง) หรือ URL ห้อง")
         _platform_row("YouTube:", self.yt_id, 'yt_auto', 'yt_show')
+
         # MyLive
         self.ml_url = QLineEdit()
         self.ml_url.setPlaceholderText("https://mylive.in.th/streams/XXXXX")
         _platform_row("MyLive:", self.ml_url, 'ml_auto', 'ml_show')
-        # TikTok
-        self.tt_user = QLineEdit()
-        self.tt_user.setPlaceholderText("username")
-        _platform_row("TikTok:", self.tt_user, 'tt_auto', 'tt_show')
-        # KICK
+        # KICK (★ ไว้ก่อน TikTok — รองรับส่งแชท + bot)
         self.kc_channel = QLineEdit()
         self.kc_channel.setPlaceholderText("channel")
         _platform_row("KICK:", self.kc_channel, 'kc_auto', 'kc_show')
+
+        # ★ KICK OAuth (ส่งแชท + Bot + แก้ชื่อห้อง) — ปุ่มเชื่อมต่อ + สถานะ
+        kc_oauth_card = QFrame()
+        kc_oauth_card.setStyleSheet(
+            "QFrame { background: #1e293b; border: 1px solid #334155; border-radius: 8px; }"
+        )
+        kc_oauth_layout = QVBoxLayout(kc_oauth_card)
+        kc_oauth_layout.setContentsMargins(12, 10, 12, 10)
+        kc_oauth_layout.setSpacing(6)
+
+        kc_oauth_title = QLabel("🔐 ล็อกอิน KICK (ส่งแชท + Bot + แก้ชื่อห้อง)")
+        kc_oauth_title.setStyleSheet("font-weight: 600; color: #53fc18; border: none;")
+        kc_oauth_layout.addWidget(kc_oauth_title)
+
+        self.kc_oauth_status = QLabel("⏳ กำลังตรวจสอบ...")
+        self.kc_oauth_status.setWordWrap(True)
+        self.kc_oauth_status.setStyleSheet("color: #94a3b8; font-size: 12px; border: none;")
+        kc_oauth_layout.addWidget(self.kc_oauth_status)
+
+        kc_oauth_btn_row = QHBoxLayout()
+        self.btn_kc_connect = QPushButton("🔗 เชื่อมต่อ KICK")
+        self.btn_kc_connect.setCursor(Qt.PointingHandCursor)
+        self.btn_kc_connect.setStyleSheet(
+            "QPushButton { background: #334155; color: #e2e8f0; border: 1px solid #475569; "
+            "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
+            "QPushButton:hover { background: #475569; }"
+        )
+        self.btn_kc_disconnect = QPushButton("⚪ ยกเลิกการเชื่อมต่อ")
+        self.btn_kc_disconnect.setCursor(Qt.PointingHandCursor)
+        self.btn_kc_disconnect.setStyleSheet(
+            "QPushButton { background: #dc2626; color: white; border: none; "
+            "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
+            "QPushButton:hover { background: #b91c1c; }"
+        )
+        self.btn_kc_bot_settings = QPushButton("🤖 ตั้งค่า Chat Bot")
+        self.btn_kc_bot_settings.setCursor(Qt.PointingHandCursor)
+        self.btn_kc_bot_settings.setStyleSheet(
+            "QPushButton { background: #7c3aed; color: white; border: none; "
+            "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
+            "QPushButton:hover { background: #6d28d9; }"
+        )
+        self.btn_kc_bot_settings.setVisible(False)
+        self.btn_kc_bot_settings.clicked.connect(self._goto_chat_bot_section)
+
+        kc_oauth_btn_row.addWidget(self.btn_kc_connect)
+        kc_oauth_btn_row.addWidget(self.btn_kc_disconnect)
+        kc_oauth_btn_row.addWidget(self.btn_kc_bot_settings)
+        kc_oauth_btn_row.addStretch()
+        kc_oauth_layout.addLayout(kc_oauth_btn_row)
+        # ★ เชื่อมปุ่ม
+        self.btn_kc_connect.clicked.connect(self._on_kc_connect_clicked)
+        self.btn_kc_disconnect.clicked.connect(self._on_kc_disconnect_clicked)
+
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, kc_oauth_card
+        )
+
+        # TikTok (★ ไว้ล่างสุด — อ่านอย่างเดียว)
+        self.tt_user = QLineEdit()
+        self.tt_user.setPlaceholderText("username")
+        _platform_row("TikTok:", self.tt_user, 'tt_auto', 'tt_show')
         # Auto-reconnect
         self.auto_reconnect = QCheckBox("เชื่อมต่อใหม่อัตโนมัติเมื่อหลุด")
         self._current_section_layout.insertWidget(self._current_section_layout.count() - 1,  self.auto_reconnect
@@ -382,13 +547,23 @@ class SettingsDialog(QDialog):
         read_label.setStyleSheet("font-weight: 600; color: #f59e0b;")
         layout.insertWidget(ci(), read_label)
         self.tts_read_both = QRadioButton("อ่านชื่อและข้อความ")
-        self.tts_read_both.setChecked(True)
         layout.insertWidget(ci(), self.tts_read_both)
         self.tts_read_message_only = QRadioButton("อ่านแต่ข้อความเท่านั้น")
+        # ★ default = อ่านแต่ข้อความเท่านั้น (อ่านชื่อเป็นตัวเลือก — ตามที่ user สั่ง)
+        self.tts_read_message_only.setChecked(True)
         layout.insertWidget(ci(), self.tts_read_message_only)
         self.tts_read_group = QButtonGroup(self)
         self.tts_read_group.addButton(self.tts_read_both)
         self.tts_read_group.addButton(self.tts_read_message_only)
+        # ★ อ่านข้อความที่เราพิมพ์บนหน้าเว็บ — default เปิด (ปิดได้จากตรงนี้)
+        from PySide6.QtWidgets import QCheckBox as _QCB2
+        self.read_own_web = _QCB2("อ่านข้อความที่เราพิมพ์บนหน้าเว็บเอง (Twitch / KICK)")
+        self.read_own_web.setToolTip(
+            "☑ = ข้อความที่เราพิมพ์บนหน้าเว็บ Twitch/KICK จะถูกอ่านออกเสียงเหมือนข้อความปกติ | "
+            "☐ = แสดงใน Live Chat แต่ไม่อ่าน | "
+            "(ไม่เกี่ยวกับคำตอบของ Chat Bot — อันนั้นไม่อ่านเสมอ)"
+        )
+        layout.insertWidget(ci(), self.read_own_web)
         # ★ backing variables (driven from radio buttons in _collect_values)
         self.read_author = QCheckBox()
         self.read_message = QCheckBox()
@@ -471,23 +646,22 @@ class SettingsDialog(QDialog):
         mode_label.setStyleSheet("font-weight: 600; color: #f59e0b;")
         self._current_section_layout.insertWidget(self._current_section_layout.count() - 1,  mode_label
         )
-        self.mode_translate = QRadioButton("🌐 แปลเป็นไทย (แปลข้อความต่างประเทศ → TTS อ่านไทย)")
         self.mode_multilang = QRadioButton("🎤 อ่านหลายภาษา (ตรวจจับภาษา → เลือกเสียงที่เหมาะสม)")
+        self.mode_translate = QRadioButton("🌐 แปลเป็นไทย (แปลข้อความต่างประเทศ → TTS อ่านไทย)")
         self.mode_off = QRadioButton("❌ ปิด (อ่านไทยอย่างเดียว)")
         self.mode_off.setChecked(True)
 
         mode_group = QButtonGroup(self)
-        mode_group.addButton(self.mode_translate)
         mode_group.addButton(self.mode_multilang)
+        mode_group.addButton(self.mode_translate)
         mode_group.addButton(self.mode_off)
-        # ★ เก็กว่าเป็น exclusive → ไม่ต้อง setExclusive (default = True)
 
-        self.mode_translate.toggled.connect(self._on_translate_mode_change)
         self.mode_multilang.toggled.connect(self._on_translate_mode_change)
+        self.mode_translate.toggled.connect(self._on_translate_mode_change)
 
-        self._current_section_layout.insertWidget(self._current_section_layout.count() - 1,  self.mode_translate
-        )
         self._current_section_layout.insertWidget(self._current_section_layout.count() - 1,  self.mode_multilang
+        )
+        self._current_section_layout.insertWidget(self._current_section_layout.count() - 1,  self.mode_translate
         )
         self._current_section_layout.insertWidget(self._current_section_layout.count() - 1,  self.mode_off
         )
@@ -718,9 +892,26 @@ class SettingsDialog(QDialog):
         clips_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         clips_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
         clips_table.setColumnWidth(2, 80)
-        clips_table.setMinimumHeight(70)
-        clips_table.setMaximumHeight(140)
+        clips_table.verticalHeader().setVisible(False)
+        clips_table.verticalHeader().setDefaultSectionSize(24)   # ★ แถวเตี้ยกระชับ
+        clips_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         dl.addWidget(clips_table)
+
+        def _fit_clips_table(tbl):
+            """★ สูงพอดีตามแถว: แถวน้อย = กระชับ, แถวเยอะ = แสดงสูงสุด 4 แถวแล้ว scroll
+            + grip มุมขวาล่างสำหรับลากยืดเพิ่มเองได้"""
+            from PySide6.QtWidgets import QSizePolicy, QSizeGrip
+            rows = tbl.rowCount()
+            visible = min(rows, 4) if rows else 0
+            h = 30 + (24 * visible) + 4   # header 30 + แถวละ 24 + margin
+            tbl.setMinimumHeight(h if rows else 34)
+            tbl.setMaximumHeight(16777215)   # ไม่จำกัดบน — ลาก grip ยืดได้อิสระ
+            tbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        # ★ grip ลากยืดมุมขวาล่างของตาราง
+        from PySide6.QtWidgets import QSizeGrip
+        _clip_grip = QSizeGrip(clips_table)
+        clips_table.setCornerWidget(_clip_grip)
 
         for clip in clips:
             if isinstance(clip, dict):
@@ -729,6 +920,9 @@ class SettingsDialog(QDialog):
                 clips_table.setItem(r, 0, QTableWidgetItem(clip.get('name', '')))
                 clips_table.setItem(r, 1, QTableWidgetItem(clip.get('path', '')))
                 clips_table.setItem(r, 2, QTableWidgetItem(str(clip.get('weight', 50))))
+        _fit_clips_table(clips_table)
+        # เก็บ ref ให้ add/browse/delete เรียก fit หลังแถวเปลี่ยน
+        clips_table._fit = _fit_clips_table
 
         clip_btns = QHBoxLayout()
         btn_add_clip = QPushButton("➕ เพิ่ม Clip")
@@ -782,6 +976,7 @@ class SettingsDialog(QDialog):
         table.setItem(r, 0, QTableWidgetItem(''))
         table.setItem(r, 1, QTableWidgetItem(''))
         table.setItem(r, 2, QTableWidgetItem('50'))
+        if getattr(table, '_fit', None): table._fit(table)
 
     def _browse_playroom_clip(self, table):
         """เลือกไฟล์ clip (วิดีโอ/รูป)"""
@@ -800,6 +995,7 @@ class SettingsDialog(QDialog):
             table.setItem(r, 0, QTableWidgetItem(name))
             table.setItem(r, 1, QTableWidgetItem(fpath))
             table.setItem(r, 2, QTableWidgetItem('50'))
+        if getattr(table, '_fit', None): table._fit(table)
 
     def _delete_playroom_clip(self, table):
         """ลบ clip ที่เลือก"""
@@ -808,12 +1004,13 @@ class SettingsDialog(QDialog):
             rows.add(item.row())
         for r in sorted(rows, reverse=True):
             table.removeRow(r)
+        if getattr(table, '_fit', None): table._fit(table)
 
     def _build_canvas_section(self):
         self._add_section("canvas", "🎨 Canvas Composer", "ตั้งค่า Overlay Composer")
         self.composer_port = QSpinBox()
         self.composer_port.setRange(8000, 9999)
-        self.composer_port.setValue(8808)
+        self.composer_port.setValue(8801)
         self._add_row("Port:", self.composer_port)
         btn_open = QPushButton("🌐 เปิด Composer")
         btn_open.setObjectName("Primary")
@@ -826,18 +1023,31 @@ class SettingsDialog(QDialog):
 
         แก้ปัญหา: เปิด OBS ก่อน Broadcast Playroom → browser source cache หน้าเก่า → overlay ไม่แสดง
         เมื่อเปิดใช้งาน → เชื่อม OBS WS แล้ว refresh browser sources ที่ URL ชี้ overlay ของเรา
+        ★ ปิดใช้งาน → ไม่เริ่ม watcher, ไม่ขึ้นสถานะ "รอ OBS" ใน status bar
         """
         self._add_section(
             "obs_ws", "🔌 OBS WebSocket",
             "Refresh browser source อัตโนมัติตอนเปิดโปรแกรม "
             "(แก้ปัญหา OBS เปิดก่อน → overlay ค้างหน้าเก่า)"
         )
-        # ★ เปิด/ปิด
-        self.obs_ws_enabled = QCheckBox("เปิดใช้งาน auto-refresh")
+        # ★ เปิด/ปิดใช้งาน — ถ้าปิด จะไม่เชื่อมต่อ OBS เลย (ไม่ขึ้นสถานะค้าง)
+        self.obs_ws_enabled = QCheckBox("เปิดใช้งาน OBS WebSocket")
         self.obs_ws_enabled.setStyleSheet("font-size: 14px; font-weight: 600;")
         self._current_section_layout.insertWidget(
             self._current_section_layout.count() - 1, self.obs_ws_enabled
         )
+        self._obs_status_label = QLabel("⏸️ ปิดใช้งาน")
+        self._obs_status_label.setStyleSheet("font-size: 12px; color: #6b7280; margin-bottom: 8px;")
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, self._obs_status_label
+        )
+        # ★ toggle: อัพเดท label ทันที
+        self.obs_ws_enabled.toggled.connect(self._on_obs_ws_toggled)
+        # ★ สถานะสด — โพลจาก OBSWatcher จริงทุก 2 วิ (กัน "งงว่าเชื่อมอยู่รึเปล่า"
+        #   เพราะช่องรหัสว่างก็ต่อได้เมื่อ OBS ไม่ได้เปิดล็อครหัส)
+        self._obs_live_timer = QTimer(self)
+        self._obs_live_timer.timeout.connect(self._poll_obs_ws_live_status)
+        self._obs_live_timer.start(2000)
         # ★ Host
         self.obs_ws_host = QLineEdit()
         self.obs_ws_host.setPlaceholderText("localhost")
@@ -863,13 +1073,74 @@ class SettingsDialog(QDialog):
         hint = QLabel(
             "💡 เปิด OBS → Tools → WebSocket Server Settings → Enable "
             "(default port 4455)\n"
-            "★ ใช้ร่วมกับ OBS Browser Source ที่ URL ชี้ overlay/composer ของเรา"
+            "🔑 รหัสผ่าน: OBS ใหม่ ๆ สุ่มรหัสให้เสมอ → คัดลอกจากหน้าต่างนั้น (Connect Information) มาใส่\n"
+            "    ปล่อยว่างได้ เฉพาะเมื่อคุณปิด 'Enable Authentication' ใน OBS เอง\n"
+            "★ ใช้ร่วมกับ OBS Browser Source ที่ URL ชี้ overlay/composer ของเรา\n"
+            "★ ปิดใช้งานถ้าไม่ได้ใช้ OBS — จะได้ไม่ขึ้นสถานะรอเชื่อมต่อ"
         )
         hint.setWordWrap(True)
         hint.setStyleSheet("color: #9ca3af; font-size: 12px; margin-top: 8px;")
         self._current_section_layout.insertWidget(
             self._current_section_layout.count() - 1, hint
         )
+        # ★ ปุ่มวิธีเชื่อม — เปิดหน้าเว็บสอน
+        # ★ import webbrowser แบบ local (จุดอื่นในไฟล์ก็ใช้แบบนี้) — เดิมลืม import
+        #   ทำให้กดแล้ว NameError โดน Qt กลืนเงียบ ๆ = ปุ่มกดไม่ได้
+        import webbrowser
+        btn_guide = QPushButton("📖 วิธีเชื่อม WebSocket")
+        btn_guide.setObjectName("Primary")
+        btn_guide.clicked.connect(lambda: webbrowser.open(
+            "https://men9ch.com/broadcastplayroom-websocket-setting/"))
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, btn_guide
+        )
+
+    def _on_obs_ws_toggled(self, checked):
+        """★ อัพเดท status label ทันทีเมื่อ toggle (โพลสดจะตามมาเช็คอีกทีทุก 2 วิ)"""
+        if hasattr(self, '_obs_status_label') and self._obs_status_label:
+            if checked:
+                self._obs_status_label.setText("🔌 จะเริ่มเชื่อมต่อ OBS เมื่อบันทึกการตั้งค่า")
+                self._obs_status_label.setStyleSheet(
+                    "font-size: 12px; color: #06b6d4; margin-bottom: 8px;")
+            else:
+                self._obs_status_label.setText("⏸️ ปิดใช้งาน")
+                self._obs_status_label.setStyleSheet(
+                    "font-size: 12px; color: #6b7280; margin-bottom: 8px;")
+
+    def _poll_obs_ws_live_status(self):
+        """★ สถานะเชื่อมต่อ OBS WebSocket จริงจาก watcher (ไม่ใช่แค่ checkbox)
+
+        ลำดับ: ปิดอยู่ → ติ๊กแล้วยังไม่บันทึก → เชื่อมสำเร็จแล้ว → กำลังลอง/ยังไม่ติด
+        ★ อธิบายรหัสว่างให้ชัด: OBS ที่ปิด 'Enable Authentication' ต่อได้เลยไม่ต้องมีรหัส
+        """
+        lbl = getattr(self, '_obs_status_label', None)
+        if lbl is None:
+            return
+        try:
+            chk = self.obs_ws_enabled.isChecked() if hasattr(self, 'obs_ws_enabled') else False
+            saved = bool(getattr(self.settings, 'obs_ws_enabled', False))
+            watcher = getattr(self.parent_app, '_obs_watcher', None) if self.parent_app else None
+            pw_empty = True
+            if hasattr(self, 'obs_ws_password'):
+                pw_empty = not self.obs_ws_password.text().strip()
+
+            if not chk:
+                text, color = "⏸️ ปิดใช้งาน", "#6b7280"
+            elif not saved:
+                text, color = "🔌 จะเริ่มเชื่อมต่อ OBS เมื่อบันทึกการตั้งค่า", "#06b6d4"
+            elif watcher is not None and watcher.is_connected:
+                text = "🟢 เชื่อมต่อ OBS สำเร็จ — auto-refresh browser sources ทำงานแล้ว"
+                if pw_empty:
+                    text += "\n• ช่องรหัสว่างได้: OBS ของคุณไม่ได้เปิดล็อครหัส (Enable Authentication ปิดอยู่)"
+                color = "#10b981"
+            else:
+                text = "🟡 ยังเชื่อมไม่ติด — กำลังลองทุก 5 วิ (เปิด OBS และ WebSocket Server ไว้)"
+                text += "\n• ดูสาเหตุล่าสุดที่แถบสถานะล่างของโปรแกรม เช่น 'รหัสผ่านผิด' = OBS ตั้งรหัสไว้ ต้องคัดลอกมาใส่"
+                color = "#f59e0b"
+            lbl.setText(text)
+            lbl.setStyleSheet(f"font-size: 12px; color: {color}; margin-bottom: 8px;")
+        except Exception:
+            pass
 
     def _test_obs_ws(self):
         """ทดสอบการเชื่อมต่อ OBS WebSocket (รันใน background กัน UI ค้าง)"""
@@ -1058,9 +1329,31 @@ class SettingsDialog(QDialog):
         self._replace_page_size = 50    # 50 คำต่อหน้า
         self._replace_search = ""       # quick search text
 
-        # ═══ Top bar: [⬇️ โหลดจากคลัง] [🔍 search] ... [count] ═══
+        # ═══ Top bar: [📥 Import] [📤 Export] [⬇️ โหลดจากคลัง] [🔍 search] ... [count] ═══
         top_bar = QHBoxLayout()
         top_bar.setSpacing(8)
+        btn_import = QPushButton("📥 Import")
+        btn_import.setMinimumHeight(32)
+        btn_import.setCursor(Qt.PointingHandCursor)
+        btn_import.setStyleSheet(
+            "QPushButton { background: #334155; color: #06b6d4; border: none; "
+            "border-radius: 6px; padding: 4px 12px; font-size: 12px; font-weight: 600; }"
+            "QPushButton:hover { background: #475569; }"
+        )
+        btn_import.clicked.connect(self._replace_import)
+        top_bar.addWidget(btn_import)
+
+        btn_export = QPushButton("📤 Export")
+        btn_export.setMinimumHeight(32)
+        btn_export.setCursor(Qt.PointingHandCursor)
+        btn_export.setStyleSheet(
+            "QPushButton { background: #334155; color: #10b981; border: none; "
+            "border-radius: 6px; padding: 4px 12px; font-size: 12px; font-weight: 600; }"
+            "QPushButton:hover { background: #475569; }"
+        )
+        btn_export.clicked.connect(self._replace_export)
+        top_bar.addWidget(btn_export)
+
         btn_download = QPushButton("⬇️ โหลดจากคลัง")
         btn_download.clicked.connect(self._replace_download_from_wiki)
         top_bar.addWidget(btn_download)
@@ -1361,6 +1654,85 @@ class SettingsDialog(QDialog):
         """backward-compat — render จัดการ count อยู่แล้ว"""
         self._replace_render()
 
+    def _replace_export(self):
+        """📤 Export คำแทนที่เป็น JSON"""
+        import json, time
+        from PySide6.QtWidgets import QFileDialog
+        # ★ อ่านจาก settings (truth source)
+        replace_words = {}
+        if self.settings and hasattr(self.settings, 'replace_words'):
+            replace_words = dict(self.settings.replace_words)
+        if not replace_words:
+            QMessageBox.information(self, "Export", "ยังไม่มีคำแทนที่จะส่งออก")
+            return
+        data = {
+            "type": "replace",
+            "version": 2,
+            "replace_words": replace_words,
+        }
+        default_name = f"tts_replace_{time.strftime('%Y%m%d')}.json"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "ส่งออกคำแทนที่", default_name, "JSON (*.json)"
+        )
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            QMessageBox.information(self, "✅ ส่งออกสำเร็จ",
+                f"ส่งออก {len(replace_words)} คำ ไปยัง:\n{path}")
+        except Exception as e:
+            QMessageBox.critical(self, "❌ ส่งออกไม่ได้", str(e))
+
+    def _replace_import(self):
+        """📥 Import คำแทนที่จาก JSON — merge (ข้ามซ้ำ + เขียนทับ conflict)"""
+        import json
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getOpenFileName(
+            self, "นำเข้าคำแทนที่", "", "JSON (*.json)"
+        )
+        if not path:
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            QMessageBox.critical(self, "❌ อ่านไฟล์ไม่ได้", str(e))
+            return
+
+        incoming = data.get("replace_words", {})
+        if not isinstance(incoming, dict) or not incoming:
+            QMessageBox.warning(self, "ไฟล์ไม่ถูกต้อง", "ไม่พบ replace_words ในไฟล์")
+            return
+
+        # ★ merge เข้า settings
+        if not self.settings:
+            return
+        existing = dict(self.settings.replace_words)
+        n_new = 0
+        n_overwrite = 0
+        for src, entry in incoming.items():
+            src = str(src).strip()
+            if not src:
+                continue
+            if src in existing:
+                n_overwrite += 1
+            else:
+                n_new += 1
+            # ★ migrate format เก่า (string) → {display, read}
+            if isinstance(entry, str):
+                entry = {"display": entry, "read": entry}
+            elif not isinstance(entry, dict):
+                entry = {"display": str(entry), "read": str(entry)}
+            existing[src] = entry
+
+        self.settings.replace_words = existing
+        self._auto_save()
+        self._replace_refresh()
+
+        QMessageBox.information(self, "✅ นำเข้าสำเร็จ",
+            f"นำเข้า {n_new} คำใหม่\nเขียนทับ {n_overwrite} คำ\nรวม {len(incoming)} คำจากไฟล์")
+
     def _replace_download_from_wiki(self):
         """ดาวน์โหลด dictionary จากเว็บชุมชน + merge เข้า _replace_data"""
         reply = QMessageBox.question(
@@ -1506,13 +1878,15 @@ class SettingsDialog(QDialog):
         self.block_input.returnPressed.connect(self._add_blocked_user)
         self._current_section_layout.insertWidget(self._current_section_layout.count() - 1,  self.block_input
         )
-        # ★ blocked users table
+        # ★ blocked users table (+ คอลัมน์ X ลบแถว)
         from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView, QComboBox
-        self.block_table = QTableWidget(0, 2)
-        self.block_table.setHorizontalHeaderLabels(["ชื่อผู้ใช้", "ประเภทการบล็อก"])
+        self.block_table = QTableWidget(0, 3)
+        self.block_table.setHorizontalHeaderLabels(["ชื่อผู้ใช้", "ประเภทการบล็อก", "ลบ"])
         self.block_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.block_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)
         self.block_table.setColumnWidth(1, 180)
+        self.block_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
+        self.block_table.setColumnWidth(2, 46)
         self.block_table.setMinimumHeight(120)
         self.block_table.setStyleSheet("""
             QTableWidget { background: transparent; border: 1px solid #2a2f45; border-radius: 4px; }
@@ -1565,8 +1939,8 @@ class SettingsDialog(QDialog):
         self._add_blocked_row(name, "block_all")
 
     def _add_blocked_row(self, name, block_type):
-        """เพิ่ม row ใน block table"""
-        from PySide6.QtWidgets import QComboBox
+        """เพิ่ม row ใน block table (+ ปุ่ม X แดงลบรายชื่อ — sync กับ modal ของ user)"""
+        from PySide6.QtWidgets import QComboBox, QPushButton
         row = self.block_table.rowCount()
         self.block_table.insertRow(row)
         self.block_table.setItem(row, 0, QTableWidgetItem(name))
@@ -1574,7 +1948,50 @@ class SettingsDialog(QDialog):
         combo.addItem("🚫 บล็อกทุกอย่าง", "block_all")
         combo.addItem("🔇 บล็อก TTS เท่านั้น", "block_tts")
         combo.setCurrentIndex(0 if block_type == "block_all" else 1)
+        # ★ จำกัดขนาดให้พอดีช่อง (กันตัวหนังสือใหญ่ทะลุกล่อง)
+        combo.setFixedHeight(26)
+        combo.setStyleSheet(
+            "QComboBox { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; "
+            "border-radius: 4px; font-size: 12px; padding: 0 6px; min-height: 0; }"
+            "QComboBox::drop-down { border: none; width: 18px; }"
+            "QComboBox QAbstractItemView { background: #1e293b; color: #e2e8f0; "
+            "selection-background-color: #7c3aed; font-size: 12px; }"
+        )
         self.block_table.setCellWidget(row, 1, combo)
+        # ★ ปุ่ม X สีแดง — ลบออกจาก blocklist + ปลดบล็อก user คนนั้นทันที
+        #   ★★ กฎเหล็ก: ปุ่มไอคอนเล็กต้อง override padding/min-height เสมอ
+        #       (ธีมกลาง padding 8px + min-height จะบีบจนไอคอน/ตัวอักษรมองไม่เห็น)
+        btn_x = QPushButton("✕")
+        btn_x.setFixedSize(32, 24)
+        btn_x.setCursor(Qt.PointingHandCursor)
+        btn_x.setToolTip(f"ลบ {name} ออกจาก Blocklist (ปลดบล็อกทันที)")
+        btn_x.setStyleSheet(
+            "QPushButton { background: transparent; color: #ef4444; border: none; "
+            "font-size: 14px; font-weight: 700; padding: 0; min-height: 0; }"
+            "QPushButton:hover { background: #ef4444; color: white; "
+            "border-radius: 4px; padding: 0; min-height: 0; }"
+        )
+        btn_x.clicked.connect(lambda _, r=row, n=name: self._remove_blocked_row(r, n))
+        self.block_table.setCellWidget(row, 2, btn_x)
+
+    def _remove_blocked_row(self, row, name):
+        """★ ลบ row ออกจากตาราง + ปลดบล็อกจริง (sync กับ modal ของ user คนนั้น)"""
+        # ★ guard — row อาจถูกลบไปแล้ว (double click)
+        if row >= self.block_table.rowCount():
+            return
+        item = self.block_table.item(row, 0)
+        if not item or item.text().lower() != (name or "").lower():
+            return
+        self.block_table.removeRow(row)
+        # ★ ปลดบล็อกจริงผ่าน app (อัปเดต settings + filter ทันที → modal ของ user
+        #   ที่เปิดภายหลังจะเห็นสถานะกลับเป็นปกติ)
+        app = getattr(self, 'parent_app', None)
+        if app and hasattr(app, '_unblock_user'):
+            try:
+                app._unblock_user(name)
+            except Exception:
+                pass
+        self._auto_save()
 
     def _remove_blocked_user(self):
         """ลบผู้ใช้ที่เลือกจาก block table"""
@@ -1583,6 +2000,398 @@ class SettingsDialog(QDialog):
             rows.add(item.row())
         for r in sorted(rows, reverse=True):
             self.block_table.removeRow(r)
+
+    # ════════════════════════════════════════════════════════════
+    # ★ Secret Code section (โค้ดลับ → เล่นเสียง)
+    # ════════════════════════════════════════════════════════════
+    def _build_secret_code_section(self):
+        """🎟 โค้ดลับ — viewer พิมพ์ !code ในแชท → เล่นเสียงหลัง TTS"""
+        self._add_section("secret_code", "", "")
+        layout = self._current_section_layout
+        ci = lambda: layout.count() - 1
+
+        # ── header row: [title] ...stretch... [limit spinbox] ──
+        header_row = QHBoxLayout()
+        header_row.setSpacing(8)
+        title_lbl = QLabel("🎟 โค้ดลับ")
+        title_lbl.setStyleSheet("font-size: 20px; font-weight: 700; color: #f59e0b;")
+        header_row.addWidget(title_lbl)
+        header_row.addStretch()
+
+        limit_lbl = QLabel("จำกัด/user/วัน:")
+        limit_lbl.setStyleSheet("font-size: 12px; color: #94a3b8;")
+        header_row.addWidget(limit_lbl)
+        self.code_limit_spin = QSpinBox()
+        self.code_limit_spin.setRange(0, 100)
+        self.code_limit_spin.setValue(0)
+        self.code_limit_spin.setFixedWidth(90)
+        self.code_limit_spin.setToolTip("0 = ไม่จำกัด")
+        self.code_limit_spin.valueChanged.connect(self._on_code_limit_change)
+        header_row.addWidget(self.code_limit_spin)
+        layout.insertLayout(ci(), header_row)
+
+        # ── hint ──
+        hint = QLabel(
+            "💡 viewer พิมพ์โค้ด (เช่น !wow) → TTS อ่านส่วนที่เหลือ → เล่นเสียง\n"
+            "★ พิมพ์ wow จะกลายเป็น !wow อัตโนมัติ"
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet("font-size: 12px; color: #9ca3af; margin-bottom: 4px;")
+        layout.insertWidget(ci(), hint)
+
+        # ── เพิ่มโค้ดใหม่ ──
+        add_row = QHBoxLayout()
+        add_row.setSpacing(8)
+        self.code_entry = QLineEdit()
+        self.code_entry.setPlaceholderText("โค้ด เช่น wow")
+        add_row.addWidget(self.code_entry, 1)
+
+        btn_browse = QPushButton("➕ เพิ่ม")
+        btn_browse.setObjectName("Primary")
+        btn_browse.setMinimumHeight(32)
+        btn_browse.clicked.connect(self._add_secret_code)
+        add_row.addWidget(btn_browse)
+        layout.insertLayout(ci(), add_row)
+
+        # ── รายการโค้ดปัจจุบัน ──
+        self._code_list_container = QWidget()
+        self._code_list_layout = QVBoxLayout(self._code_list_container)
+        self._code_list_layout.setContentsMargins(0, 0, 0, 0)
+        self._code_list_layout.setSpacing(4)
+        self._code_list_layout.addStretch()
+
+        code_scroll = QScrollArea()
+        code_scroll.setWidgetResizable(True)
+        code_scroll.setWidget(self._code_list_container)
+        code_scroll.setFrameShape(QScrollArea.NoFrame)
+        code_scroll.setMinimumHeight(120)
+        code_scroll.setStyleSheet(
+            "QScrollArea { background: transparent; border: 1px solid #1f2937; border-radius: 6px; }"
+            "QScrollBar:vertical { background: #1f2937; width: 6px; border-radius: 3px; }"
+            "QScrollBar::handle:vertical { background: #4b5563; border-radius: 3px; min-height: 20px; }"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
+        )
+        layout.insertWidget(ci(), code_scroll)
+
+        # ── โหลดค่า ──
+        self._refresh_secret_code_list()
+
+    def _refresh_secret_code_list(self):
+        """rebuild รายการโค้ดลับใน settings"""
+        cl = self._code_list_layout
+        # เคลียร์เก่า (เก็บ stretch)
+        while cl.count() > 1:
+            item = cl.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        codes = getattr(self.settings, 'secret_codes', []) if self.settings else []
+        if not codes:
+            placeholder = QLabel("ยังไม่มีโค้ดลับ — เพิ่มได้ด้านบน")
+            placeholder.setAlignment(Qt.AlignCenter)
+            placeholder.setStyleSheet("font-size: 13px; color: #4b5563; padding: 16px;")
+            cl.insertWidget(cl.count() - 1, placeholder)
+            return
+
+        for c in codes:
+            if not isinstance(c, dict):
+                continue
+            code = c.get("code", "")
+            sound_path = c.get("sound_path", "")
+            volume = float(c.get("volume", 0.8))
+            if not code:
+                continue
+
+            import os
+            filename = os.path.basename(sound_path) if sound_path else "(ไม่มีไฟล์)"
+
+            row = QFrame()
+            row.setStyleSheet(
+                "QFrame { background: #1f2937; border-radius: 6px; }"
+                "QFrame:hover { background: #263244; }"
+            )
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(10, 6, 10, 6)
+            row_layout.setSpacing(8)
+
+            # code
+            code_lbl = QLabel(code)
+            code_lbl.setStyleSheet("font-size: 14px; font-weight: 700; color: #10b981; min-width: 80px;")
+            row_layout.addWidget(code_lbl)
+
+            # filename
+            file_lbl = QLabel(f"🔊 {filename}")
+            file_lbl.setStyleSheet("font-size: 12px; color: #9ca3af;")
+            row_layout.addWidget(file_lbl, 1)
+
+            # volume slider
+            vol_slider = QSlider(Qt.Horizontal)
+            vol_slider.setRange(0, 100)
+            vol_slider.setValue(int(volume * 100))
+            vol_slider.setFixedWidth(80)
+            vol_slider.setStyleSheet("QSlider { min-height: 20px; }")
+            _code = code
+            # ★ save เฉพาะตอนปล่อย slider (กัน save หนักจาก valueChanged)
+            vol_slider.sliderReleased.connect(lambda c=_code: self._on_code_volume(c, vol_slider.value()))
+            row_layout.addWidget(vol_slider)
+
+            # ★ ปุ่ม Edit (แก้ code + เปลี่ยนไฟล์)
+            btn_edit = QPushButton("✏️ Edit")
+            btn_edit.setFixedHeight(30)
+            btn_edit.setCursor(Qt.PointingHandCursor)
+            btn_edit.setStyleSheet(
+                "QPushButton { background: #334155; color: #06b6d4; border: none; border-radius: 4px; padding: 4px 10px; font-size: 12px; font-weight: 600; }"
+                "QPushButton:hover { background: #475569; }"
+            )
+            btn_edit.clicked.connect(lambda checked=False, c=code: self._edit_secret_code(c))
+            row_layout.addWidget(btn_edit)
+
+            # ★ ปุ่ม Preview/Stop (ทดลองฟัง — กดซ้ำเพื่อหยุด)
+            btn_preview = QPushButton("🔊 Preview")
+            btn_preview.setFixedHeight(30)
+            btn_preview.setCursor(Qt.PointingHandCursor)
+            btn_preview.setStyleSheet(
+                "QPushButton { background: #334155; color: #10b981; border: none; border-radius: 4px; padding: 4px 10px; font-size: 12px; font-weight: 600; }"
+                "QPushButton:hover { background: #475569; }"
+            )
+            _path = sound_path
+            _slider = vol_slider
+            btn_preview.clicked.connect(lambda checked=False, p=_path, b=btn_preview, s=_slider: self._toggle_preview_sound(p, b, s))
+            row_layout.addWidget(btn_preview)
+
+            # ★ ปุ่ม Delete
+            btn_del = QPushButton("🗑️ Delete")
+            btn_del.setFixedHeight(30)
+            btn_del.setCursor(Qt.PointingHandCursor)
+            btn_del.setStyleSheet(
+                "QPushButton { background: #ef4444; color: white; border: none; border-radius: 4px; padding: 4px 10px; font-size: 12px; font-weight: 600; }"
+                "QPushButton:hover { background: #dc2626; }"
+            )
+            btn_del.clicked.connect(lambda checked=False, c=code: self._remove_secret_code(c))
+            row_layout.addWidget(btn_del)
+
+            cl.insertWidget(cl.count() - 1, row)
+
+    def _add_secret_code(self):
+        """เพิ่มโค้ดลับใหม่ — กรอกโค้ด + เลือกไฟล์เสียง"""
+        from PySide6.QtWidgets import QFileDialog
+        raw = self.code_entry.text().strip()
+        if not raw:
+            QMessageBox.warning(self, "ข้อมูลไม่ครบ", "กรุณากรอกโค้ดลับ")
+            return
+        # ★ บังคับ ! prefix
+        code = raw if raw.startswith("!") else "!" + raw
+        # เลือกไฟล์เสียง
+        path, _ = QFileDialog.getOpenFileName(
+            self, "เลือกไฟล์เสียง", "",
+            "Audio (*.mp3 *.wav)"
+        )
+        if not path:
+            return
+        # เพิ่มใน settings
+        if not self.settings:
+            return
+        codes = self.settings.secret_codes
+        # ลบอันเดิมถ้ามี code ซ้ำ
+        codes = [c for c in codes if c.get("code") != code]
+        codes.append({"code": code, "sound_path": path, "volume": 0.8})
+        self.settings.secret_codes = codes
+        # sync text_filter
+        try:
+            from text_filter import SecretCode
+            f = self.settings.to_text_filter() if hasattr(self.settings, 'to_text_filter') else None
+        except Exception:
+            pass
+        # save
+        self._auto_save()
+        # refresh UI
+        self._refresh_secret_code_list()
+        self.code_entry.clear()
+        QMessageBox.information(self, "✅ เพิ่มสำเร็จ", f"เพิ่มโค้ดลับ {code} แล้ว")
+
+    def _remove_secret_code(self, code: str):
+        """ลบโค้ดลับ"""
+        if not self.settings:
+            return
+        reply = QMessageBox.question(
+            self, "ยืนยันลบ", f"ลบโค้ดลับ {code}?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes
+        )
+        if reply != QMessageBox.Yes:
+            return
+        self.settings.secret_codes = [
+            c for c in self.settings.secret_codes if c.get("code") != code
+        ]
+        self._auto_save()
+        self._refresh_secret_code_list()
+
+    def _edit_secret_code(self, code: str):
+        """★ แก้โค้ดลับ — เปลี่ยน code และ/หรือไฟล์เสียง"""
+        import os
+        if not self.settings:
+            return
+        # หา entry เดิม
+        entry = None
+        for c in self.settings.secret_codes:
+            if c.get("code") == code:
+                entry = c
+                break
+        if not entry:
+            return
+
+        # ★ dialog แก้ไข
+        from PySide6.QtWidgets import QDialog as _Dlg, QVBoxLayout as _VBL, QHBoxLayout as _HBL
+        dlg = _Dlg(self)
+        dlg.setWindowTitle(f"✏️ แก้ไขโค้ดลับ {code}")
+        dlg.setMinimumWidth(400)
+        dlg.setStyleSheet("QDialog { background: #0f172a; color: #e2e8f0; }"
+                          "QLabel { color: #94a3b8; font-size: 12px; }"
+                          "QLineEdit { background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px; color: #e2e8f0; }"
+                          "QPushButton { padding: 8px 16px; border: none; border-radius: 6px; font-weight: 600; }")
+
+        dl = _VBL(dlg)
+        dl.setSpacing(8)
+        dl.setContentsMargins(20, 16, 20, 16)
+
+        lbl_code = QLabel("โค้ด:")
+        dl.addWidget(lbl_code)
+        inp_code = QLineEdit(code)
+        dl.addWidget(inp_code)
+
+        lbl_file = QLabel(f"ไฟล์เสียง: {os.path.basename(entry.get('sound_path', '')) if entry.get('sound_path') else '(ไม่มี)'}")
+        dl.addWidget(lbl_file)
+
+        btn_file = QPushButton("📁 เปลี่ยนไฟล์เสียง")
+        btn_file.setStyleSheet("background: #334155; color: #e2e8f0;")
+        new_path = [entry.get("sound_path", "")]
+
+        def _pick_file():
+            from PySide6.QtWidgets import QFileDialog
+            path, _ = QFileDialog.getOpenFileName(
+                dlg, "เลือกไฟล์เสียง", "",
+                "Audio (*.mp3 *.wav)")
+            if path:
+                new_path[0] = path
+                lbl_file.setText(f"ไฟล์เสียง: {os.path.basename(path)}")
+        btn_file.clicked.connect(_pick_file)
+        dl.addWidget(btn_file)
+
+        btn_row = _HBL()
+        btn_row.addStretch()
+        btn_cancel = QPushButton("ยกเลิก")
+        btn_cancel.setStyleSheet("background: #334155; color: #e2e8f0;")
+        btn_cancel.clicked.connect(dlg.reject)
+        btn_row.addWidget(btn_cancel)
+        btn_save = QPushButton("บันทึก")
+        btn_save.setStyleSheet("background: #10b981; color: white;")
+        btn_save.clicked.connect(dlg.accept)
+        btn_row.addWidget(btn_save)
+        dl.addLayout(btn_row)
+
+        if dlg.exec():
+            new_code = inp_code.text().strip()
+            if not new_code:
+                QMessageBox.warning(self, "ข้อมูลไม่ครบ", "กรุณากรอกโค้ด")
+                return
+            # บังคับ ! prefix
+            if not new_code.startswith("!"):
+                new_code = "!" + new_code
+            # update entry
+            entry["code"] = new_code
+            entry["sound_path"] = new_path[0]
+            self._auto_save()
+            self._refresh_secret_code_list()
+
+    def _on_code_volume(self, code: str, vol_int: int):
+        """เปลี่ยนระดับเสียงของโค้ด"""
+        if not self.settings:
+            return
+        vol = vol_int / 100.0
+        for c in self.settings.secret_codes:
+            if c.get("code") == code:
+                c["volume"] = vol
+                break
+        self._auto_save()
+
+    def _preview_code_sound(self, path: str):
+        """ทดลองฟังเสียง (legacy — ใช้ _toggle_preview_sound แทน)"""
+        self._toggle_preview_sound(path, None)
+
+    def _toggle_preview_sound(self, path: str, btn=None, slider=None):
+        """★ toggle preview — ถ้ากำลังเล่นอยู่ → หยุด; ถ้าไม่ได้เล่น → เริ่มเล่น
+
+        เมื่อเล่น → ปุ่มเปลี่ยนเป็น "⏹ Stop"
+        เมื่อจบ/หยุด → ปุ่มกลับเป็น "🔊 Preview"
+        ★ volume อ่านจาก slider (ถ้ามี) — เล่นเสียงตามระดับที่ตั้ง
+        """
+        import os
+
+        # ★ ถ้ามี channel เก่ากำลังเล่นอยู่ → หยุด
+        if hasattr(self, '_preview_channel') and self._preview_channel is not None:
+            try:
+                if self._preview_channel.get_busy():
+                    self._preview_channel.stop()
+            except Exception:
+                pass
+            self._preview_channel = None
+            # กลับเป็น Preview
+            if btn:
+                btn.setText("🔊 Preview")
+                btn.setStyleSheet(
+                    "QPushButton { background: #334155; color: #10b981; border: none; border-radius: 4px; padding: 4px 10px; font-size: 12px; font-weight: 600; }"
+                    "QPushButton:hover { background: #475569; }"
+                )
+            return
+
+        # ★ เริ่มเล่นใหม่
+        if not path or not os.path.exists(path):
+            if btn:
+                QMessageBox.warning(self, "ไม่พบไฟล์", f"ไม่พบไฟล์: {path}")
+            return
+
+        try:
+            import pygame
+            snd = pygame.mixer.Sound(path)
+            # ★ อ่าน volume จาก slider (0.0-1.0)
+            vol = 0.8
+            if slider:
+                vol = slider.value() / 100.0
+            snd.set_volume(max(0.0, min(1.0, vol)))
+            self._preview_channel = pygame.mixer.find_channel(True)
+            if self._preview_channel:
+                self._preview_channel.play(snd)
+                # เปลี่ยนปุ่มเป็น Stop
+                if btn:
+                    btn.setText("⏹ Stop")
+                    btn.setStyleSheet(
+                        "QPushButton { background: #ef4444; color: white; border: none; border-radius: 4px; padding: 4px 10px; font-size: 12px; font-weight: 600; }"
+                        "QPushButton:hover { background: #dc2626; }"
+                    )
+                # ★ ตรวจสอบว่าเล่นจบหรือยัง → กลับเป็น Preview
+                if btn:
+                    _btn = btn
+                    def _check_done():
+                        if self._preview_channel and not self._preview_channel.get_busy():
+                            _btn.setText("🔊 Preview")
+                            _btn.setStyleSheet(
+                                "QPushButton { background: #334155; color: #10b981; border: none; border-radius: 4px; padding: 4px 10px; font-size: 12px; font-weight: 600; }"
+                                "QPushButton:hover { background: #475569; }"
+                            )
+                            self._preview_channel = None
+                        else:
+                            QTimer.singleShot(200, _check_done)
+                    QTimer.singleShot(200, _check_done)
+        except Exception as e:
+            if btn:
+                QMessageBox.warning(self, "เล่นไม่ได้", f"ไม่สามารถเล่นเสียง: {e}")
+
+    def _on_code_limit_change(self, val: int):
+        """เปลี่ยน daily limit (SpinBox)"""
+        if not self.settings:
+            return
+        self.settings.secret_code_daily_limit = val
+        self._auto_save()
 
     # ════════════════════════════════════════════════════════════
     # Overlay+ section (custom URL overlays — max 3)
@@ -1712,6 +2521,360 @@ class SettingsDialog(QDialog):
         except Exception:
             pass
 
+    def _build_twitch_bot_section(self):
+        """🤖 Chat Bot (Twitch) — คำสั่งอัตโนมัติ + Timer"""
+        self._add_section("twitch_bot", "🤖 Chat Bot (Twitch)",
+                          "ตอบคำสั่งอัตโนมัติ + ส่งข้อความซ้ำตามช่วงเวลา (เหมือน Nightbot)")
+        layout = self._current_section_layout
+        ci = lambda: layout.count() - 1
+
+        # ★ Toggle เปิด/ปิด bot
+        self.bot_enabled_cb = QCheckBox("เปิดใช้งาน Chat Bot (ตอบคำสั่ง !xxx อัตโนมัติ)")
+        self.bot_enabled_cb.stateChanged.connect(lambda _: self._auto_save())
+        layout.insertWidget(ci(), self.bot_enabled_cb)
+
+        # ★ ASK — โพสผลสรุปโหวตลงแชททุกแพลตฟอร์มที่เชื่อมไว้ (เมื่อโพลจบ)
+        self.ask_post_result_cb = QCheckBox("โพสผลสรุปโหวต ASK ลงแชทเมื่อจบโหวต (แพลตฟอร์มที่เชื่อมอยู่)")
+        self.ask_post_result_cb.stateChanged.connect(lambda _: self._auto_save())
+        layout.insertWidget(ci(), self.ask_post_result_cb)
+
+        # ★ เลือกว่าให้ Bot ทำงานที่แพลตฟอร์มไหนบ้าง (ปิดเฉพาะแพลตฟอร์มได้)
+        plat_row = QHBoxLayout()
+        plat_lbl = QLabel("ให้ Bot ทำงานที่:")
+        plat_lbl.setStyleSheet("color: #e5e7eb; font-size: 12px;")
+        plat_row.addWidget(plat_lbl)
+        self.bot_plat_cbs = {}
+        # ★ แสดงเฉพาะแพลตฟอร์มที่มี Bot จริง (YouTube ยังไม่มี)
+        for key, label in (("twitch", "Twitch"), ("kick", "KICK")):
+            cb = QCheckBox(label)
+            cb.setToolTip(f"เปิด/ปิด Bot เฉพาะ {label} (ปิดแล้ว Bot เงียบเฉพาะที่นี่)")
+            cb.stateChanged.connect(lambda _: self._auto_save())
+            plat_row.addWidget(cb)
+            self.bot_plat_cbs[key] = cb
+        plat_row.addStretch()
+        from PySide6.QtWidgets import QWidget as _W
+        _plat_holder = _W()
+        _plat_holder.setLayout(plat_row)
+        layout.insertWidget(ci(), _plat_holder)
+
+        # ★ Note
+        note = QLabel("ℹ️ ต้องล็อกอิน Twitch ก่อน (ไปที่ section 🔌 แพลตฟอร์ม → เชื่อมต่อ Twitch)")
+        note.setWordWrap(True)
+        note.setStyleSheet("color: #94a3b8; font-size: 12px;")
+        layout.insertWidget(ci(), note)
+
+        # ═══ Commands section ═══
+        cmd_title = QLabel("📝 คำสั่ง Bot")
+        cmd_title.setStyleSheet("font-weight: 600; color: #f59e0b; margin-top: 12px;")
+        layout.insertWidget(ci(), cmd_title)
+
+        cmd_desc = QLabel("เมื่อมีคนพิมพ์ !command ในแชท → Bot จะตอบด้วยข้อความที่ตั้งไว้")
+        cmd_desc.setWordWrap(True)
+        cmd_desc.setStyleSheet("color: #64748b; font-size: 12px;")
+        layout.insertWidget(ci(), cmd_desc)
+
+        # ★ Container สำหรับ rows คำสั่ง (dynamic add/remove)
+        self._bot_cmd_rows = []  # list of (command_input, response_input, remove_btn)
+        self._bot_cmd_container = QWidget()
+        self._bot_cmd_layout = QVBoxLayout(self._bot_cmd_container)
+        self._bot_cmd_layout.setContentsMargins(0, 0, 0, 0)
+        self._bot_cmd_layout.setSpacing(4)
+        layout.insertWidget(ci(), self._bot_cmd_container)
+
+        # ★ ปุ่มเพิ่มคำสั่ง
+        btn_add_cmd = QPushButton("+ เพิ่มคำสั่ง")
+        btn_add_cmd.setCursor(Qt.PointingHandCursor)
+        btn_add_cmd.setStyleSheet(
+            "QPushButton { background: #1e293b; color: #a78bfa; border: 1px dashed #475569; "
+            "border-radius: 6px; padding: 6px; }"
+            "QPushButton:hover { background: #334155; }"
+        )
+        btn_add_cmd.clicked.connect(lambda: self._add_bot_cmd_row("", ""))
+        layout.insertWidget(ci(), btn_add_cmd)
+
+        # ═══ Timers section ═══
+        timer_title = QLabel("⏰ Timer (ส่งข้อความซ้ำ)")
+        timer_title.setStyleSheet("font-weight: 600; color: #f59e0b; margin-top: 16px;")
+        layout.insertWidget(ci(), timer_title)
+
+        timer_desc = QLabel("ส่งข้อความซ้ำทุก N นาที (เช่น ทุก 10 นาที ส่ง 'Follow me!')")
+        timer_desc.setWordWrap(True)
+        timer_desc.setStyleSheet("color: #64748b; font-size: 12px;")
+        layout.insertWidget(ci(), timer_desc)
+
+        # ★ Container สำหรับ rows timer
+        self._bot_timer_rows = []
+        self._bot_timer_container = QWidget()
+        self._bot_timer_layout = QVBoxLayout(self._bot_timer_container)
+        self._bot_timer_layout.setContentsMargins(0, 0, 0, 0)
+        self._bot_timer_layout.setSpacing(4)
+        layout.insertWidget(ci(), self._bot_timer_container)
+
+        # ★ ปุ่มเพิ่ม timer
+        btn_add_timer = QPushButton("+ เพิ่ม Timer")
+        btn_add_timer.setCursor(Qt.PointingHandCursor)
+        btn_add_timer.setStyleSheet(
+            "QPushButton { background: #1e293b; color: #a78bfa; border: 1px dashed #475569; "
+            "border-radius: 6px; padding: 6px; }"
+            "QPushButton:hover { background: #334155; }"
+        )
+        btn_add_timer.clicked.connect(lambda: self._add_bot_timer_row("", 10))
+        layout.insertWidget(ci(), btn_add_timer)
+
+        # ═══ Bot name ═══
+        name_title = QLabel("🏷️ ชื่อบอท")
+        name_title.setStyleSheet("font-weight: 600; color: #f59e0b; margin-top: 16px;")
+        layout.insertWidget(ci(), name_title)
+
+        name_desc = QLabel("ชื่อบอทในโปรแกรม — TTS จะไม่อ่านข้อความที่ตรงกับชื่อนี้ "
+                           "(แม้จะใช้บัญชีของคุณโพสก็ตาม)")
+        name_desc.setWordWrap(True)
+        name_desc.setStyleSheet("color: #64748b; font-size: 12px;")
+        layout.insertWidget(ci(), name_desc)
+
+        self.bot_name_input = QLineEdit()
+        self.bot_name_input.setPlaceholderText("Baitoei-Bot")
+        self.bot_name_input.setStyleSheet(
+            "QLineEdit { background: #0f172a; color: #e2e8f0; border: 1px solid #334155; "
+            "border-radius: 4px; padding: 6px 10px; }"
+        )
+        # ★ auto-save (textChanged + debounce)
+        from PySide6.QtCore import QTimer
+        _bot_name_timer = QTimer(self)
+        _bot_name_timer.setSingleShot(True)
+        _bot_name_timer.setInterval(500)
+        _bot_name_timer.timeout.connect(self._auto_save)
+        self.bot_name_input.textChanged.connect(lambda _: _bot_name_timer.start())
+        layout.insertWidget(ci(), self.bot_name_input)
+
+        # ═══ Event responses ═══
+        ev_title = QLabel("🎉 Event Responses (ตอบอัตโนมัติ)")
+        ev_title.setStyleSheet("font-weight: 600; color: #f59e0b; margin-top: 16px;")
+        layout.insertWidget(ci(), ev_title)
+
+        self.bot_events_cb = QCheckBox("เปิดใช้งาน Event Responses (Sub/Bits/Raid อัตโนมัติ)")
+        self.bot_events_cb.stateChanged.connect(lambda _: self._auto_save())
+        layout.insertWidget(ci(), self.bot_events_cb)
+
+        ev_desc = QLabel("ใช้ placeholders: {user} = ชื่อคน, {amount} = จำนวน bits, "
+                         "{months} = เดือน sub, {raid_count} = ยอดคนดูที่มา")
+        ev_desc.setWordWrap(True)
+        ev_desc.setStyleSheet("color: #64748b; font-size: 12px;")
+        layout.insertWidget(ci(), ev_desc)
+
+        # ★ Event input rows (label + lineedit)
+        _input_style = (
+            "QLineEdit { background: #0f172a; color: #e2e8f0; border: 1px solid #334155; "
+            "border-radius: 4px; padding: 6px 10px; }"
+        )
+        _label_style = "color: #cbd5e1; font-size: 13px;"
+
+        # ★ auto-save debounce timer (ใช้ร่วมกับทุก event input)
+        from PySide6.QtCore import QTimer
+        _ev_save_timer = QTimer(self)
+        _ev_save_timer.setSingleShot(True)
+        _ev_save_timer.setInterval(500)
+        _ev_save_timer.timeout.connect(self._auto_save)
+
+        self.bot_ev_sub = QLineEdit()
+        self.bot_ev_sub.setPlaceholderText("ขอบคุณ {user} สำหรับการ Sub! 💜")
+        self.bot_ev_sub.setStyleSheet(_input_style)
+        self.bot_ev_sub.textChanged.connect(lambda _: _ev_save_timer.start())
+        ev_sub_lbl = QLabel("Sub / Re-sub:")
+        ev_sub_lbl.setStyleSheet(_label_style)
+        layout.insertWidget(ci(), ev_sub_lbl)
+        layout.insertWidget(ci(), self.bot_ev_sub)
+
+        self.bot_ev_bits = QLineEdit()
+        self.bot_ev_bits.setPlaceholderText("ขอบคุณ {user} สำหรับ {amount} bits! 💎")
+        self.bot_ev_bits.setStyleSheet(_input_style)
+        self.bot_ev_bits.textChanged.connect(lambda _: _ev_save_timer.start())
+        ev_bits_lbl = QLabel("Bits:")
+        ev_bits_lbl.setStyleSheet(_label_style)
+        layout.insertWidget(ci(), ev_bits_lbl)
+        layout.insertWidget(ci(), self.bot_ev_bits)
+
+        self.bot_ev_raid = QLineEdit()
+        self.bot_ev_raid.setPlaceholderText("ขอบคุณ {user} สำหรับการ Raid พา {raid_count} คนมา! 🎉")
+        self.bot_ev_raid.setStyleSheet(_input_style)
+        self.bot_ev_raid.textChanged.connect(lambda _: _ev_save_timer.start())
+        ev_raid_lbl = QLabel("Raid:")
+        ev_raid_lbl.setStyleSheet(_label_style)
+        layout.insertWidget(ci(), ev_raid_lbl)
+        layout.insertWidget(ci(), self.bot_ev_raid)
+
+        self.bot_ev_follow = QLineEdit()
+        self.bot_ev_follow.setPlaceholderText("ขอบคุณ {user} ที่ติดตาม! ❤️")
+        self.bot_ev_follow.setStyleSheet(_input_style)
+        self.bot_ev_follow.textChanged.connect(lambda _: _ev_save_timer.start())
+        ev_follow_lbl = QLabel("Follow:")
+        ev_follow_lbl.setStyleSheet(_label_style)
+        layout.insertWidget(ci(), ev_follow_lbl)
+        layout.insertWidget(ci(), self.bot_ev_follow)
+
+        # ═══ Overlay filter ═══
+        overlay_title = QLabel("🖥️ การแสดงใน Overlay")
+        overlay_title.setStyleSheet("font-weight: 600; color: #f59e0b; margin-top: 16px;")
+        layout.insertWidget(ci(), overlay_title)
+
+        self.overlay_hide_bots_cb = QCheckBox("ซ่อนข้อความบอทจาก Overlay "
+                                              "(Nightbot, StreamElements, บอทของเรา ฯลฯ)")
+        self.overlay_hide_bots_cb.stateChanged.connect(lambda _: self._auto_save())
+        layout.insertWidget(ci(), self.overlay_hide_bots_cb)
+
+        overlay_desc = QLabel("ถ้าเปิด → ข้อความของบอทจะไม่แสดงใน Overlay (แต่ยังแสดงใน Live Chat)")
+        overlay_desc.setWordWrap(True)
+        overlay_desc.setStyleSheet("color: #64748b; font-size: 12px;")
+        layout.insertWidget(ci(), overlay_desc)
+
+    def _add_bot_cmd_row(self, command: str, response: str):
+        """เพิ่ม row คำสั่ง bot"""
+        row = QFrame()
+        row.setStyleSheet("QFrame { background: #1e293b; border-radius: 6px; }")
+        rlayout = QHBoxLayout(row)
+        rlayout.setContentsMargins(8, 6, 8, 6)
+        rlayout.setSpacing(6)
+
+        cmd_input = QLineEdit(command)
+        cmd_input.setPlaceholderText("!command")
+        cmd_input.setFixedWidth(120)
+        cmd_input.setStyleSheet(
+            "QLineEdit { background: #0f172a; color: #e2e8f0; border: 1px solid #334155; "
+            "border-radius: 4px; padding: 4px 8px; }"
+        )
+
+        arrow = QLabel("→")
+        arrow.setStyleSheet("color: #64748b;")
+
+        resp_input = QLineEdit(response)
+        resp_input.setPlaceholderText("ข้อความตอบกลับ")
+        resp_input.setStyleSheet(
+            "QLineEdit { background: #0f172a; color: #e2e8f0; border: 1px solid #334155; "
+            "border-radius: 4px; padding: 4px 8px; }"
+        )
+
+        btn_del = QPushButton("✕")
+        btn_del.setFixedSize(20, 20)
+        btn_del.setCursor(Qt.PointingHandCursor)
+        btn_del.setStyleSheet(
+            "QPushButton { background: transparent; color: #ef4444; border: none; font-size: 16px; font-weight: bold; }"
+            "QPushButton:hover { color: #dc2626; }"
+        )
+
+        rlayout.addWidget(cmd_input)
+        rlayout.addWidget(arrow)
+        rlayout.addWidget(resp_input, 1)
+        rlayout.addWidget(btn_del)
+
+        # ★ auto-save เมื่อแก้ไข (textChanged + debounce 500ms — กัน save รัวๆ)
+        from PySide6.QtCore import QTimer
+        save_timer = QTimer(self)
+        save_timer.setSingleShot(True)
+        save_timer.setInterval(500)
+        save_timer.timeout.connect(self._auto_save)
+        cmd_input.textChanged.connect(lambda _: save_timer.start())
+        resp_input.textChanged.connect(lambda _: save_timer.start())
+
+        # ★ remove button handler
+        def _remove():
+            row.setParent(None)
+            row.deleteLater()
+            if row in self._bot_cmd_rows:
+                self._bot_cmd_rows.remove(row)
+            self._auto_save()
+        btn_del.clicked.connect(_remove)
+
+        self._bot_cmd_layout.addWidget(row)
+        self._bot_cmd_rows.append(row)
+
+    def _add_bot_timer_row(self, text: str, interval_min: int = 10, min_chat_count: int = 0):
+        """เพิ่ม row timer — เลือกโหมดได้: ทุก N นาที หรือ ทุก N ข้อความ"""
+        row = QFrame()
+        row.setStyleSheet("QFrame { background: #1e293b; border-radius: 6px; }")
+        rlayout = QHBoxLayout(row)
+        rlayout.setContentsMargins(8, 6, 8, 6)
+        rlayout.setSpacing(6)
+
+        _input_style = (
+            "QLineEdit { background: #0f172a; color: #e2e8f0; border: 1px solid #334155; "
+            "border-radius: 4px; padding: 4px 8px; }"
+        )
+        _label_style = "color: #64748b;"
+
+        text_input = QLineEdit(text)
+        text_input.setPlaceholderText("ข้อความที่จะส่งซ้ำ")
+        text_input.setStyleSheet(_input_style)
+
+        # ★ mode dropdown: "ทุก N นาที" หรือ "ทุก N ข้อความ"
+        mode_combo = QComboBox()
+        mode_combo.addItem("⏰ ทุกๆ", "interval")
+        mode_combo.addItem("💬 ทุกๆ", "chat_count")
+        if min_chat_count > 0:
+            mode_combo.setCurrentIndex(1)
+        mode_combo.setMinimumWidth(100)
+        mode_combo.setStyleSheet(
+            "QComboBox { background: #0f172a; color: #e2e8f0; border: 1px solid #334155; "
+            "border-radius: 4px; padding: 4px 8px; }"
+        )
+
+        value_input = QLineEdit()
+        value_input.setFixedWidth(50)
+        value_input.setStyleSheet(_input_style)
+        if min_chat_count > 0:
+            value_input.setText(str(min_chat_count))
+        elif interval_min > 0:
+            value_input.setText(str(interval_min))
+
+        unit_lbl = QLabel("นาที")
+        unit_lbl.setStyleSheet(_label_style)
+
+        def _on_mode_change():
+            if mode_combo.currentData() == "interval":
+                unit_lbl.setText("นาที")
+            else:
+                unit_lbl.setText("ข้อความ")
+            save_timer.start()
+        mode_combo.currentIndexChanged.connect(_on_mode_change)
+
+        btn_del = QPushButton("✕")
+        btn_del.setFixedSize(20, 20)
+        btn_del.setCursor(Qt.PointingHandCursor)
+        btn_del.setStyleSheet(
+            "QPushButton { background: transparent; color: #ef4444; border: none; font-size: 16px; font-weight: bold; }"
+            "QPushButton:hover { color: #dc2626; }"
+        )
+
+        rlayout.addWidget(text_input, 1)
+        rlayout.addWidget(mode_combo)
+        rlayout.addWidget(value_input)
+        rlayout.addWidget(unit_lbl)
+        rlayout.addWidget(btn_del)
+
+        # ★ auto-save (debounce 500ms)
+        from PySide6.QtCore import QTimer
+        save_timer = QTimer(self)
+        save_timer.setSingleShot(True)
+        save_timer.setInterval(500)
+        save_timer.timeout.connect(self._auto_save)
+        text_input.textChanged.connect(lambda _: save_timer.start())
+        value_input.textChanged.connect(lambda _: save_timer.start())
+
+        # ★ เก็บ widgets สำหรับ collect
+        row._text_input = text_input
+        row._mode_combo = mode_combo
+        row._value_input = value_input
+
+        def _remove():
+            row.setParent(None)
+            row.deleteLater()
+            if row in self._bot_timer_rows:
+                self._bot_timer_rows.remove(row)
+            self._auto_save()
+        btn_del.clicked.connect(_remove)
+
+        self._bot_timer_layout.addWidget(row)
+        self._bot_timer_rows.append(row)
+
     def _build_about_section(self):
         """ℹ️ เกี่ยวกับ — เนื้อหาจาก v1 AboutDialog (port มา PySide6)"""
         self._add_section("about", "", "")
@@ -1725,14 +2888,14 @@ class SettingsDialog(QDialog):
             _bt = get_build_type()
             ver_text = f"v{_ver} ({'Lite' if _bt == 'lite' else 'Full'})"
         except Exception:
-            ver_text = "v2.0.0"
+            ver_text = "v?"
 
         # ── header: [🎮 title] ...stretch... [version] [เช็คอัพเดท] ──
         header = QHBoxLayout()
         header.setSpacing(8)
         icon_lbl = QLabel("🎮")
         icon_lbl.setStyleSheet("font-size: 26px; font-weight: 700;")
-        title_lbl = QLabel("Broadcast Playroom")
+        title_lbl = QLabel("Broadcast Playroom 2")
         title_lbl.setStyleSheet("font-size: 22px; font-weight: 700; color: #f59e0b;")
         header.addWidget(icon_lbl)
         header.addWidget(title_lbl)
@@ -1754,46 +2917,65 @@ class SettingsDialog(QDialog):
         layout.insertLayout(ci(), header)
 
         # subtitle
-        sub = QLabel("อ่านแชทสดทุกแพลตฟอร์มด้วยเสียง AI")
-        sub.setStyleSheet("font-size: 13px; color: #9ca3af; margin-bottom: 4px;")
+        sub = QLabel("รวบข้อมูลแชท และ อ่านแชทจากเว็บไลฟ์สตรีม ด้วยเสียงสังเคราะห์")
+        sub.setStyleSheet("font-size: 15px; color: #9ca3af; margin-bottom: 4px;")
         layout.insertWidget(ci(), sub)
 
         # ── ข้อความอธิบาย (แบ่งเป็น paragraphs) ──
         paragraphs = [
-            ("โปรแกรมนี้ถูกออกแบบมาให้แสดงข้อมูลแชทการถ่ายทอดสดจากหลายแพลตฟอร์ม "
-             "นำมารวมอยู่ในหน้าเดียวได้ และมีระบบอ่านออกเสียงแชท Text to Speech "
-             "เพื่อให้ผู้สตรีมสามารถทำการสตรีมได้อย่างลื่นไหล โดยไม่จำเป็นต้องมองอีกจอเลย "
-             "แค่ฟังก็สามารถตอบกลับผู้ชมได้ทันที เหมาะกับผู้ที่ไม่ชอบมองจอที่สอง หรือมีเพียงจอเดียว", None),
+            ("โปรแกรมนี้ถูกออกแบบเพื่อให้ใช้แสดงข้อมูลแชทจากเว็บไซต์สตรีมมิ่งทั้ง 5 แพลตฟอร์ม "
+             "(Twitch, MyLive, Youtube, Kick, Tiktok) โดยสามารถบริหารจัดการและเก็บข้อมูลผู้แชทได้ทั้งหมด "
+             "รวมถึงข้อมูลการโดเนทหรือการกดซับในทุกๆรูปแบบ", None),
 
-            ("จุดเด่นหลักของโปรแกรมคือมี Text to Speech ที่ใช้ Neural Voice "
-             "ของ Microsoft Azure ซึ่งเป็นระบบอ่านออกเสียงที่อ่านภาษาไทยชัดและแม่นยำที่สุดในตอนนี้ "
-             "เราได้นำมาใช้พัฒนาโปรแกรมนี้ รวมถึงใช้ระบบ RVC ในการแปลงเสียงให้น่าฟังยิ่งขึ้น", None),
+            ("นอกจากนั้นโปรแกรมนี้ยังสามารถให้ระบบ TTS-Text to Speech ช่วยอ่านข้อความแชทให้อัตโนมัติ "
+             "โดยไม่ต้องเหลือบมามองโปรแกรมเลย เหมาะสำหรับผู้ที่ชอบโฟกัสกับจอเกมขณะถ่ายทอดสด "
+             "และเหมาะกับผู้ที่มีจอคอมเพียงจอเดียว", None),
 
-            ("ระบบเสียง RVC ที่ถูกนำมาใช้นั้น เป็นการนำเสียงที่ Neural Voice มาแปลงเสียงซ้ำอีกครั้ง "
-             "โดยพื้นฐานเสียงที่ใช้แปลงเป็น RVC นั้นเป็นเสียงที่ใช้ AI Learning เสียงจากตัวละครยอดนิยมต่างๆมาอีกที", None),
+            ("ตั้งแต่เวอร์ชั่น 2.0 เป็นต้นไป โปรแกรมถูกออกแบบมาให้เลือกใช้ TTS ได้ 2 โมเดล "
+             "คือ Azure และ Omnivoice โดยทั้งสองแบบจะมีจุดเด่นที่ต่างกันไปคือ", None),
+
+            ("Azure จะสามารถอ่านข้อความได้ชัดและแม่นยำกว่า Omnivoice มาก "
+             "แต่จำเป็นจะต้องใช้อินเตอร์เน็ตในการส่งข้อมูลไปอ่าน (ONLINE MODE) "
+             "บางครั้งถ้าเซิฟเวอร์ปลายทางไม่ดี อาจจะพบปัญหาเสียงอ่านมาช้า", None),
+
+            ("Omnivoice เป็นอีกโมเดล TTS อีกตัวนึง ซึ่งมีความสามารถในการอ่านเสียงภาษาไทยที่ดีมากอีกตัว "
+             "ข้อดีคือประมวลทุกอย่างในคอมได้เลย (OFFLINE MODE) "
+             "แต่จะมีจุดอ่อนตรงที่ไม่สามารถอ่านคำที่ถูกโพสมาสั้นๆได้ เช่น \"อ่อ , ครับ , เค\" เป็นต้น", None),
+
+            ("ฉะนั้นผู้ใช้งานจะต้องเลือกใช้ตามความเหมาะสม หากชอบแบบไหนก็ลองเลือกใช้กันดูครับ", None),
+
+            ("หลังจากตั้งเสียงเสร็จแล้วยังมีการ Filter เสียง ด้วยระบบ RVC "
+             "เพื่อให้โทนเสียงต่างออกไปอีก สามารถเลือกโหลดโมเดลเสียงต่างๆได้ที่ปุ่มดาวโหลดโมเดล "
+             "ใกล้ๆจุดเปลี่ยนโมเดล RVC ครับ", None),
+
+            ("นอกเหนือจาก TTS แล้วยังมีระบบจัดการอีกมากมาย "
+             "แนะนำให้ลองเล่นโปรแกรมเพื่อทำความเข้าใจดูครับ "
+             "หรือถ้าไม่รู้สามารถอ่านได้ที่เว็บไซต์ของผมได้ครับ", None),
 
             ("⚠️ สิ่งที่ควรทราบไว้ก่อนใช้โปรแกรมนี้", "#f59e0b"),
 
-            ("การใช้ RVC นั้นจำเป็นจะต้องใช้การ์ดจอที่รองรับ CUDA ซึ่งมีแค่บนการ์ดจอซีรี่ย์ RTX ทุกรุ่น "
-             "และ GTX มีเพียงบางรุ่น ขนาดของโปรแกรมที่รองรับ RVC นั้นจะมีขนาดใหญ่มาก 4GB+ เป็นอย่างต่ำ "
-             "และยังไม่รวมเสียง RVC ที่โหลดมาใช้เพิ่มเติม สาเหตุที่โปรแกรมใหญ่นั้น "
-             "เกิดจากไฟล์ของ CUDA ล้วนๆ ไม่ใช่ตัวหลักของโปรแกรมนี้เลย "
-             "และเราไม่สามารถลดขนาดไฟล์ให้ต่ำกว่านี้ได้แล้ว", None),
+            ("การใช้ Omnivoice และ RVC นั้นจำเป็นจะต้องใช้การ์ดจอที่รองรับ CUDA "
+             "ซึ่งมีแค่บนการ์ดจอซีรี่ย์ RTX ทุกรุ่น "
+             "ขนาดของโปรแกรมที่รองรับ RVC นั้นจะมีขนาดใหญ่มาก "
+             "และยังไม่รวมโมเดลเสียง RVC ที่โหลดมาใช้เพิ่มเติม "
+             "สาเหตุที่โปรแกรมใหญ่นั้น เกิดจากไฟล์ของ CUDA ล้วนๆ "
+             "ไม่ใช่ตัวหลักของโปรแกรมนี้เลย "
+             "และเราไม่สามารถลดขนาดไฟล์ให้ต่ำกว่านี้ได้แล้ว "
+             "เป็นขีดจำกัดของระบบ TTS ล้วนๆ", None),
 
-            ("ผู้ที่ไม่ได้ใช้การ์ดจอ RTX/GTX จะไม่แนะนำให้ใช้ RVC เพราะว่าจะทำการประมวลเสียง TTS นานมากๆ "
-             "แต่หากก็ยังใช้เสียง Neural Voice ของ Microsoft Azure ก็จะยังใช้งานได้ตามเดิม "
-             "ผู้ใดที่ไม่ได้ใช้การ์ดจอของ RTX/GTX เราแนะนำให้โหลดเวอร์ชั่น Lite มาใช้จะดีกว่า "
-             "ขนาดจะเล็กกว่ามากๆ (300MB) โดยระบบภายในเหมือนกันหมด "
-             "มีเพียงแค่ไม่รองรับ RVC เท่านั้นเอง", None),
+            ("หากผู้ใดคิดว่าโปรแกรมเวอร์ชั่น FULL ที่ใช้พื้นที่เยอะเกินไป "
+             "สามารถเลือกใช้เวอร์ชั่น LITE ได้เช่นกัน "
+             "เพียงแต่จะไม่มี Omnivoice และ RVC "
+             "แต่ยังมี Azure ให้ใช้ตามเดิมครับ", None),
         ]
         for text, color in paragraphs:
             lbl = QLabel(text)
             lbl.setWordWrap(True)
             lbl.setAlignment(Qt.AlignLeft)
             if color:
-                lbl.setStyleSheet(f"font-size: 13px; font-weight: 700; color: {color}; margin-top: 8px;")
+                lbl.setStyleSheet(f"font-size: 15px; font-weight: 700; color: {color}; margin-top: 8px;")
             else:
-                lbl.setStyleSheet("font-size: 13px; color: #e5e7eb;")
+                lbl.setStyleSheet("font-size: 15px; color: #e5e7eb;")
             layout.insertWidget(ci(), lbl)
 
         # ── credit ──
@@ -1815,16 +2997,131 @@ class SettingsDialog(QDialog):
         btn_web.clicked.connect(lambda: self._open_url("https://www.men9ch.com"))
         layout.insertWidget(ci(), btn_web)
 
-        # ── บริจาค ──
-        donate_hdr = QLabel("💚 บริจาคช่วยเหลือ สนับสนุน")
-        donate_hdr.setStyleSheet("font-size: 14px; font-weight: 700; color: #f59e0b; margin-top: 8px;")
-        layout.insertWidget(ci(), donate_hdr)
-        donate_desc = QLabel("ขอบคุณสำหรับผู้สนับสนุนมากๆครับ")
-        donate_desc.setStyleSheet("font-size: 13px; color: #9ca3af;")
-        layout.insertWidget(ci(), donate_desc)
+    def _build_announce_section(self):
+        """📢 ประกาศถึงผู้ใช้ — หน้าสำหรับเจ้าของโปรแกรมเท่านั้น
 
-        donate_row = QHBoxLayout()
-        donate_row.setSpacing(8)
+        พิมพ์ข้อความ → push ขึ้น GitHub (announce.json) → แถบประกาศโผล่ในโปรแกรมทุกเครื่อง
+        จนกว่าจะกดลบ (สำหรับ user ทั่วไปหน้านี้ไม่มีผลอะไร — แค่ดูประกาศในแถบ)
+        """
+        from PySide6.QtWidgets import QTextEdit, QComboBox
+        w = self._add_section(
+            "announce", "📢 ประกาศถึงผู้ใช้",
+            "ส่งข้อความถึงทุกคนที่ใช้โปรแกรม — ข้อความจะขึ้นเป็นแถบเหนือ footer ของทุกเครื่อง "
+            "จนกว่าจะลบ (เหมาะกับประกาศให้รีบอัพเดท หรือข่าวสาร)"
+        )
+
+        # ── Token ──
+        self.ann_token = QLineEdit()
+        self.ann_token.setEchoMode(QLineEdit.Password)
+        self.ann_token.setPlaceholderText("github_pat_... (ใส่ครั้งเดียว — เจ้าของเท่านั้น)")
+        self._add_row("GitHub Token", self.ann_token)
+        hint = QLabel(
+            "สร้างครั้งเดียว: GitHub → Settings → Developer settings → Fine-grained tokens → "
+            "เลือกเฉพาะ repo broadcast-playroom-ex + Permission: Contents = Read and write"
+        )
+        hint.setStyleSheet("color: #6b7280; font-size: 11px;")
+        hint.setWordWrap(True)
+        self._current_section_layout.insertWidget(self._current_section_layout.count() - 1, hint)
+
+        # ── ข้อความ ──
+        self.ann_text = QTextEdit()
+        self.ann_text.setPlaceholderText("พิมพ์ข้อความประกาศ เช่น: มีเวอร์ชั่นใหม่ 2.6.3 แก้บัคสำคัญ — รีบอัพเดทนะครับ")
+        self.ann_text.setFixedHeight(90)
+        self._add_row("ข้อความ", self.ann_text)
+
+        # ── type + URL ──
+        self.ann_type = QComboBox()
+        self.ann_type.addItem("📢 อัพเดท (ส้ม)", "update")
+        self.ann_type.addItem("ℹ️ ข้อมูล (ฟ้า)", "info")
+        self.ann_type.addItem("⚠️ เตือน (แดง)", "warning")
+        self._add_row("ระดับ", self.ann_type)
+
+        self.ann_url = QLineEdit()
+        self.ann_url.setPlaceholderText("https://... (ไม่บังคับ — ถ้าใส่จะมีปุ่ม 'เปิดลิงก์' ในแถบ)")
+        self._add_row("ลิงก์ (ไม่บังคับ)", self.ann_url)
+
+        # ── ปุ่มเผยแพร่/ลบ + สถานะ ──
+        btn_row = QHBoxLayout()
+        self.ann_publish_btn = QPushButton("🚀 เผยแพร่ประกาศ")
+        self.ann_publish_btn.setStyleSheet(
+            "background:#10b981;color:#fff;border:none;border-radius:6px;padding:9px 18px;font-weight:700;"
+        )
+        self.ann_publish_btn.setCursor(Qt.PointingHandCursor)
+        self.ann_delete_btn = QPushButton("🗑 ลบประกาศปัจจุบัน")
+        self.ann_delete_btn.setStyleSheet(
+            "background:rgba(239,68,68,0.15);color:#f87171;border:1px solid rgba(239,68,68,0.4);"
+            "border-radius:6px;padding:9px 18px;font-weight:600;"
+        )
+        self.ann_delete_btn.setCursor(Qt.PointingHandCursor)
+        btn_row.addWidget(self.ann_publish_btn)
+        btn_row.addWidget(self.ann_delete_btn)
+        btn_row.addStretch()
+        self._current_section_layout.insertLayout(self._current_section_layout.count() - 1, btn_row)
+
+        self.ann_status = QLabel("")
+        self.ann_status.setWordWrap(True)
+        self.ann_status.setStyleSheet("color: #9ca3af; font-size: 12px;")
+        self._current_section_layout.insertWidget(self._current_section_layout.count() - 1, self.ann_status)
+
+        # ── actions (ทำงานใน QThread กัน UI ค้าง) ──
+        self._ann_thread = None
+
+        def _run_announce_job(job):
+            from PySide6.QtCore import QThread, Signal as QSignal
+            token = self.ann_token.text().strip()
+            text = self.ann_text.toPlainText().strip()
+            url = self.ann_url.text().strip()
+            ann_type = self.ann_type.currentData()
+
+            if job == "publish" and not text:
+                self.ann_status.setText("❌ กรุณาพิมพ์ข้อความประกาศก่อน")
+                self.ann_status.setStyleSheet("color:#ef4444;font-size:12px;")
+                return
+
+            class _AnnJob(QThread):
+                done = QSignal(bool, str)
+                def run(self):
+                    from announcement import publish_announcement, delete_announcement
+                    if job == "publish":
+                        ok, msg = publish_announcement(token, text, ann_type, url)
+                    else:
+                        ok, msg = delete_announcement(token)
+                    self.done.emit(ok, msg)
+
+            self.ann_publish_btn.setEnabled(False)
+            self.ann_delete_btn.setEnabled(False)
+            self.ann_status.setText("⏳ กำลังส่ง...")
+            self.ann_status.setStyleSheet("color:#f59e0b;font-size:12px;")
+
+            def _on_done(ok, msg):
+                self.ann_publish_btn.setEnabled(True)
+                self.ann_delete_btn.setEnabled(True)
+                self.ann_status.setText(msg)
+                self.ann_status.setStyleSheet(f"color:{'#10b981' if ok else '#ef4444'};font-size:12px;")
+
+            self._ann_thread = _AnnJob()
+            self._ann_thread.done.connect(_on_done)
+            self._ann_thread.start()
+
+        self.ann_publish_btn.clicked.connect(lambda: _run_announce_job("publish"))
+        self.ann_delete_btn.clicked.connect(lambda: _run_announce_job("delete"))
+
+    def _build_supporters_section(self):
+        """💚 สนับสนุน — บริจาค + รายชื่อผู้สนับสนุน"""
+        # ★ สร้าง section แบบไม่มี header default (จะสร้าง header เอง)
+        self._add_section("supporters", "", "")
+        layout = self._current_section_layout
+        ci = lambda: layout.count() - 1
+
+        # ── Header row: [title] ...stretch... [PromptPay] [TrueMoney] [ส่งหลักฐาน] ──
+        header_row = QHBoxLayout()
+        header_row.setSpacing(8)
+        title_lbl = QLabel("💚 สนับสนุน")
+        title_lbl.setStyleSheet("font-size: 20px; font-weight: 700; color: #f59e0b;")
+        header_row.addWidget(title_lbl)
+        header_row.addStretch()
+
+        # ★ ปุ่มบริจาค + ส่งหลักฐาน อยู่ขวาบนบรรทัดเดียวกับหัวข้อ
         btn_pp = QPushButton("💳 PromptPay")
         btn_pp.setMinimumHeight(32)
         btn_pp.setStyleSheet(
@@ -1833,6 +3130,8 @@ class SettingsDialog(QDialog):
             "QPushButton:hover { background-color: #059669; }"
         )
         btn_pp.clicked.connect(lambda: self._show_qr("promptpay_qr.png", "PromptPay"))
+        header_row.addWidget(btn_pp)
+
         btn_tm = QPushButton("💳 True Money")
         btn_tm.setMinimumHeight(32)
         btn_tm.setStyleSheet(
@@ -1841,23 +3140,402 @@ class SettingsDialog(QDialog):
             "QPushButton:hover { background-color: #0891b2; }"
         )
         btn_tm.clicked.connect(lambda: self._show_qr("truemoney_qr.png", "True Money"))
-        donate_row.addWidget(btn_pp)
-        donate_row.addWidget(btn_tm)
-        donate_row.addStretch()
-        layout.insertLayout(ci(), donate_row)
+        header_row.addWidget(btn_tm)
+
+        btn_upload = QPushButton("📤 แนบหลักฐานสนับสนุน")
+        btn_upload.setMinimumHeight(32)
+        btn_upload.setStyleSheet(
+            "QPushButton { background-color: #7c3aed; color: white; font-weight: 600; "
+            "border: none; border-radius: 6px; padding: 6px 16px; }"
+            "QPushButton:hover { background-color: #6d28d9; }"
+        )
+        btn_upload.clicked.connect(self._open_supporter_upload)
+        header_row.addWidget(btn_upload)
+        layout.insertLayout(ci(), header_row)
+
+        # ── รายชื่อผู้สนับสนุน (ดึงจาก API) ──
+        # ★ header row: title + reload button
+        supporters_header_row = QHBoxLayout()
+        supporters_header_row.setSpacing(8)
+        supporters_hdr = QLabel("⭐ รายชื่อผู้สนับสนุน")
+        supporters_hdr.setStyleSheet("font-size: 15px; font-weight: 700; color: #f59e0b;")
+        supporters_header_row.addWidget(supporters_hdr)
+        supporters_header_row.addStretch()
+        # ★ ปุ่มรีโหลด
+        self._supporters_reload_btn = QPushButton("🔄 รีโหลด")
+        self._supporters_reload_btn.setCursor(Qt.PointingHandCursor)
+        self._supporters_reload_btn.setStyleSheet(
+            "QPushButton { color: #06b6d4; font-size: 12px; font-weight: 600; "
+            "border: none; background: transparent; padding: 4px 8px; }"
+            "QPushButton:hover { color: #0891b2; text-decoration: underline; }"
+            "QPushButton:disabled { color: #4b5563; }"
+        )
+        self._supporters_reload_btn.clicked.connect(self._on_supporters_reload)
+        supporters_header_row.addWidget(self._supporters_reload_btn)
+        layout.insertLayout(ci(), supporters_header_row)
+
+        # ★ status label ("⏳ กำลังโหลด..." / "✅ N ผู้สนับสนุน" / "❌ error")
+        self._supporters_status_label = QLabel("⏳ กำลังรอโหลดข้อมูล...")
+        self._supporters_status_label.setStyleSheet("font-size: 13px; color: #9ca3af; margin-bottom: 4px;")
+        layout.insertWidget(ci(), self._supporters_status_label)
+
+        # ★ scrollable container สำหรับ list ผู้สนับสนุน
+        from PySide6.QtWidgets import QScrollArea
+        self._supporters_container = QWidget()
+        self._supporters_container_layout = QVBoxLayout(self._supporters_container)
+        self._supporters_container_layout.setContentsMargins(0, 0, 0, 0)
+        self._supporters_container_layout.setSpacing(0)
+        self._supporters_container_layout.addStretch()
+
+        supporters_scroll = QScrollArea()
+        supporters_scroll.setWidgetResizable(True)
+        supporters_scroll.setWidget(self._supporters_container)
+        supporters_scroll.setFrameShape(QScrollArea.NoFrame)
+        supporters_scroll.setMinimumHeight(200)
+        supporters_scroll.setStyleSheet(
+            "QScrollArea { background: transparent; }"
+            "QScrollBar:vertical { background: #1f2937; width: 8px; border-radius: 4px; }"
+            "QScrollBar::handle:vertical { background: #4b5563; border-radius: 4px; min-height: 30px; }"
+            "QScrollBar::handle:vertical:hover { background: #6b7280; }"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
+        )
+        layout.insertWidget(ci(), supporters_scroll)
+
+        # ★ cache + state
+        self._supporters_cache = None     # {"ok": ..., "supporters": [...]} ล่าสุด
+        self._supporters_loading = False  # flag กัน double-load
+        self._supporters_current_page = 0  # pagination (0-indexed)
+        self._supporters_per_page = 15     # แสดง 15 รายชื่อต่อหน้า
+
+        # ★ เชื่อมกับ app.py (parent_app = MainWindow ที่ส่งเข้ามาใน __init__):
+        #   - รับ cache ล่าสุดจาก parent_app._supporters_cache
+        #   - ตั้ง reload callback → parent_app._load_supporters()
+        parent_app = getattr(self, 'parent_app', None)
+        if parent_app is not None:
+            # ★ ส่ง callback ให้ปุ่มรีโหลดเรียก app.py
+            if hasattr(parent_app, '_load_supporters'):
+                self._supporters_reload_callback = parent_app._load_supporters
+            # ★ แสดง cache ถ้ามี (ดึงตอน startup แล้ว)
+            parent_cache = getattr(parent_app, '_supporters_cache', None)
+            if parent_cache is not None:
+                self._populate_supporters_list(parent_cache)
+            else:
+                # ★ ยังไม่มี cache → trigger fetch ถ้ายังไม่ได้ fetch
+                self._supporters_status_label.setText("⏳ กำลังโหลดข้อมูลผู้สนับสนุน...")
+                self._supporters_status_label.setStyleSheet("font-size: 13px; color: #06b6d4; margin-bottom: 4px;")
+                # ★ trigger fetch ด้วย QThread + Signal (ไม่บล็อก UI + thread-safe)
+                self._start_fetch_thread()
+
+    def _on_supporters_reload(self):
+        """★ ปุ่มรีโหลด → บอก app.py ให้ดึงใหม่ (emit signal)"""
+        # ★ ถ้ามี callback ที่ app.py ตั้งไว้ → เรียก
+        if hasattr(self, '_supporters_reload_callback') and self._supporters_reload_callback:
+            self._supporters_status_label.setText("⏳ กำลังโหลด...")
+            self._supporters_status_label.setStyleSheet("font-size: 13px; color: #06b6d4; margin-bottom: 4px;")
+            self._supporters_reload_btn.setEnabled(False)
+            self._supporters_reload_callback()
+        else:
+            # fallback: ดึงด้วย QThread เอง (ถ้าไม่ได้เชื่อมกับ app.py)
+            if self._supporters_loading:
+                return
+            self._supporters_loading = True
+            self._supporters_reload_btn.setEnabled(False)
+            self._supporters_status_label.setText("⏳ กำลังโหลด...")
+            self._supporters_status_label.setStyleSheet("font-size: 13px; color: #06b6d4; margin-bottom: 4px;")
+            self._start_fetch_thread()
+
+    def _start_fetch_thread(self):
+        """★ ดึง supporters ด้วย QThread + Signal (thread-safe)"""
+        from PySide6.QtCore import QThread, Signal
+
+        class _Fetch(QThread):
+            done = Signal(dict)
+            def run(self):
+                try:
+                    from supporters_api import fetch_supporters
+                    result = fetch_supporters()
+                except Exception as e:
+                    result = {"ok": False, "error": str(e)}
+                self.done.emit(result)
+
+        self._supporters_qthread = _Fetch()
+        self._supporters_qthread.done.connect(self._on_supporters_fetched)
+        self._supporters_qthread.start()
+
+    def _on_supporters_fetched(self, result: dict):
+        """★ slot ที่ทำงานใน main thread หลัง fetch เสร็จ"""
+        self._supporters_loading = False
+        self._supporters_reload_btn.setEnabled(True)
+        self._populate_supporters_list(result)
+
+    def _populate_supporters_list(self, result: dict):
+        """★ cache ผลลัพธ์ + render หน้าปัจจุบัน (reset to page 0)
+
+        result: {"ok": True, "supporters": [...]} หรือ {"ok": False, "error": "..."}
+        """
+        # ★ cache ล่าสุดเสมอ
+        self._supporters_cache = result
+        self._supporters_current_page = 0  # reset to first page
+        self._render_supporters_page()
+
+    def _render_supporters_page(self):
+        """★ render หน้าปัจจุบันของตาราง (ใช้ cache ที่มี)"""
+        from PySide6.QtWidgets import QFrame
+        result = self._supporters_cache
+        if result is None:
+            return
+
+        # ★ เคลียร์ container เดิม (เก็บ stretch ไว้)
+        cl = self._supporters_container_layout
+        while cl.count() > 1:  # เก็บ stretch (index สุดท้าย)
+            item = cl.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        # ★ error case
+        if not result.get("ok"):
+            err = result.get("error", "ไม่ทราบสาเหตุ")
+            self._supporters_status_label.setText(f"❌ ไม่สามารถดึงข้อมูลได้: {err}")
+            self._supporters_status_label.setStyleSheet("font-size: 13px; color: #ef4444; margin-bottom: 4px;")
+            # ★ placeholder row
+            placeholder = QLabel("ยังไม่มีข้อมูลผู้สนับสนุน\nกด 🔄 รีโหลด เพื่อลองใหม่")
+            placeholder.setAlignment(Qt.AlignCenter)
+            placeholder.setStyleSheet("font-size: 13px; color: #6b7280; padding: 32px;")
+            cl.insertWidget(cl.count() - 1, placeholder)
+            return
+
+        supporters = result.get("supporters", [])
+        count = len(supporters)
+
+        # ★ empty case
+        if count == 0:
+            self._supporters_status_label.setText("📋 ยังไม่มีผู้สนับสนุน — คุณสามารถเป็นคนแรกได้!")
+            self._supporters_status_label.setStyleSheet("font-size: 13px; color: #9ca3af; margin-bottom: 4px;")
+            placeholder = QLabel("💚\nยังไม่มีผู้สนับสนุนในตอนนี้")
+            placeholder.setAlignment(Qt.AlignCenter)
+            placeholder.setStyleSheet("font-size: 14px; color: #6b7280; padding: 32px;")
+            cl.insertWidget(cl.count() - 1, placeholder)
+            return
+
+        # ★ success case — ตารางรายชื่อผู้สนับสนุน
+        from supporters_api import get_tier, format_amount
+        self._supporters_status_label.setText(f"✅ {count} ผู้สนับสนุน")
+        self._supporters_status_label.setStyleSheet("font-size: 13px; color: #10b981; margin-bottom: 4px;")
+
+        # ★ โหลดโลโก้แพลตฟอร์มจริงจาก assets/ (cache ใน memory)
+        import os
+        from PySide6.QtGui import QPixmap
+        assets_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "assets")
+        PLATFORM_LOGOS = {
+            'twitch':  os.path.join(assets_dir, "twitch.png"),
+            'youtube': os.path.join(assets_dir, "youtube.png"),
+            'kick':    os.path.join(assets_dir, "kick.png"),
+            'tiktok':  os.path.join(assets_dir, "tiktok.png"),
+            'mylive':  os.path.join(assets_dir, "mylive.png"),
+        }
+
+        # ★ table header — ใช้ stretch factor 4:2:3 (name:amount:message)
+        #   amount ใช้ ratio 2 + fixed min width 80px → ไม่ชิดขวาเกิน + รองรับยอดยาว
+        COL_NAME_STRETCH = 4
+        COL_AMOUNT_STRETCH = 2
+        COL_MSG_STRETCH = 3
+
+        header = QFrame()
+        header.setStyleSheet("QFrame { background: #111827; border: none; border-bottom: 1px solid #334155; }")
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(12, 6, 12, 6)
+        header_layout.setSpacing(12)
+        h_name = QLabel("👤 ชื่อ")
+        h_name.setStyleSheet("font-size: 11px; font-weight: 700; color: #6b7280; background: transparent; border: none;")
+        header_layout.addWidget(h_name, COL_NAME_STRETCH)
+        h_amount = QLabel("💰 จำนวน")
+        h_amount.setStyleSheet("font-size: 11px; font-weight: 700; color: #6b7280; background: transparent; border: none;")
+        h_amount.setMinimumWidth(80)
+        header_layout.addWidget(h_amount, COL_AMOUNT_STRETCH)
+        h_msg = QLabel("💬 ข้อความ")
+        h_msg.setStyleSheet("font-size: 11px; font-weight: 700; color: #6b7280; background: transparent; border: none;")
+        header_layout.addWidget(h_msg, COL_MSG_STRETCH)
+        cl.insertWidget(cl.count() - 1, header)
+
+        # ★ pagination — slice เฉพาะหน้าปัจจุบัน
+        per_page = self._supporters_per_page
+        page = self._supporters_current_page
+        start = page * per_page
+        end = start + per_page
+        page_supporters = supporters[start:end]
+
+        for idx, sup in enumerate(page_supporters):
+            if not isinstance(sup, dict):
+                continue
+            name = str(sup.get("name", "ผู้สนับสนุน")).strip() or "ผู้สนับสนุน"
+            amount = sup.get("amount", 0)
+            currency = str(sup.get("currency", "THB")).upper()
+            date = str(sup.get("date", "")).strip()
+            message = str(sup.get("message", "")).strip()
+            platform = str(sup.get("platform", "")).strip()
+            channel_url = str(sup.get("channel_url", "")).strip()
+
+            tier = get_tier(amount, currency)
+            amount_str = format_amount(amount, currency)
+
+            # ★ zebra stripes (สลับสีพื้นหลัง)
+            # ★ zebra stripes — ใช้ absolute index (start + idx) เพื่อความต่อเนื่องข้ามหน้า
+            abs_idx = start + idx
+            bg_color = "#1a1f2e" if abs_idx % 2 == 0 else "#1f2937"
+
+            # ★ table row — ใช้ stretch factor เดียวกับ header (ตำแหน่งตรงกันทุก row)
+            row = QFrame()
+            row.setStyleSheet(
+                f"QFrame {{ background: {bg_color}; border: none; }}"
+                f"QFrame:hover {{ background: #2a3447; }}"
+            )
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(12, 8, 12, 8)
+            row_layout.setSpacing(12)
+
+            # ═══ NAME COLUMN (stretch 3) — container รวม tier + name + platform logo ═══
+            name_container = QWidget()
+            name_container.setStyleSheet("background: transparent;")
+            name_col = QHBoxLayout(name_container)
+            name_col.setContentsMargins(0, 0, 0, 0)
+            name_col.setSpacing(6)
+
+            tier_lbl = QLabel(tier["icon"])
+            tier_lbl.setStyleSheet("font-size: 16px; background: transparent; border: none;")
+            tier_lbl.setFixedSize(20, 20)
+            tier_lbl.setToolTip(f"{tier['name']} tier")
+            name_col.addWidget(tier_lbl)
+
+            name_lbl = QLabel(name)
+            name_lbl.setStyleSheet("font-size: 13px; font-weight: 600; color: #f3f4f6; background: transparent; border: none;")
+            name_col.addWidget(name_lbl)
+
+            # platform logo (clickable → เปิด channel URL) — ใช้ QPushButton เพื่อความน่าเชื่อถือ
+            if platform and channel_url and platform in PLATFORM_LOGOS:
+                logo_path = PLATFORM_LOGOS[platform]
+                if os.path.exists(logo_path):
+                    from PySide6.QtGui import QIcon
+                    plat_btn = QPushButton()
+                    pix = QPixmap(logo_path)
+                    if not pix.isNull():
+                        plat_btn.setIcon(QIcon(pix.scaled(18, 18, Qt.KeepAspectRatio, Qt.SmoothTransformation)))
+                        plat_btn.setIconSize(pix.size().scaled(18, 18, Qt.KeepAspectRatio))
+                    plat_btn.setFixedSize(22, 22)
+                    plat_btn.setCursor(Qt.PointingHandCursor)
+                    plat_btn.setToolTip(f"เปิดช่อง {platform}: {channel_url}")
+                    plat_btn.setStyleSheet(
+                        "QPushButton { background: transparent; border: none; padding: 0; margin: 0; }"
+                        "QPushButton:hover { background: rgba(124, 58, 237, 0.2); border-radius: 4px; }"
+                    )
+                    _url = channel_url
+                    plat_btn.clicked.connect(lambda checked=False, u=_url: self._open_url(u))
+                    name_col.addWidget(plat_btn)
+
+            name_col.addStretch()
+            row_layout.addWidget(name_container, COL_NAME_STRETCH)
+
+            # ═══ AMOUNT COLUMN (stretch 2) — ชิดซ้ายติด name (ไม่ขวาเกิน) ═══
+            amount_lbl = QLabel(amount_str)
+            amount_lbl.setStyleSheet("font-size: 13px; font-weight: 700; color: #f59e0b; background: transparent; border: none;")
+            amount_lbl.setMinimumWidth(80)
+            amount_lbl.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            row_layout.addWidget(amount_lbl, COL_AMOUNT_STRETCH)
+
+            # ═══ MESSAGE COLUMN (stretch 2) ═══
+            if message:
+                msg_lbl = QLabel(f'"{message}"')
+                msg_lbl.setStyleSheet("font-size: 12px; color: #9ca3af; font-style: italic; background: transparent; border: none;")
+                msg_lbl.setWordWrap(True)
+                msg_lbl.setAlignment(Qt.AlignVCenter)
+                row_layout.addWidget(msg_lbl, COL_MSG_STRETCH)
+            else:
+                spacer = QLabel("—")
+                spacer.setStyleSheet("font-size: 12px; color: #4b5563; background: transparent; border: none;")
+                row_layout.addWidget(spacer, COL_MSG_STRETCH)
+
+            cl.insertWidget(cl.count() - 1, row)
+
+        # ★ pagination controls (ถ้ามีมากกว่า 1 หน้า)
+        total_pages = (count + per_page - 1) // per_page  # ceil division
+        if total_pages > 1:
+            pager = QWidget()
+            pager.setStyleSheet("background: transparent;")
+            pager_layout = QHBoxLayout(pager)
+            pager_layout.setContentsMargins(12, 8, 12, 8)
+            pager_layout.setSpacing(6)
+
+            # ★ prev button
+            btn_prev = QPushButton("‹ ก่อนหน้า")
+            btn_prev.setEnabled(page > 0)
+            btn_prev.setCursor(Qt.PointingHandCursor)
+            btn_prev.setStyleSheet(
+                "QPushButton { background: #334155; color: #e2e8f0; border: none; "
+                "border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; }"
+                "QPushButton:hover { background: #475569; }"
+                "QPushButton:disabled { background: #1f2937; color: #4b5563; }"
+            )
+            _p = page
+            btn_prev.clicked.connect(lambda checked=False, p=page: self._supporters_goto_page(p - 1))
+            pager_layout.addWidget(btn_prev)
+
+            # ★ page info
+            page_lbl = QLabel(f"หน้า {page + 1} / {total_pages}")
+            page_lbl.setStyleSheet("color: #9ca3af; font-size: 12px; padding: 0 12px;")
+            page_lbl.setAlignment(Qt.AlignCenter)
+            pager_layout.addWidget(page_lbl)
+
+            # ★ next button
+            btn_next = QPushButton("ถัดไป ›")
+            btn_next.setEnabled(page < total_pages - 1)
+            btn_next.setCursor(Qt.PointingHandCursor)
+            btn_next.setStyleSheet(
+                "QPushButton { background: #334155; color: #e2e8f0; border: none; "
+                "border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; }"
+                "QPushButton:hover { background: #475569; }"
+                "QPushButton:disabled { background: #1f2937; color: #4b5563; }"
+            )
+            btn_next.clicked.connect(lambda checked=False, p=page: self._supporters_goto_page(p + 1))
+            pager_layout.addWidget(btn_next)
+
+            pager_layout.addStretch()
+            cl.insertWidget(cl.count() - 1, pager)
+
+    def _supporters_goto_page(self, page_num):
+        """★ เปลี่ยนหน้า — ไม่ต้อง fetch ใหม่ (ใช้ cache)"""
+        if page_num < 0:
+            return
+        self._supporters_current_page = page_num
+        self._render_supporters_page()
 
     def _open_url(self, url):
         """เปิด URL ในเบราว์เซอร์"""
         import webbrowser
         try:
             webbrowser.open(url)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Cannot open URL {url}: {e}")
+
+    def _open_supporter_upload(self):
+        """★ เปิด dialog ส่งหลักฐานการสนับสนุน"""
+        from ui.dialogs.supporter_upload import SupporterUploadDialog
+        api_url = getattr(self.settings, 'supporters_api_url', 'https://men9ch.com/api') if self.settings else "https://men9ch.com/api"
+        dlg = SupporterUploadDialog(self, api_url=api_url)
+        dlg.exec()
+
+    def _open_supporter_admin(self):
+        """★ เปิดหน้า admin ในเบราว์เซอร์ — สำหรับ streamer เข้าไป approve/reject/ban"""
+        api_url = getattr(self.settings, 'supporters_api_url', 'https://men9ch.com/api') if self.settings else "https://men9ch.com/api"
+        # ★ เปิดหน้า admin.php ในเบราว์เซอร์ (admin จะใส่ token เองบนหน้าเว็บ)
+        from supporters_api import open_admin_url
+        # ★ ใช้ secret จาก settings (ถ้ามี) หรือเปิดหน้า login ให้ใส่เอง
+        admin_secret = getattr(self.settings, 'supporters_admin_secret', '') if self.settings else ""
+        open_admin_url(admin_secret, api_url)
 
     def _show_qr(self, filename, title):
-        """แสดง QR popup (ถ้ามีไฟล์ภาพใน assets/)"""
+        """แสดง QR popup — ขนาดคำนวณจากเนื้อหาจริง (กัน QR ถูกบีบ)"""
         import os
-        from PySide6.QtWidgets import QDialog, QVBoxLayout
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QSizePolicy
         from PySide6.QtGui import QPixmap
         base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         qr_path = os.path.join(base, "assets", filename)
@@ -1871,17 +3549,32 @@ class SettingsDialog(QDialog):
         popup.setWindowTitle(f"QR {title}")
         popup.setModal(True)
         pop_layout = QVBoxLayout(popup)
-        pop_layout.setContentsMargins(20, 20, 20, 12)
+        pop_layout.setContentsMargins(24, 24, 24, 16)
+        pop_layout.setSpacing(12)
         pix = QPixmap(qr_path)
         if not pix.isNull():
             img_lbl = QLabel()
             img_lbl.setPixmap(pix)
             img_lbl.setAlignment(Qt.AlignCenter)
+            # ★ SizePolicy = Fixed → ไม่ถูกบีบ แสดง 100% เสมอ
+            img_lbl.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+            img_lbl.setFixedSize(pix.size())
             pop_layout.addWidget(img_lbl)
-            popup.resize(pix.width() + 40, pix.height() + 60)
+            # ★ title label บน QR
+            title_lbl = QLabel(f"💳 {title}")
+            title_lbl.setAlignment(Qt.AlignCenter)
+            title_lbl.setStyleSheet("font-size: 14px; font-weight: 700; color: #f59e0b; margin-bottom: 4px;")
+            pop_layout.insertWidget(0, title_lbl)
+            # ★ setFixedSize ตามเนื้อหาจริง (QR + title + button + margins)
+            #   เพิ่ม padding generous เพื่อกันบีบ
+            total_w = pix.width() + 48
+            total_h = pix.height() + 110  # title + button + margins
+            popup.setFixedSize(total_w, total_h)
         else:
             pop_layout.addWidget(QLabel(f"(โหลด {filename} ไม่ได้)"))
+            popup.resize(300, 150)
         btn_close = QPushButton("ปิด")
+        btn_close.setMinimumHeight(36)
         btn_close.clicked.connect(popup.accept)
         pop_layout.addWidget(btn_close)
         popup.exec()
@@ -1908,45 +3601,216 @@ class SettingsDialog(QDialog):
         if btn:
             btn.setEnabled(True)
             btn.setText("🔄 เช็คอัพเดท")
+        # ★ แยก 3 กรณี: error / ไม่มีอัพเดท / มีอัพเดท
+        if isinstance(info, dict) and info.get("error"):
+            QMessageBox.warning(self, "เช็คอัพเดท", f"⚠️ เช็คอัพเดทไม่สำเร็จ\n\n{info['error']}")
+            return
         if not info:
             QMessageBox.information(self, "เช็คอัพเดท", "✅ คุณใช้เวอร์ชั่นล่าสุดอยู่แล้ว")
             return
-        latest = info.get("latest", "?")
-        current = info.get("current", "?")
-        changelog = info.get("changelog", "")
-        url = info.get("url", "")
-        bt = info.get("build_type", "")
-        bt_label = "Lite" if bt == "lite" else "Full"
-        msg = f"🆕 เวอร์ชั่นใหม่พร้อมใช้งาน!\n\n"
-        msg += f"เวอร์ชั่นปัจจุบัน: v{current} ({bt_label})\n"
-        msg += f"เวอร์ชั่นล่าสุด: v{latest}\n\n"
-        if changelog:
-            msg += f"มีอะไรใหม่:\n{changelog}\n\n"
-        msg += "ต้องการดาวน์โหลดตอนนี้ไหม?"
-        reply = QMessageBox.question(self, "เช็คอัพเดท", msg,
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
-        if reply == QMessageBox.Yes and url:
-            import webbrowser
-            webbrowser.open(url)
-        elif reply == QMessageBox.Yes:
-            # fallback — เปิดหน้า release
-            import webbrowser
-            webbrowser.open("https://github.com/zepiam/broadcast-playroom-ex/releases/latest")
+        # ★ มีอัพเดท → เรียก _show_update_dialog ของ parent_app (เหมือน auto-check)
+        #   → ใช้ auto-download (patch) แทนการเปิด browser
+        parent_app = getattr(self, 'parent_app', None)
+        if parent_app and hasattr(parent_app, '_show_update_dialog'):
+            parent_app._show_update_dialog(info)
+        else:
+            # fallback — dialog แบบเดิม (เปิด browser)
+            latest = info.get("latest", "?")
+            current = info.get("current", "?")
+            changelog = info.get("changelog", "")
+            url = info.get("url", "")
+            msg = f"🆕 เวอร์ชั่นใหม่พร้อมใช้งาน!\n\nเวอร์ชั่นปัจจุบัน: v{current}\nเวอร์ชั่นล่าสุด: v{latest}\n\n"
+            if changelog:
+                msg += f"มีอะไรใหม่:\n{changelog}\n\n"
+            msg += "ต้องการดาวน์โหลดตอนนี้ไหม?"
+            reply = QMessageBox.question(self, "เช็คอัพเดท", msg,
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+            if reply == QMessageBox.Yes:
+                import webbrowser
+                webbrowser.open(url or "https://github.com/zepiam/broadcast-playroom-ex/releases/latest")
 
     # ════════════════════════════════════════════════════════════
     # Load / Save
     # ════════════════════════════════════════════════════════════
+    def _on_tw_connect_clicked(self):
+        """★ กดปุ่มเชื่อมต่อ Twitch OAuth → เรียก app._on_twitch_oauth_connect"""
+        if self._twitch_oauth_connect_handler:
+            self.tw_oauth_status.setText("⏳ กำลังเปิดเบราว์เซอร์...")
+            self.tw_oauth_status.setStyleSheet("color: #f59e0b; font-size: 12px; border: none;")
+            self._twitch_oauth_connect_handler()
+
+    def _on_tw_disconnect_clicked(self):
+        """★ กดปุ่มยกเลิกการเชื่อมต่อ → เรียก app._on_twitch_oauth_disconnect"""
+        if self._twitch_oauth_disconnect_handler:
+            self._twitch_oauth_disconnect_handler()
+            # ★ refresh UI ทันที
+            self._refresh_twitch_oauth_status()
+
+    # ═══ KICK OAuth (ส่งแชท + Bot + แก้ชื่อห้อง) ═══
+
+    def _on_kc_connect_clicked(self):
+        """★ กดปุ่มเชื่อมต่อ KICK OAuth → เรียก app._on_kick_oauth_connect"""
+        if self._kick_oauth_connect_handler:
+            self.kc_oauth_status.setText("⏳ กำลังเปิดเบราว์เซอร์...")
+            self.kc_oauth_status.setStyleSheet("color: #f59e0b; font-size: 12px; border: none;")
+            self._kick_oauth_connect_handler()
+
+    def _on_kc_disconnect_clicked(self):
+        """★ กดปุ่มยกเลิกการเชื่อมต่อ KICK → เรียก app._on_kick_oauth_disconnect"""
+        if self._kick_oauth_disconnect_handler:
+            self._kick_oauth_disconnect_handler()
+            self._refresh_kick_oauth_status()
+
+    def setup_kick_oauth_handlers(self, connect_handler, disconnect_handler, refresh_callback=None):
+        """★ ตั้งค่า handlers สำหรับ KICK OAuth (เรียกจาก app.py)"""
+        self._kick_oauth_connect_handler = connect_handler
+        self._kick_oauth_disconnect_handler = disconnect_handler
+        if refresh_callback:
+            self._kick_oauth_refresh = refresh_callback
+
+    def _refresh_kick_oauth_status(self):
+        """★ อัปเดตสถานะ KICK OAuth ใน settings dialog"""
+        if not self.settings:
+            return
+        token = getattr(self.settings, 'kick_oauth_token', '') or ''
+        username = getattr(self.settings, 'kick_bot_username', '') or ''
+        if token and username:
+            self.kc_oauth_status.setText(f"✅ เชื่อมต่อแล้ว — ล็อกอิน: <b>{username}</b><br>"
+                                         f"<span style='color:#64748b;'>ส่งแชท + Bot + แก้ชื่อห้องได้</span>"
+                                         "<br><span style='color:#f59e0b;'>⚠ ล็อกอินนี้ต่ออายุให้เองอัตโนมัติ "
+                                         "(หลุดเมื่อถอนสิทธิ์บน KICK เท่านั้น)</span>")
+            self.kc_oauth_status.setStyleSheet("color: #10b981; font-size: 12px; border: none;")
+            self.btn_kc_connect.setVisible(False)
+            self.btn_kc_disconnect.setVisible(True)
+            self.btn_kc_bot_settings.setVisible(True)
+        else:
+            self.kc_oauth_status.setText("❌ ยังไม่ได้เชื่อมต่อ (อ่านแชทได้อย่างเดียว)<br>"
+                                         f"<span style='color:#64748b;'>กดเชื่อมต่อเพื่อส่งแชท + ใช้ Bot + แก้ชื่อห้อง</span>")
+            self.kc_oauth_status.setStyleSheet("color: #94a3b8; font-size: 12px; border: none;")
+            self.btn_kc_connect.setVisible(True)
+            self.btn_kc_disconnect.setVisible(False)
+            self.btn_kc_bot_settings.setVisible(False)
+
+    def setup_twitch_oauth_handlers(self, connect_handler, disconnect_handler, refresh_callback=None):
+        """★ ตั้งค่า handlers สำหรับ Twitch OAuth (เรียกจาก app.py)
+
+        Args:
+            connect_handler: callable — เริ่ม OAuth flow
+            disconnect_handler: callable — ลบ token
+            refresh_callback: callable (optional) — เรียกเมื่อ OAuth เสร็จ (refresh UI)
+        """
+        self._twitch_oauth_connect_handler = connect_handler
+        self._twitch_oauth_disconnect_handler = disconnect_handler
+        if refresh_callback:
+            self._twitch_oauth_refresh = refresh_callback
+
+    def _goto_chat_bot_section(self):
+        """★ เด้งไป section Chat Bot"""
+        if "twitch_bot" in self._sections:
+            for i in range(self.sidebar.count()):
+                item = self.sidebar.item(i)
+                if item and item.data(Qt.UserRole) == "twitch_bot":
+                    self.sidebar.setCurrentRow(i)
+                    break
+
+    def _twitch_expiry_line(self) -> str:
+        """★ บรรทัดสีเหลืองนับวันหมดอายุล็อกอิน Twitch"""
+        import time, math
+        ts = float(getattr(self.settings, 'twitch_token_expiry_ts', 0) or 0)
+        if not ts:
+            return ""
+        days = math.ceil((ts - time.time()) / 86400)
+        if days >= 2:
+            return (f"<br><span style='color:#f59e0b;'>⚠ การเชื่อมต่อนี้จะหลุดในอีก {days} วัน "
+                    f"เมื่อหลุดให้ทำการเชื่อมต่ออีกครั้ง</span>")
+        if days >= 1:
+            return ("<br><span style='color:#f59e0b;'>⚠ การเชื่อมต่อนี้จะหลุดในอีก 1 วัน "
+                    "เมื่อหลุดให้ทำการเชื่อมต่ออีกครั้ง</span>")
+        return ("<br><span style='color:#f59e0b;'>⚠ การเชื่อมต่อหมดอายุแล้ว — "
+                "กดเชื่อมต่ออีกครั้ง</span>")
+
+    def _refresh_twitch_oauth_status(self):
+        """★ อัปเดตสถานะ Twitch OAuth ใน settings dialog"""
+        if not self.settings:
+            return
+        token = getattr(self.settings, 'twitch_oauth_token', '') or ''
+        username = getattr(self.settings, 'twitch_bot_username', '') or ''
+        if token and username:
+            self.tw_oauth_status.setText(f"✅ เชื่อมต่อแล้ว — ล็อกอิน: <b>{username}</b><br>"
+                                         f"<span style='color:#64748b;'>ส่งแชท + Bot ได้ — ปิด-เปิด Twitch ใหม่เพื่อใช้งาน</span>"
+                                         + self._twitch_expiry_line())
+            self.tw_oauth_status.setStyleSheet("color: #10b981; font-size: 12px; border: none;")
+            self.btn_tw_connect.setVisible(False)
+            self.btn_tw_disconnect.setVisible(True)
+            self.btn_tw_bot_settings.setVisible(True)
+        else:
+            self.tw_oauth_status.setText("❌ ยังไม่ได้เชื่อมต่อ (อ่านแชทได้อย่างเดียว)<br>"
+                                         f"<span style='color:#64748b;'>กดเชื่อมต่อเพื่อส่งแชท + ใช้ Bot</span>")
+            self.tw_oauth_status.setStyleSheet("color: #94a3b8; font-size: 12px; border: none;")
+            self.btn_tw_connect.setVisible(True)
+            self.btn_tw_disconnect.setVisible(False)
+            self.btn_tw_bot_settings.setVisible(False)
+
     def _load_values(self):
         """โหลดค่าจาก settings ใส่ใน form"""
         if not self.settings:
             return
+        # ★ กัน auto-save ระหว่าง load (setChecked/setText trigger stateChanged/editingFinished)
+        self._loading = True
         s = self.settings
         # Platforms
         self.tw_channel.setText(getattr(s, 'twitch_channel', '') or '')
-        self.yt_id.setText(getattr(s, 'youtube_video_id', '') or '')
+        # ★ Twitch OAuth status
+        self._refresh_twitch_oauth_status()
+        # ★ Twitch Bot — load enabled + commands + timers
+        if hasattr(self, 'bot_enabled_cb'):
+            self.bot_enabled_cb.setChecked(getattr(s, 'twitch_bot_enabled', False))
+            self.ask_post_result_cb.setChecked(getattr(s, 'ask_post_result', True))
+            # ★ per-platform bot toggles
+            _bp = getattr(s, 'bot_platforms', {}) or {}
+            for key, cb in getattr(self, 'bot_plat_cbs', {}).items():
+                cb.setChecked(bool(_bp.get(key, True)))
+            # ★ clear old rows ก่อน
+            for row in list(getattr(self, '_bot_cmd_rows', [])):
+                row.setParent(None)
+                row.deleteLater()
+            self._bot_cmd_rows = []
+            for row in list(getattr(self, '_bot_timer_rows', [])):
+                row.setParent(None)
+                row.deleteLater()
+            self._bot_timer_rows = []
+            # ★ add rows จาก settings
+            commands = getattr(s, 'twitch_bot_commands', {}) or {}
+            for cmd, resp in commands.items():
+                self._add_bot_cmd_row(cmd, resp)
+            timers = getattr(s, 'twitch_bot_timers', []) or []
+            for timer in timers:
+                self._add_bot_timer_row(
+                    timer.get('text', ''),
+                    int(timer.get('interval_min', 10)),
+                    int(timer.get('min_chat_count', 0)),
+                )
+            # ★ bot name
+            if hasattr(self, 'bot_name_input'):
+                self.bot_name_input.setText(getattr(s, 'twitch_bot_name', 'Baitoei-Bot') or 'Baitoei-Bot')
+            # ★ event responses
+            if hasattr(self, 'bot_events_cb'):
+                self.bot_events_cb.setChecked(getattr(s, 'twitch_bot_events_enabled', True))
+                self.bot_ev_sub.setText(getattr(s, 'twitch_bot_event_sub', '') or '')
+                self.bot_ev_bits.setText(getattr(s, 'twitch_bot_event_bits', '') or '')
+                self.bot_ev_raid.setText(getattr(s, 'twitch_bot_event_raid', '') or '')
+                self.bot_ev_follow.setText(getattr(s, 'twitch_bot_event_follow', '') or '')
+            # ★ overlay hide bots
+            if hasattr(self, 'overlay_hide_bots_cb'):
+                self.overlay_hide_bots_cb.setChecked(getattr(s, 'overlay_hide_bots', True))
+        self.yt_id.setText(getattr(s, 'youtube_url', '') or '')
         self.ml_url.setText(getattr(s, 'mylive_url', '') or '')
-        self.tt_user.setText(getattr(s, 'tiktok_user', '') or '')
+        self.tt_user.setText(getattr(s, 'tiktok_username', '') or getattr(s, 'tiktok_user', '') or '')
+        if hasattr(self, 'ann_token'):
+            self.ann_token.setText(getattr(s, 'announce_gh_token', '') or '')
         self.kc_channel.setText(getattr(s, 'kick_channel', '') or '')
+        # ★ KICK OAuth status
+        self._refresh_kick_oauth_status()
         self.auto_reconnect.setChecked(getattr(s, 'auto_reconnect_enabled', True))
         # auto-connect per platform
         self.tw_auto.setChecked(getattr(s, 'auto_connect_twitch', False))
@@ -2018,10 +3882,12 @@ class SettingsDialog(QDialog):
         if hasattr(self, 'viewer_cmd_cooldown'):
             self.viewer_cmd_cooldown.setValue(getattr(s, 'viewer_cmd_cooldown', 5.0))
         # ★ sync backing checkboxes + radio buttons from stored settings
-        ra = getattr(s, 'read_author', True)
+        ra = getattr(s, 'read_author', False)   # ★ default ใหม่ = อ่านแต่ข้อความ
         rm = getattr(s, 'read_message', True)
         self.read_author.setChecked(ra)
         self.read_message.setChecked(rm)
+        if hasattr(self, 'read_own_web'):
+            self.read_own_web.setChecked(getattr(s, 'read_own_web_messages', True))
         if hasattr(self, 'tts_read_both') and hasattr(self, 'tts_read_message_only'):
             if ra and rm:
                 self.tts_read_both.setChecked(True)
@@ -2033,6 +3899,11 @@ class SettingsDialog(QDialog):
             self.obs_ws_host.setText(getattr(s, 'obs_ws_host', 'localhost'))
             self.obs_ws_port.setValue(int(getattr(s, 'obs_ws_port', 4455)))
             self.obs_ws_password.setText(getattr(s, 'obs_ws_password', ''))
+        # ★ secret code daily limit
+        if hasattr(self, 'code_limit_spin'):
+            self.code_limit_spin.setValue(int(getattr(s, 'secret_code_daily_limit', 0)))
+        # ★ ปลด flag — auto-save ทำงานปกติหลัง load เสร็จ
+        self._loading = False
 
     def _collect_values(self):
         """อ่านค่าจากทุก widget → เขียนลง settings (ใช้ getattr กัน crash ถ้า widget ไม่มี)"""
@@ -2042,9 +3913,11 @@ class SettingsDialog(QDialog):
         # Platforms
         if hasattr(self, 'tw_channel'):
             s.twitch_channel = self.tw_channel.text().strip()
-            s.youtube_video_id = self.yt_id.text().strip()
+            s.youtube_url = self.yt_id.text().strip()
             s.mylive_url = self.ml_url.text().strip()
-            s.tiktok_user = self.tt_user.text().strip()
+            s.tiktok_username = self.tt_user.text().strip()  # ★ ต้องเป็นชื่อเดียวกับ settings.py field (persist จริง)
+            if hasattr(self, 'ann_token'):
+                s.announce_gh_token = self.ann_token.text().strip()
             s.kick_channel = self.kc_channel.text().strip()
             s.auto_reconnect_enabled = self.auto_reconnect.isChecked()
             s.auto_connect_twitch = self.tw_auto.isChecked()
@@ -2176,6 +4049,8 @@ class SettingsDialog(QDialog):
                 elif self.tts_read_message_only.isChecked():
                     s.read_author = False
                     s.read_message = True
+            if hasattr(self, 'read_own_web'):
+                s.read_own_web_messages = self.read_own_web.isChecked()
             else:
                 s.read_author = self.read_author.isChecked()
                 s.read_message = self.read_message.isChecked()
@@ -2211,10 +4086,75 @@ class SettingsDialog(QDialog):
             s.obs_ws_host = self.obs_ws_host.text().strip() or 'localhost'
             s.obs_ws_port = int(self.obs_ws_port.value())
             s.obs_ws_password = self.obs_ws_password.text()
+        # ★ secret code daily limit
+        if hasattr(self, 'code_limit_spin'):
+            s.secret_code_daily_limit = int(self.code_limit_spin.value())
+        # ★ Twitch Bot config (commands + timers + enabled)
+        if hasattr(self, 'bot_enabled_cb'):
+            s.twitch_bot_enabled = self.bot_enabled_cb.isChecked()
+            s.ask_post_result = self.ask_post_result_cb.isChecked()
+            # ★ per-platform bot toggles
+            if hasattr(self, 'bot_plat_cbs'):
+                s.bot_platforms = {k: cb.isChecked() for k, cb in self.bot_plat_cbs.items()}
+            # ★ collect commands
+            commands = {}
+            for row in getattr(self, '_bot_cmd_rows', []):
+                rlayout = row.layout()
+                if rlayout and rlayout.count() >= 3:
+                    cmd_w = rlayout.itemAt(0).widget()
+                    resp_w = rlayout.itemAt(2).widget()
+                    cmd_text = cmd_w.text().strip()
+                    resp_text = resp_w.text().strip()
+                    if cmd_text and resp_text:
+                        # ★ ปรับให้ขึ้นต้นด้วย ! (ถ้า user ไม่ใส่)
+                        if not cmd_text.startswith('!'):
+                            cmd_text = '!' + cmd_text
+                        commands[cmd_text.lower()] = resp_text
+            s.twitch_bot_commands = commands
+            # ★ collect timers
+            timers = []
+            for row in getattr(self, '_bot_timer_rows', []):
+                text_w = getattr(row, '_text_input', None)
+                mode_w = getattr(row, '_mode_combo', None)
+                value_w = getattr(row, '_value_input', None)
+                if text_w and mode_w and value_w:
+                    text_val = text_w.text().strip()
+                    mode = mode_w.currentData() or "interval"
+                    try:
+                        val = max(1, int(value_w.text().strip() or '10'))
+                    except ValueError:
+                        val = 10
+                    if mode == "chat_count":
+                        # ★ chat count mode → min_chat_count = val, interval = 0 (ไม่จำกัดเวลา)
+                        interval_val = 0
+                        chat_val = val
+                    else:
+                        # ★ interval mode → interval = val, chat = 0 (ไม่จำกัด chat)
+                        interval_val = val
+                        chat_val = 0
+                    if text_val:
+                        timers.append({"text": text_val, "interval_min": interval_val, "min_chat_count": chat_val})
+            s.twitch_bot_timers = timers
+            # ★ bot name
+            if hasattr(self, 'bot_name_input'):
+                s.twitch_bot_name = self.bot_name_input.text().strip() or 'Baitoei-Bot'
+            # ★ event responses
+            if hasattr(self, 'bot_events_cb'):
+                s.twitch_bot_events_enabled = self.bot_events_cb.isChecked()
+                s.twitch_bot_event_sub = self.bot_ev_sub.text().strip()
+                s.twitch_bot_event_bits = self.bot_ev_bits.text().strip()
+                s.twitch_bot_event_raid = self.bot_ev_raid.text().strip()
+                s.twitch_bot_event_follow = self.bot_ev_follow.text().strip()
+            # ★ overlay hide bots
+            if hasattr(self, 'overlay_hide_bots_cb'):
+                s.overlay_hide_bots = self.overlay_hide_bots_cb.isChecked()
 
     def _auto_save(self):
         """auto-save: collect + save + emit signal (ไม่ปิด dialog)"""
         if not self.settings:
+            return
+        # ★ กัน auto-save ระหว่าง _load_values (กัน setChecked trigger stateChanged → เขียนทับค่าจริง)
+        if getattr(self, '_loading', False):
             return
         self._collect_values()
         try:

@@ -64,7 +64,7 @@ a = Analysis(
         'PySide6', 'PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets',
         'PySide6.QtWebEngineWidgets', 'PySide6.QtWebEngineCore',
         'PySide6.QtWebChannel', 'PySide6.QtNetwork', 'shiboken6',
-        'pedalboard', 'numpy', 'soundfile', '_sounddevice',
+        'pedalboard', 'numpy', 'soundfile', '_sounddevice', 'sounddevice', 'pyaudio',
         'TikTokLive', 'TikTokLive.client', 'TikTokLive.client.client',
         'TikTokLive.client.web', 'TikTokLive.events', 'TikTokLive.proto',
         'TikTokLive.proto.custom_proto', 'betterproto2', 'betterproto2.cased',
@@ -72,6 +72,9 @@ a = Analysis(
         'requests', 'urllib3', 'certifi',
         'ui', 'ui.theme', 'ui.widgets', 'ui.dialogs',
         'engine_plugin_loader',
+        # ★ v2.5.0 — Chat Bot + OAuth + OBS + Single Instance
+        'twitch_oauth', 'twitch_bot', 'youtube_oauth', 'kick_oauth', 'announcement', 'server_guard',
+        'single_instance', 'obs_launcher',
     ] + _requests_subs + _urllib3_subs,
     hookspath=[],
     hooksconfig={},

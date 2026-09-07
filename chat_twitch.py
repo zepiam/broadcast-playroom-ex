@@ -19,8 +19,14 @@ import socket
 import ssl
 import threading
 import time
+import logging
 from dataclasses import dataclass, field
 from typing import Callable, Optional
+
+# ★ logger — เดิมไฟล์นี้ใช้ logger. 8 จุดแต่ไม่เคยประกาศ → พอโดน path
+#   token หมดอายุ (LOGIN_UNSUCCESSFUL) จะ NameError ตั้งแต่บรรทัดแรก
+#   → reader thread ตายกลางคัน + _is_connected ค้าง True → auto-reconnect ไม่ทำงาน
+logger = logging.getLogger("chat_twitch")
 
 # ---------------------------------------------------------------------- #
 # Chat event dataclass (ร่วมกับ chat_youtube.py)
@@ -218,7 +224,11 @@ TWITCH_GQL_CLIENT_ID = "kimne78kx3ncx6brgo4mv6wki5h1ko"  # public web client-ID
 
 
 class TwitchChat:
-    """Twitch chat client แบบ anonymous (อ่านได้อย่างเดียว ไม่ส่งได้)"""
+    """Twitch chat client — อ่านได้เสมอ + ส่งได้ถ้ามี OAuth token
+
+    ★ ถ้า oauth_token + bot_username ถูกส่งเข้ามา → login ด้วยบัญชีจริง (ส่งแชท + bot ได้)
+    ★ ถ้าไม่มี → anonymous login แบบเดิม (อ่านได้อย่างเดียว)
+    """
 
     def __init__(
         self,
@@ -227,9 +237,16 @@ class TwitchChat:
         on_error: Optional[Callable[[str], None]] = None,
         on_viewer_count: Optional[Callable[[str, int], None]] = None,
         text_filter=None,
+        oauth_token: str = "",
+        bot_username: str = "",
     ) -> None:
         """text_filter: TextFilter instance (optional) — ใช้ replace_words
-        สำหรับแทนที่ emote ด้วยคำอ่านก่อนตัด"""
+        สำหรับแทนที่ emote ด้วยคำอ่านก่อนตัด
+
+        oauth_token: Twitch OAuth access token (เริ่มด้วย oauth: หรือ token เปล่าๆ)
+                     ถ้ามี → login ด้วยบัญชีจริง → ส่งแชทได้
+        bot_username: username ของเจ้าของ token (ต้องตรงกับ token) — ถ้ามี oauth_token ต้องมีค่านี้ด้วย
+        """
         self.on_message = on_message
         self.on_status = on_status or (lambda msg: None)
         self.on_error = on_error or (lambda msg: None)
@@ -241,6 +258,20 @@ class TwitchChat:
         self._stop_event = threading.Event()
         self._is_connected = False
         self._channel = ""
+
+        # ★ OAuth credentials (ถ้ามี → login จริง, ถ้าไม่มี → anonymous)
+        self._oauth_token = (oauth_token or "").strip()
+        self._bot_username = (bot_username or "").strip().lower()
+        self._refresh_token = ""  # ★ เก็บ refresh_token (set จาก app.py)
+        # ★ callback แจ้ง app.py เมื่อ refresh สำเร็จ (ให้ save ลง settings — เหมือน KICK/YouTube)
+        self._on_token_refreshed = None  # callable(access_token, refresh_token, expires_in)
+        # ★ เก็บ flag ว่าสามารถส่งแชทได้ไหม (มี oauth + username)
+        self._can_send = bool(self._oauth_token and self._bot_username)
+        # ★ reconnect flag (ใช้เมื่อ token refresh → reconnect ใหม่)
+        self._need_reconnect = False
+
+        # ★ thread safety: reader thread + UI thread ใช้ socket ร่วมกัน → ต้อง lock
+        self._send_lock = threading.Lock()
 
         # third-party emotes (FFZ + BTTV + 7TV) — โหลด async ตอน connect
         self._third_party_emotes = None  # ThirdPartyEmoteSet | None
@@ -274,12 +305,23 @@ class TwitchChat:
             self.on_error("เชื่อมต่ออยู่แล้ว — กด Disconnect ก่อน")
             return False
 
-        # anonymous nick
-        nick = f"{ANON_NICK_PREFIX}{random.randint(10000, 99999)}"
-        token = "oauth:1234567890"  # arbitrary — anonymous ไม่ตรวจ
+        # ★ login mode: OAuth (จริง) หรือ anonymous (อ่านอย่างเดียว)
+        self._fallback_anonymous = False  # ★ reset flag ทุกครั้งที่ connect ใหม่
+        if self._can_send:
+            # OAuth login — ใช้ username + token จริง → ส่งแชทได้
+            nick = self._bot_username
+            # token ต้องมี prefix "oauth:" สำหรับ IRC (Twitch ต้องการแบบนี้)
+            tok = self._oauth_token
+            if not tok.startswith("oauth:"):
+                tok = f"oauth:{tok}"
+            self.on_status(f"🔐 เชื่อมต่อ Twitch #{channel} (ล็อกอิน: {nick})")
+        else:
+            # anonymous login — อ่านได้อย่างเดียว (เหมือนเดิม)
+            nick = f"{ANON_NICK_PREFIX}{random.randint(10000, 99999)}"
+            tok = "oauth:1234567890"  # arbitrary — anonymous ไม่ตรวจ
 
         try:
-            self._connect_socket(nick, token)
+            self._connect_socket(nick, tok)
         except OSError as exc:
             self.on_error(f"เชื่อมต่อ Twitch ไม่ได้: {exc}")
             self._is_connected = False
@@ -289,13 +331,17 @@ class TwitchChat:
         self._send_raw(f"JOIN #{channel}\r\n")
         self._is_connected = True
 
-        # โหลด third-party emotes (FFZ + BTTV + 7TV) ของ channel ใน background
-        # ไม่บล็อก connect และไม่แสดง status (ทำงานเงียบๆ)
-        try:
-            from third_party_emotes import load_channel_emotes
-            self._third_party_emotes = load_channel_emotes(channel)
-        except Exception:
-            self._third_party_emotes = None
+        # โหลด third-party emotes (FFZ + BTTV + 7TV) ของ channel ใน background จริง ๆ
+        # ★ เคยเป็น blocking ตรงนี้ (HTTP หลายตัว × timeout 10s = ค้างถึง 30s)
+        #   ทำให้ connect() ค้างนาน → รอบ reconnect ถัดไปซ้อนเข้ามา → client งอกซ้อน
+        self._third_party_emotes = None
+        def _load_emotes_bg():
+            try:
+                from third_party_emotes import load_channel_emotes
+                self._third_party_emotes = load_channel_emotes(channel)
+            except Exception:
+                self._third_party_emotes = None
+        threading.Thread(target=_load_emotes_bg, name="TwitchEmotes", daemon=True).start()
 
         # เริ่ม reader thread
         self._stop_event.clear()
@@ -443,9 +489,61 @@ class TwitchChat:
             pass
 
     def _send_raw(self, line: str) -> None:
+        """ส่ง raw IRC line ผ่าน socket (thread-safe — ใช้ lock)"""
         if self._sock is None:
             return
-        self._sock.sendall(line.encode("utf-8"))
+        with self._send_lock:
+            try:
+                self._sock.sendall(line.encode("utf-8"))
+            except OSError:
+                pass
+
+    # ------------------------------------------------------------------ #
+    # ★ Send chat (ต้องล็อกอินด้วย OAuth — ไม่ใช่ anonymous)
+    # ------------------------------------------------------------------ #
+    @property
+    def can_send(self) -> bool:
+        """True ถ้าล็อกอินด้วย OAuth และยังไม่ fallback เป็น anonymous"""
+        return self._can_send and self._is_connected and not getattr(self, '_fallback_anonymous', False)
+
+    def send_message(self, text: str) -> bool:
+        """ส่งข้อความไปยังแชท Twitch
+
+        Returns True ถ้าส่งสำเร็จ, False ถ้า fail (ยังไม่ล็อกอิน / ไม่ได้เชื่อมต่อ)
+        """
+        if not self._can_send:
+            self.on_error("ไม่สามารถส่งแชทได้ — ยังไม่ได้ล็อกอิน Twitch (ต้อง OAuth)")
+            return False
+        if not self._is_connected or not self._channel:
+            self.on_error("ไม่สามารถส่งแชทได้ — ยังไม่ได้เชื่อมต่อ Twitch")
+            return False
+        if not text or not text.strip():
+            return False
+        # ★ Twitch จำกัดข้อความ 500 ตัวอักษร → ตัดให้เหลือ 480 (เผื่อ protocol overhead)
+        text = text.strip()[:480]
+        # ★ ส่ง PRIVMSG (IRC command สำหรับส่งข้อความ)
+        #   ข้อความขึ้นบรรทัดใหม่ → แยกเป็นหลาย PRIVMSG (IRC ไม่รองรับ newline ใน 1 message)
+        for line in text.split("\n"):
+            line = line.strip()
+            if line:
+                self._send_raw(f"PRIVMSG #{self._channel} :{line}\r\n")
+        return True
+
+    def send_command(self, command: str) -> bool:
+        """ส่ง IRC chat command (/timeout, /ban, /delete, /color ฯลฯ)
+
+        Args:
+            command: command เต็ม เช่น "timeout user123 600" (ไม่ต้องมี /)
+        Returns True ถ้าส่งสำเร็จ
+        """
+        if not self.can_send:
+            return False
+        command = command.strip().lstrip("/")
+        if not command:
+            return False
+        # ★ Twitch chat command ส่งเป็น PRIVMSG ที่ขึ้นต้นด้วย / (เช่น /timeout, /ban)
+        self._send_raw(f"PRIVMSG #{self._channel} :/{command}\r\n")
+        return True
 
     # ------------------------------------------------------------------ #
     # Reader loop (background thread)
@@ -484,9 +582,50 @@ class TwitchChat:
 
         self._is_connected = False
 
-    # ------------------------------------------------------------------ #
-    # IRC line dispatching
-    # ------------------------------------------------------------------ #
+        # ★ ถ้า _need_reconnect = True → reconnect อัตโนมัติ
+        #   ถ้า refresh สำเร็จ → reconnect ด้วย token ใหม่ (ส่งแชทได้)
+        #   ถ้า refresh fail → reconnect เป็น anonymous (อ่านได้อย่างเดียว)
+        if getattr(self, '_need_reconnect', False):
+            self._need_reconnect = False
+            import time as _t
+            _t.sleep(2)  # รอ 2 วิ ก่อน reconnect
+            if not self._stop_event.is_set() and self._channel:
+                try:
+                    # ★ ตัดสินใจ login mode สำหรับ reconnect
+                    if self._can_send and self._oauth_token:
+                        # ★ OAuth login (token ใหม่จาก refresh)
+                        nick = self._bot_username
+                        tok = self._oauth_token
+                        if not tok.startswith("oauth:"):
+                            tok = f"oauth:{tok}"
+                        logger.info(f"Twitch reconnect with OAuth (user={nick})")
+                    else:
+                        # ★ Anonymous login (fallback)
+                        nick = f"{ANON_NICK_PREFIX}{random.randint(10000, 99999)}"
+                        tok = "oauth:1234567890"
+                        logger.info("Twitch reconnect as anonymous (fallback)")
+
+                    # ★ close socket เก่าก่อน
+                    if self._sock:
+                        try: self._sock.close()
+                        except: pass
+                        self._sock = None
+
+                    self._connect_socket(nick, tok)
+                    self._send_raw(f"JOIN #{self._channel}\r\n")
+                    self._is_connected = True
+                    # ★ restart reader + viewer threads
+                    self._stop_event.clear()
+                    self._thread = threading.Thread(
+                        target=self._reader_loop, name="TwitchIRCReader2", daemon=True
+                    )
+                    self._thread.start()
+                    self._viewer_thread = threading.Thread(
+                        target=self._viewer_poll_loop, name="TwitchViewerPoll2", daemon=True,
+                    )
+                    self._viewer_thread.start()
+                except Exception as e:
+                    logger.error(f"Twitch reconnect failed: {e}")
     def _handle_line(self, line: str) -> None:
         """parse และ dispatch IRC line เดียว"""
         # PING/PONG keepalive
@@ -494,10 +633,47 @@ class TwitchChat:
             self._send_raw("PONG " + line.split(" ", 1)[1] + "\r\n")
             return
 
-        # LOGIN FAILED (anonymous ไม่ควรเจอ แต่เผื่อไว้)
-        if "LOGIN_UNSUCCESSFUL" in line or ":tmi.twitch.tv NOTICE * :Login unsuccessful" in line:
-            self.on_error("Login ล้มเหลว (ไม่ควรเกิดกับ anonymous)")
-            return
+        # LOGIN FAILED — token หมดอายุ → refresh + reconnect หรือ fallback anonymous
+        if "LOGIN_UNSUCCESSFUL" in line or "Login unsuccessful" in line or "Login authentication failed" in line:
+            logger.warning("Twitch login failed — token may be expired")
+            refreshed = False
+            if self._can_send and self._refresh_token:
+                # ★ ลอง refresh token ก่อน
+                try:
+                    from twitch_oauth import refresh_access_token
+                    result = refresh_access_token(self._refresh_token)
+                    if result and result.get("access_token"):
+                        new_token = result["access_token"]
+                        if not new_token.startswith("oauth:"):
+                            new_token = f"oauth:{new_token}"
+                        self._oauth_token = new_token
+                        # ★ เก็บ refresh_token ใหม่ด้วย — Twitch หมุนเวียนทุกครั้ง
+                        #   (ตัวเก่าถูก invalidate → ไม่เก็บ = ครั้งหน้า refresh ไม่ได้เลย)
+                        new_refresh = result.get("refresh_token", "")
+                        if new_refresh:
+                            self._refresh_token = new_refresh
+                        # ★ แจ้ง app.py save ลง settings (กัน restart แล้วได้ token เก่า)
+                        if self._on_token_refreshed:
+                            try:
+                                self._on_token_refreshed(
+                                    new_token, new_refresh, int(result.get("expires_in", 0) or 0)
+                                )
+                            except Exception as cb_e:
+                                logger.debug(f"on_token_refreshed callback error: {cb_e}")
+                        logger.info("Twitch token refreshed — will reconnect with new token")
+                        self.on_status("🔄 Token หมดอายุ — ต่ออายุและเชื่อมต่อใหม่...")
+                        refreshed = True
+                except Exception as e:
+                    logger.error(f"Token refresh failed: {e}")
+            # ★ ถ้า refresh fail → fallback เป็น anonymous
+            if not refreshed:
+                logger.warning("Twitch OAuth failed — falling back to anonymous")
+                self._can_send = False
+                self._fallback_anonymous = True  # ★ ปิดช่องพิมพ์แชท
+                self.on_status("⚠️ Twitch: ใช้โหมดอ่านอย่างเดียว (token หมดอายุ)")
+            # ★ สั่ง reconnect (ใช้ token ใหม่ถ้า refresh สำเร็จ, หรือ anonymous ถ้า fail)
+            self._need_reconnect = True
+            return  # ไม่ set _stop_event — ปล่อยให้ reader loop จบเอง (socket ปิดจาก Twitch)
 
         # JOIN สำเร็จ
         if "JOIN" in line and f"#{self._channel}" in line:

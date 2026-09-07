@@ -366,7 +366,8 @@ class GameOverlayServer:
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
 
-        app = web.Application()
+        from server_guard import make_origin_guard_middleware
+        app = web.Application(middlewares=[make_origin_guard_middleware("game_overlay")])
         app.router.add_get("/", self._handle_index)
         app.router.add_get("/config", self._handle_config)
         app.router.add_get("/theme", self._handle_theme)
@@ -377,7 +378,6 @@ class GameOverlayServer:
         app.router.add_get("/character/{job}", self._handle_character_img)
         # command queue (parent → subprocess ผ่าน HTTP แทน stdin)
         app.router.add_post("/cmd", self._handle_cmd)
-        app.router.add_get("/poll_cmd", self._handle_poll_cmd)
 
         # สร้าง asyncio.Event สำหรับ demo loop (ต้องอยู่ใน event loop)
         self._demo_stop_event = asyncio.Event()
@@ -496,7 +496,8 @@ class GameOverlayServer:
         import aiohttp.web as web
         import urllib.request
         eid = request.match_info.get("emote_id", "")
-        if not eid:
+        # ★ validate — กัน path traversal ผ่าน ../ หรือ %2F (อ่าน/ลบไฟล์นอก cache dir)
+        if not eid or not eid.replace("-", "").replace("_", "").isalnum():
             return web.Response(status=400, text="bad emote id")
         # อ่าน setting — animated หรือ static
         want_animated = bool(getattr(self.settings, "game_overlay_animated_emotes", False))
@@ -624,13 +625,6 @@ class GameOverlayServer:
             return web.json_response({"ok": True})
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
-
-    async def _handle_poll_cmd(self, request):
-        """GET /poll_cmd — subprocess poll command queue → return all + clear"""
-        import aiohttp.web as web
-        cmds = self._cmd_queue[:]
-        self._cmd_queue.clear()
-        return web.json_response({"cmds": cmds})
 
     async def _handle_ws(self, request):
         import aiohttp.web as web

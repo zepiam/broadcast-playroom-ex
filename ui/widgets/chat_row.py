@@ -5,6 +5,7 @@
 import hashlib
 import logging
 import os
+import time
 import urllib.request
 from PySide6.QtCore import Qt, Signal, QSize, QTimer, QThread, QObject, QUrl, QByteArray
 from PySide6.QtGui import QPixmap, QImage, QFont, QColor
@@ -24,7 +25,7 @@ _chat_settings = {
     'show_timestamp': False,
     'emote_size': 28,
     'font_family': 'Kanit',
-    'zebra_stripes': False,            # สีพื้นหลังสลับ (zebra) แยกข้อความ
+    'zebra_stripes': True,             # สีพื้นหลังสลับ (zebra) — default เปิด
 }
 
 
@@ -135,15 +136,24 @@ class ChatRow(QWidget):
         self._build_ui()
 
     def paintEvent(self, event):
-        """★ paint zebra background เอง — กัน QSS หลัก override
-
-        ถ้า _zebra_on = True → paint ZEBRA_COLOR เต็ม widget ก่อน children
-        """
+        """★ paint background เอง — zebra + กรอบฟ้าสำหรับข้อความจากโปรแกรม"""
+        from PySide6.QtGui import QPainter, QColor, QPen
+        painter = QPainter(self)
+        # ★ zebra background
         if self._zebra_on:
-            from PySide6.QtGui import QPainter, QColor
-            painter = QPainter(self)
             painter.fillRect(self.rect(), QColor(ZEBRA_COLOR))
+        # ★ กรอบฟ้าบางๆ สำหรับข้อความที่ส่งจากในโปรแกรม (own message)
+        extra = getattr(self.msg, 'extra', {}) or {}
+        if extra.get('_own_message') and not extra.get('_is_bot_response'):
+            # ★ พื้นหลังฟ้าอ่อนบางๆ + กรอบฟ้า
+            painter.fillRect(self.rect(), QColor(59, 130, 246, 25))  # rgba ฟ้าอ่อนโปร่งใส
+            pen = QPen(QColor(59, 130, 246, 80), 1)  # กรอบฟ้าบางๆ
+            painter.setPen(pen)
+            painter.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), 4, 4)
             painter.end()
+        else:
+            # ★ ไม่มี custom paint → ให้ Qt วาดปกติ
+            pass
         super().paintEvent(event)
 
     def _show_context_menu(self, pos):
@@ -186,8 +196,36 @@ class ChatRow(QWidget):
         author_row.setContentsMargins(0, 0, 0, 0)
         author_row.setSpacing(4)
 
-        # ★ platform icon (ถ้าเปิด) — ใช้ ui.platform_icons (cached QPixmap)
-        if _chat_settings.get('show_platform_icon', True):
+        # ★ เช็คประเภทข้อความ
+        extra = getattr(self.msg, 'extra', {}) or {}
+        is_bot_response = extra.get('_is_bot_response', False)
+        is_own_message = extra.get('_own_message', False)
+        sent_platforms = extra.get('_sent_platforms', [])  # ★ แพลตฟอร์มที่ส่งไป (multi-send)
+
+        # ★ platform icon(s):
+        #   - bot response → 🤖
+        #   - own message + multi-send → ไอคอนทุกแพลตฟอร์มที่ส่ง
+        #   - ปกติ → ไอคอนแพลตฟอร์มเดียว
+        if is_bot_response:
+            icon_lbl = QLabel()
+            icon_lbl.setText("🤖")
+            icon_lbl.setFixedSize(16, 16)
+            icon_lbl.setStyleSheet("font-size: 14px; border: none; background: transparent;")
+            author_row.addWidget(icon_lbl)
+        elif is_own_message and sent_platforms:
+            # ★ แสดงไอคอนทุกแพลตฟอร์มที่ส่ง
+            try:
+                from ui.platform_icons import get_platform_pixmap
+                for plat in sent_platforms:
+                    pix = get_platform_pixmap(plat, 16)
+                    if not pix.isNull():
+                        icon_lbl = QLabel()
+                        icon_lbl.setPixmap(pix)
+                        icon_lbl.setFixedSize(16, 16)
+                        author_row.addWidget(icon_lbl)
+            except Exception:
+                pass
+        elif _chat_settings.get('show_platform_icon', True):
             try:
                 from ui.platform_icons import get_platform_pixmap
                 pix = get_platform_pixmap(platform, 16)
@@ -203,8 +241,10 @@ class ChatRow(QWidget):
         self.author_label = QLabel()
         self.author_label.setCursor(Qt.PointingHandCursor)
         self.author_label.setTextFormat(Qt.RichText)
-        # ★ color: platform color หรือ random (คงที่ต่อคน)
-        if _chat_settings.get('author_color_mode', 'platform') == 'random':
+        # ★ color: bot → สีเหลือง, platform color หรือ random (คงที่ต่อคน)
+        if is_bot_response:
+            author_color = "#facc15"  # สีเหลือง
+        elif _chat_settings.get('author_color_mode', 'platform') == 'random':
             author_color = _color_for_author(author)
         else:
             author_color = self._get_platform_color(platform)
@@ -226,6 +266,20 @@ class ChatRow(QWidget):
         self.author_label.mousePressEvent = lambda e: self.author_clicked.emit(author)
         author_row.addWidget(self.author_label)
         author_row.addStretch()
+
+        # ★ ไอคอนสถานะ TTS (ขวาสุด — แสดงเฉพาะข้อความที่ถูกติดตาม: รอคิว/กำลังอ่าน/อ่านแล้วกี่วิ)
+        self._tts_state = None
+        self._tts_recv_ts = float(extra.get("_tts_recv_ts", 0) or 0)
+        if extra.get("_tts_id"):
+            self.tts_status_label = QLabel()
+            self.tts_status_label.setStyleSheet(
+                "font-size:10px; color:#6b7280; border:none; background:transparent;"
+            )
+            author_row.addWidget(self.tts_status_label)
+            self.set_tts_status("queued", {})
+        else:
+            self.tts_status_label = None
+
         layout.addLayout(author_row)
 
         # ★ Content area
@@ -234,6 +288,71 @@ class ChatRow(QWidget):
         self.content_layout.setSpacing(2)
         self._render_content(extra, platform)
         layout.addLayout(self.content_layout)
+
+    # ════════════════════════════════════════════════════════════
+    # ★ TTS status icon (ริมข้อความ — ติดตามว่าอ่านสำเร็จ/ค้าง/ถูกข้าม)
+    # ════════════════════════════════════════════════════════════
+    _TTS_GRAY = "font-size:10px; color:#6b7280; border:none; background:transparent;"
+    _TTS_GREEN = "font-size:10px; color:#10b981; border:none; background:transparent;"
+    _TTS_RED = "font-size:10px; color:#ef4444; border:none; background:transparent;"
+
+    def set_tts_status(self, status: str, info: dict | None = None):
+        """อัปเดตไอคอนสถานะ TTS
+
+        status: queued | computing | ready | playing | done | skipped | error
+        """
+        if getattr(self, "tts_status_label", None) is None:
+            return
+        info = info or {}
+        self._tts_state = status
+        lbl = self.tts_status_label
+        try:
+            if status in ("queued", "computing", "ready"):
+                self.refresh_tts_wait()
+            elif status == "playing":
+                lbl.setText("🔊")
+                lbl.setStyleSheet(self._TTS_GREEN)
+                lbl.setToolTip("กำลังอ่าน TTS")
+            elif status == "done":
+                el = info.get("elapsed")
+                if isinstance(el, (int, float)) and el >= 0:
+                    lbl.setText(f"✓ {el:.1f}s")
+                    lbl.setToolTip(f"อ่านแล้ว (รับ→จบ รวม {el:.1f} วิ)")
+                else:
+                    lbl.setText("✓")
+                    lbl.setToolTip("อ่านแล้ว")
+                lbl.setStyleSheet(self._TTS_GREEN)
+            elif status == "skipped":
+                lbl.setText("⊘")
+                lbl.setStyleSheet(self._TTS_GRAY)
+                lbl.setToolTip(f"ไม่อ่าน TTS — {info.get('reason', 'ถูกกรอง')}")
+            elif status == "error":
+                lbl.setText("⚠")
+                lbl.setStyleSheet(self._TTS_RED)
+                lbl.setToolTip(f"TTS ผิดพลาด — {info.get('reason', '?')}")
+        except Exception:
+            pass
+
+    def refresh_tts_wait(self):
+        """อัปเดตตัวนับวินาทีที่รอ (เรียกจาก timer ทุก 1 วิ — เห็นว่าค้างนานไหม)"""
+        if getattr(self, "tts_status_label", None) is None:
+            return
+        if getattr(self, "_tts_state", None) not in ("queued", "computing", "ready"):
+            return
+        wait = time.time() - self._tts_recv_ts if self._tts_recv_ts else 0.0
+        txt = "⏳" if wait < 1 else f"⏳ {int(wait)}s"
+        # รอเกิน 30 วิ → เปลี่ยนเป็นส้มเตือนว่าช้าผิดปกติ
+        color = "#f59e0b" if wait > 30 else "#6b7280"
+        tip = {
+            "queued": "รอคิว TTS",
+            "computing": "กำลังสร้างเสียง",
+            "ready": "เสียงพร้อม — รอเล่น",
+        }.get(self._tts_state, "รอ TTS")
+        self.tts_status_label.setText(txt)
+        self.tts_status_label.setStyleSheet(
+            f"font-size:10px; color:{color}; border:none; background:transparent;"
+        )
+        self.tts_status_label.setToolTip(f"{tip} ({int(wait)} วิ)")
 
     def _build_event_row(self, layout, event):
         author = getattr(self.msg, 'author', '') or ''
@@ -439,10 +558,10 @@ class ChatRow(QWidget):
         #   AlignLeft → ไม่กลางจอ (กัน "center เฉย" เมื่อมีแค่ emote อย่างเดียว)
         layout.addWidget(lbl, 0, Qt.AlignBottom | Qt.AlignLeft)
 
-        # resolve URL — relative → composer server (port 8808)
+        # resolve URL — relative → composer server (ลองทุก port 8801-8810)
         src_url = url
         if url.startswith('/emote/') or url.startswith('/'):
-            src_url = f"http://localhost:8808{url}"
+            src_url = f"http://localhost:8801{url}"
 
         # ★ download via QNetworkAccessManager (main thread event loop)
         try:
@@ -510,7 +629,7 @@ class ChatRow(QWidget):
             return
         src_url = url
         if url.startswith('/'):
-            src_url = f"http://localhost:8808{url}"
+            src_url = f"http://localhost:8801{url}"
         try:
             cached = cache.get_url_sync(src_url, size_px=size)
             if cached is not None:

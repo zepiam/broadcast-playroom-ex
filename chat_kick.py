@@ -162,6 +162,10 @@ class KickChat:
         on_status: Optional[Callable[[str], None]] = None,
         on_error: Optional[Callable[[str], None]] = None,
         on_viewer_count: Optional[Callable[[str, int], None]] = None,
+        oauth_token: str = "",
+        bot_username: str = "",
+        broadcaster_user_id: int = 0,
+        send_as: str = "user",
     ) -> None:
         self.on_message = on_message
         self.on_status = on_status or (lambda msg: None)
@@ -177,6 +181,145 @@ class KickChat:
         self._last_viewer_poll: float = 0.0
 
         self.messages_read = 0
+
+        # ★ OAuth (ส่งแชท + แก้ชื่อห้อง) — ถ้าไม่มี token = อ่านอย่างเดียว
+        self._oauth_token = oauth_token or ""
+        self._bot_username = (bot_username or "").lower()
+        self._broadcaster_user_id = int(broadcaster_user_id or 0)
+        # ★ ส่งเป็นบัญชีของเราเสมอ (บัญชีเรา = บอท) — โหมด bot ทางการยังติด 500
+        self._send_as = "user"
+        # ★ hooks สำหรับ app.py: auto-refresh token เมื่อหมดอายุ (401)
+        self._refresh_token = ""           # refresh token (set จาก app.py)
+        self._on_token_refreshed = None    # callback(new_token, new_refresh) → save settings
+        self._send_lock = threading.Lock()
+
+    # ------------------------------------------------------------------ #
+    # ★ Send capability (OAuth)
+    # ------------------------------------------------------------------ #
+    @property
+    def can_send(self) -> bool:
+        """ส่งแชทได้ไหม — ต้องมี OAuth token"""
+        return bool(self._oauth_token)
+
+    @property
+    def bot_username(self) -> str:
+        return self._bot_username
+
+    def set_oauth(self, token: str, broadcaster_user_id: int = 0, bot_username: str = "") -> None:
+        """อัปเดต token หลัง refresh/login ใหม่"""
+        self._oauth_token = token or ""
+        if broadcaster_user_id:
+            self._broadcaster_user_id = int(broadcaster_user_id)
+        if bot_username:
+            self._bot_username = bot_username.lower()
+
+    def _api_headers(self) -> dict:
+        return {
+            "Authorization": f"Bearer {self._oauth_token}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+
+    def _try_refresh_token(self) -> bool:
+        """token หมดอายุ (401) → ลอง refresh ผ่าน kick_oauth
+        Returns True ถ้าได้ token ใหม่
+        """
+        if not self._refresh_token:
+            return False
+        try:
+            from kick_oauth import refresh_access_token
+            result = refresh_access_token(self._refresh_token)
+            if result and result.get("access_token"):
+                self._oauth_token = result["access_token"]
+                self._refresh_token = result.get("refresh_token") or self._refresh_token
+                if self._on_token_refreshed:
+                    try:
+                        self._on_token_refreshed(self._oauth_token, self._refresh_token)
+                    except Exception:
+                        pass
+                return True
+        except Exception as exc:  # noqa: BLE001
+            self.on_error(f"KICK token refresh ไม่สำเร็จ: {exc}")
+        return False
+
+    def send_message(self, text: str) -> bool:
+        """★ ส่งข้อความเข้าแชท KICK ของตัวเอง
+
+        POST https://api.kick.com/public/v1/chat (scope: chat:write)
+        - type="bot"  → ขึ้นเป็นบอท (ไม่ต้องระบุ broadcaster_user_id)
+        - type="user" → ขึ้นเป็นบัญชีเจ้าของ (ต้องมี broadcaster_user_id)
+        Returns True ถ้าส่งสำเร็จ
+        """
+        import requests as _requests
+        if not self._oauth_token or not text:
+            return False
+        content = text.strip()[:500]  # KICK limit 500 ตัวอักษร
+        with self._send_lock:
+            for attempt in range(3):
+                body = {"content": content, "type": self._send_as}
+                if self._send_as == "user":
+                    if not self._broadcaster_user_id:
+                        self.on_error("KICK: ไม่มี broadcaster_user_id — ล็อกอินใหม่อีกครั้ง")
+                        return False
+                    body["broadcaster_user_id"] = self._broadcaster_user_id
+                try:
+                    r = _requests.post(
+                        "https://api.kick.com/public/v1/chat",
+                        headers=self._api_headers(),
+                        json=body,
+                        timeout=10,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    self.on_error(f"KICK ส่งไม่สำเร็จ: {exc}")
+                    return False
+                if r.status_code in (200, 201):
+                    try:
+                        return bool(r.json().get("is_sent", True))
+                    except Exception:
+                        return True
+                if r.status_code == 401 and attempt < 2:
+                    # ★ token หมดอายุ → refresh แล้วลองใหม่
+                    if self._try_refresh_token():
+                        continue
+                    self.on_error("KICK: token หมดอายุ — กดเชื่อมต่อ KICK ใหม่ในการตั้งค่า")
+                    return False
+                if r.status_code == 429:
+                    self.on_error("KICK: ส่งเร็วเกินไป (rate limit) — รอสักครู่")
+                    return False
+                self.on_error(f"KICK ส่งไม่สำเร็จ (HTTP {r.status_code}): {r.text[:120]}")
+                return False
+        return False
+
+    def update_stream_title(self, title: str) -> bool:
+        """★ แก้ชื่อห้อง (stream title) ของช่องตัวเอง
+
+        PATCH https://api.kick.com/public/v1/channels (scope: channel:write)
+        Returns True ถ้าสำเร็จ
+        """
+        import requests as _requests
+        if not self._oauth_token or not (title or "").strip():
+            return False
+        with self._send_lock:
+            for attempt in range(2):
+                try:
+                    r = _requests.patch(
+                        "https://api.kick.com/public/v1/channels",
+                        headers=self._api_headers(),
+                        json={"stream_title": title.strip()},
+                        timeout=10,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    self.on_error(f"KICK แก้ชื่อห้องไม่สำเร็จ: {exc}")
+                    return False
+                if r.status_code in (200, 204):
+                    return True
+                if r.status_code == 401 and attempt == 0:
+                    if self._try_refresh_token():
+                        continue
+                    return False
+                self.on_error(f"KICK แก้ชื่อห้องไม่สำเร็จ (HTTP {r.status_code}): {r.text[:120]}")
+                return False
+        return False
 
     # ------------------------------------------------------------------ #
     # Availability
@@ -409,6 +552,9 @@ class KickChat:
             or data.get("username")
             or "?"
         )
+        # ★ ข้อความของบัญชีที่ล็อกอิน (ส่งผ่านโปรแกรม หรือพิมพ์บนเว็บ KICK) → ส่งขึ้นไป
+        #   ให้ app.py แยกกรณีเหมือน Twitch (echo โปรแกรม = ซ่อน / พิมพ์บนเว็บ = แสดง
+        #   แต่ไม่อ่าน TTS) — เดิมดักทิ้งหมดฝั่งนี้ = พิมพ์บน KICK แล้วหายจากโปรแกรม
         clean_text, segments = _strip_emote_tokens(content)
         self.messages_read += 1
         self.on_message(

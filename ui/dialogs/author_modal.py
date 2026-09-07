@@ -1,6 +1,7 @@
 """author_modal.py — Author Modal dialog (คลิกชื่อ user → ดูข้อมูล)
 
-รวม: สถิติ + donation summary + message history (load more) + export log + block/rename
+รวม: สถานิติ + donation summary + message history (load more) + export log + block/rename
+★ Redesigned UI: hero profile (avatar สี + ชื่อใหญ่ + pills) + stat tiles + chat bubbles
 ★ Fixed layout — แต่ละ section มีที่คงที่ ไม่ขยายเละเมื่อข้อมูลไม่ครบ
 """
 import logging
@@ -9,6 +10,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QWidget, QFrame, QLabel, QPushButton, QLineEdit, QVBoxLayout,
     QHBoxLayout, QScrollArea, QMessageBox, QFileDialog, QMenu, QSizePolicy,
+    QGridLayout,
 )
 from ui.theme import COLOR_CARD, COLOR_BORDER
 
@@ -21,29 +23,53 @@ EVENT_ICONS = {
     'share': '📢', 'subgift': '🎁',
 }
 
-# ★ Section styles — consistent
-SECTION_STYLE = f"""
-    QFrame#Section {{
-        background-color: {COLOR_CARD};
-        border: 1px solid {COLOR_BORDER};
-        border-radius: 8px;
-    }}
-"""
-SECTION_TITLE_STYLE = "color: #f59e0b; font-size: 13px; font-weight: 700;"
-SECTION_BODY_STYLE = "color: #d1d5db; font-size: 12px;"
+# ★ สีประจำแพลตฟอร์ม (pills)
+PLATFORM_COLORS = {
+    'twitch': ('#9146FF', '#FFFFFF'),
+    'youtube': ('#FF0000', '#FFFFFF'),
+    'mylive': ('#0EA5E9', '#FFFFFF'),
+    'tiktok': ('#EC4899', '#FFFFFF'),
+    'kick': ('#53FC18', '#0B0C0E'),
+}
+
+# ★ ชุดสี avatar (ไล่ตาม hash ขนาดชื่อ — คนละชื่อได้คนละสี คนเดิมได้สีเดิม)
+AVATAR_GRADIENTS = [
+    ("#7C3AED", "#C084FC"),  # ม่วง
+    ("#0EA5E9", "#67E8F9"),  # ฟ้า
+    ("#F43F5E", "#FDA4AF"),  # ชมพูแดง
+    ("#10B981", "#6EE7B7"),  # เขียว
+    ("#F59E0B", "#FDE68A"),  # ทอง
+    ("#EC4899", "#F9A8D4"),  # ชมพู
+    ("#6366F1", "#A5B4FC"),  # คราม
+    ("#14B8A6", "#5EEAD4"),  # เขียวหัวเป็ด
+]
+
+BG_DARK = "#0A0E1A"
+CARD = "#111827"
+CARD_BORDER = "#1F2937"
+
+
+def _avatar_style(name: str) -> str:
+    """สี gradient ของ avatar ตาม hash ชื่อ"""
+    grad = AVATAR_GRADIENTS[hash(name.lower()) % len(AVATAR_GRADIENTS)]
+    return f"qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {grad[0]}, stop:1 {grad[1]})"
 
 
 def _make_section(title_text):
-    """สร้าง section frame + layout — fixed structure"""
+    """สร้าง section card + layout — fixed structure"""
     frame = QFrame()
     frame.setObjectName("Section")
-    frame.setStyleSheet(SECTION_STYLE)
+    frame.setStyleSheet(
+        f"QFrame#Section {{ background-color: {CARD}; border: 1px solid {CARD_BORDER}; "
+        f"border-radius: 10px; }}"
+    )
     frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
     layout = QVBoxLayout(frame)
-    layout.setContentsMargins(14, 10, 14, 10)
-    layout.setSpacing(4)
+    layout.setContentsMargins(12, 10, 12, 10)
+    layout.setSpacing(6)
     title = QLabel(title_text)
-    title.setStyleSheet(SECTION_TITLE_STYLE)
+    title.setStyleSheet("color: #9CA3AF; font-size: 11px; font-weight: 700; "
+                        "letter-spacing: 1px; text-transform: uppercase;")
     layout.addWidget(title)
     return frame, layout
 
@@ -62,85 +88,193 @@ class AuthorModal(QDialog):
         self.setWindowTitle(f"👤 {author}")
         self.setFixedWidth(520)
         self.setMinimumHeight(500)
+        self.setStyleSheet(f"QDialog {{ background: {BG_DARK}; }}")
         self._build_ui()
         self._load_data()
 
+    # ------------------------------------------------------------------ #
+    # UI
+    # ------------------------------------------------------------------ #
     def _build_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # ── Header (fixed) ──
+        # ── Hero header: avatar + ชื่อ + pills + ปุ่มปิด (fixed) ──
         header = QFrame()
-        header.setFixedHeight(44)
-        header.setStyleSheet(f"background-color: {COLOR_CARD}; border-bottom: 1px solid {COLOR_BORDER};")
+        header.setStyleSheet(
+            f"background-color: {CARD}; border-bottom: 1px solid {CARD_BORDER};"
+        )
         h = QHBoxLayout(header)
-        h.setContentsMargins(16, 0, 12, 0)
-        title = QLabel(f"👤 {self.author}")
-        title.setStyleSheet("font-size: 16px; font-weight: 700; color: #f59e0b;")
-        h.addWidget(title)
-        h.addStretch()
+        h.setContentsMargins(14, 12, 10, 12)
+        h.setSpacing(12)
+
+        # ★ avatar วงกลมตัวอักษรแรก
+        avatar = QLabel(self.author[:1].upper() if self.author else "?")
+        avatar.setFixedSize(52, 52)
+        avatar.setAlignment(Qt.AlignCenter)
+        avatar.setStyleSheet(
+            f"background-color: {_avatar_style(self.author)}; color: white; "
+            f"font-size: 24px; font-weight: 800; border-radius: 26px; border: none;"
+        )
+        h.addWidget(avatar)
+
+        name_col = QVBoxLayout()
+        name_col.setSpacing(3)
+        renames = getattr(self.settings, 'user_renames', {}) or {}
+        display = renames.get(self.author.lower(), '') or self.author
+        self.title_label = QLabel(display)
+        self.title_label.setStyleSheet(
+            "font-size: 17px; font-weight: 800; color: #F9FAFB; border: none; background: transparent;")
+        self.title_label.setWordWrap(True)
+        name_col.addWidget(self.title_label)
+        if renames.get(self.author.lower()):
+            sub = QLabel(f"@{self.author}")
+            sub.setStyleSheet("font-size: 11px; color: #6B7280; border: none; background: transparent;")
+            name_col.addWidget(sub)
+        # ★ แถว pills: สถานะบล็อก + แพลตฟอร์ม (เติมทีหลังตอนโหลดข้อมูล)
+        self.pill_row = QHBoxLayout()
+        self.pill_row.setSpacing(5)
+        self.status_pill = QLabel("")
+        self.status_pill.setStyleSheet("border: none; background: transparent;")
+        self.status_pill.setVisible(False)
+        self.pill_row.addWidget(self.status_pill)
+        self.plat_pills_label = QLabel("")
+        self.plat_pills_label.setStyleSheet("border: none; background: transparent;")
+        self.pill_row.addWidget(self.plat_pills_label)
+        self.pill_row.addStretch()
+        name_col.addLayout(self.pill_row)
+        h.addLayout(name_col, 1)
+
         btn_close = QPushButton("✕")
         btn_close.setObjectName("IconButton")
-        btn_close.setFixedSize(32, 32)
-        btn_close.setStyleSheet("font-size: 16px; padding: 0px;")
+        btn_close.setFixedSize(30, 30)
+        # ★ กฎเหล็กปุ่มไอคอนเล็ก: padding:0 + min-height:0
+        btn_close.setStyleSheet(
+            "font-size: 14px; padding: 0; min-height: 0; color: #9CA3AF; "
+            "background: transparent; border: none; border-radius: 5px;")
+        btn_close.setCursor(Qt.PointingHandCursor)
         btn_close.clicked.connect(self.reject)
-        h.addWidget(btn_close)
+        h.addWidget(btn_close, 0, Qt.AlignTop)
         layout.addWidget(header)
 
         # ── Scrollable content ──
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.scroll.setStyleSheet("QScrollArea { border: none; background: #0a0e1a; }")
+        self.scroll.setStyleSheet(f"QScrollArea {{ border: none; background: {BG_DARK}; }}")
         self.container = QWidget()
-        self.container.setStyleSheet("background: #0a0e1a;")
+        self.container.setStyleSheet(f"background: {BG_DARK};")
         self.cl = QVBoxLayout(self.container)
-        self.cl.setContentsMargins(16, 12, 16, 12)
-        self.cl.setSpacing(8)
+        self.cl.setContentsMargins(14, 12, 14, 12)
+        self.cl.setSpacing(10)
         self.scroll.setWidget(self.container)
         layout.addWidget(self.scroll, 1)
 
         # ── Bottom action bar (fixed) ──
         bottom = QFrame()
-        bottom.setFixedHeight(52)
-        bottom.setStyleSheet(f"background-color: {COLOR_CARD}; border-top: 1px solid {COLOR_BORDER};")
+        bottom.setStyleSheet(
+            f"background-color: {CARD}; border-top: 1px solid {CARD_BORDER};")
         bl = QHBoxLayout(bottom)
-        bl.setContentsMargins(16, 0, 16, 0)
+        bl.setContentsMargins(14, 8, 14, 8)
         bl.setSpacing(6)
 
         self.name_input = QLineEdit()
         self.name_input.setPlaceholderText("เปลี่ยนชื่อ...")
-        self.name_input.setFixedHeight(30)
-        self.name_input.setMinimumWidth(80)
+        self.name_input.setFixedHeight(32)
+        self.name_input.setMinimumWidth(70)
+        self.name_input.setStyleSheet(
+            f"QLineEdit {{ background: {BG_DARK}; color: #E5E7EB; border: 1px solid {CARD_BORDER}; "
+            f"border-radius: 6px; padding: 0 8px; font-size: 12px; }}"
+            f"QLineEdit:focus {{ border-color: #7C3AED; }}"
+        )
         renames = getattr(self.settings, 'user_renames', {}) or {}
         self.name_input.setText(renames.get(self.author.lower(), ''))
         bl.addWidget(self.name_input, 1)
 
         self.btn_rename = QPushButton("💾 เปลี่ยนชื่อ")
-        self.btn_rename.setFixedHeight(30)
+        self.btn_rename.setFixedHeight(32)
+        self.btn_rename.setCursor(Qt.PointingHandCursor)
+        self.btn_rename.setStyleSheet(
+            "QPushButton { background: #1E293B; color: #E2E8F0; border: 1px solid #334155; "
+            "border-radius: 6px; padding: 0 10px; font-size: 12px; font-weight: 600; }"
+            "QPushButton:hover { background: #334155; }")
         self.btn_rename.clicked.connect(self._do_rename)
         bl.addWidget(self.btn_rename)
 
         self.btn_block = QPushButton("🚫 บล็อก")
-        self.btn_block.setFixedHeight(30)
+        self.btn_block.setFixedHeight(32)
+        self.btn_block.setCursor(Qt.PointingHandCursor)
         self.btn_block.clicked.connect(self._show_block_menu)
         bl.addWidget(self.btn_block)
 
         self.btn_export = QPushButton("📥 Export")
-        self.btn_export.setFixedHeight(30)
+        self.btn_export.setFixedHeight(32)
+        self.btn_export.setCursor(Qt.PointingHandCursor)
+        self.btn_export.setStyleSheet(
+            "QPushButton { background: #1E293B; color: #E2E8F0; border: 1px solid #334155; "
+            "border-radius: 6px; padding: 0 10px; font-size: 12px; font-weight: 600; }"
+            "QPushButton:hover { background: #334155; }")
         self.btn_export.clicked.connect(self._export_log)
         bl.addWidget(self.btn_export)
         layout.addWidget(bottom)
 
         self._update_block_button()
 
+    # ------------------------------------------------------------------ #
+    # Helpers (visual)
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _pill(text, bg, fg="#FFFFFF"):
+        lbl = QLabel(text)
+        lbl.setStyleSheet(
+            f"background-color: {bg}; color: {fg}; font-size: 10px; font-weight: 700; "
+            f"border-radius: 8px; padding: 1px 8px; border: none;")
+        return lbl
+
+    def _stat_tile(self, icon, value, label):
+        """การ์ดสถิติเล็ก (icon + เลข + คำอธิบาย)"""
+        tile = QFrame()
+        tile.setStyleSheet(
+            f"QFrame {{ background: {CARD}; border: 1px solid {CARD_BORDER}; "
+            f"border-radius: 10px; }}")
+        v = QVBoxLayout(tile)
+        v.setContentsMargins(8, 8, 8, 8)
+        v.setSpacing(2)
+        icon_lbl = QLabel(icon)
+        icon_lbl.setAlignment(Qt.AlignCenter)
+        icon_lbl.setStyleSheet("font-size: 16px; border: none; background: transparent;")
+        val_lbl = QLabel(str(value))
+        val_lbl.setAlignment(Qt.AlignCenter)
+        val_lbl.setStyleSheet(
+            "font-size: 16px; font-weight: 800; color: #F9FAFB; "
+            "border: none; background: transparent;")
+        cap_lbl = QLabel(label)
+        cap_lbl.setAlignment(Qt.AlignCenter)
+        cap_lbl.setStyleSheet(
+            "font-size: 10px; color: #6B7280; border: none; background: transparent;")
+        v.addWidget(icon_lbl)
+        v.addWidget(val_lbl)
+        v.addWidget(cap_lbl)
+        return tile
+
+    def _body_label(self, text, bold=False):
+        lbl = QLabel(text)
+        style = "color: #D1D5DB; font-size: 12px; border: none; background: transparent;"
+        if bold:
+            style += " font-weight: 700; color: #F59E0B;"
+        lbl.setStyleSheet(style)
+        lbl.setWordWrap(True)
+        lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        return lbl
+
+    # ------------------------------------------------------------------ #
+    # Data loading
+    # ------------------------------------------------------------------ #
     def _load_data(self):
-        """โหลดข้อมูลทั้งหมด — แต่ละ section สร้างเสมอ (ถ้าไม่มีข้อมูลแสดงว่าง)"""
         app = self.parent_app
         author = self.author
 
-        # ── ดึงข้อมูล ──
         msg_count = 0
         platforms = set()
         if app and hasattr(app, 'message_history') and app.message_history:
@@ -165,32 +299,39 @@ class AuthorModal(QDialog):
             except Exception:
                 pass
 
-        # ═══ SECTION 1: สถิติ (เสมอ) ═══
-        s1, l1 = _make_section("📊 สถิติ")
-        plat_str = f" · 📺 {' · '.join(sorted(platforms))}" if platforms else ""
-        l1.addWidget(self._body_label(f"💬 {msg_count} ข้อความ{plat_str}"))
-        if events:
-            event_counts = {}
-            for e in events:
-                event_counts[e.event] = event_counts.get(e.event, 0) + 1
+        # ═══ Hero: platform pills ═══
+        if platforms:
+            self.plat_pills_label.setText("  ".join(
+                f"● {p.upper()}" for p in sorted(platforms)))
+            # ★ ใส่สีด้วย rich text (QLabel เดียวหลายสี)
             parts = []
-            for ev, cnt in sorted(event_counts.items(), key=lambda x: -x[1]):
-                icon = EVENT_ICONS.get(ev, '🎉')
-                parts.append(f"{icon} {ev} ×{cnt}")
-            l1.addWidget(self._body_label("🎉 " + " · ".join(parts)))
-        else:
-            l1.addWidget(self._body_label("🎉 ยังไม่มี event"))
-        self.cl.addWidget(s1)
+            for p in sorted(platforms):
+                color = PLATFORM_COLORS.get(p, ('#6B7280',))[0]
+                parts.append(
+                    f"<span style='background-color:{color}; color:#FFFFFF; "
+                    f"font-size:10px; font-weight:700; border-radius:8px; "
+                    f"padding:1px 8px;'>&nbsp;{p.upper()}&nbsp;</span>")
+            self.plat_pills_label.setTextFormat(Qt.RichText)
+            self.plat_pills_label.setText("&nbsp;".join(parts))
 
-        # ═══ SECTION 2: Donation (เสมอ) ═══
-        s2, l2 = _make_section("💎 Donation")
+        # ═══ Stat tiles: ข้อความ / events / donation รวม ═══
+        total_donate = donate.get('total_donate_count', 0) if donate else 0
+        tiles = QGridLayout()
+        tiles.setSpacing(8)
+        tiles.addWidget(self._stat_tile("💬", msg_count, "ข้อความ"), 0, 0)
+        tiles.addWidget(self._stat_tile("🎉", len(events), "อีเวนต์"), 0, 1)
+        tiles.addWidget(self._stat_tile("💰", total_donate, "สนับสนุน (ครั้ง)"), 0, 2)
+        self.cl.addLayout(tiles)
+
+        # ═══ SECTION: Donation ═══
+        s2, l2 = _make_section("💎 การสนับสนุน")
         has_donate = False
-        for plat, fields in sorted(donate.items()):
+        for plat, fields in sorted((donate or {}).items()):
             if plat == 'total_donate_count':
                 continue
             parts = []
             for field, value in sorted(fields.items()):
-                if not value:
+                if not value or field == 'gift_count':
                     continue
                 if field == 'bits':
                     parts.append(f"{value} bits")
@@ -204,58 +345,69 @@ class AuthorModal(QDialog):
                     parts.append(f"{value} membership")
                 elif field == 'gift_diamonds':
                     parts.append(f"{value} diamonds")
-                elif field == 'gift_count':
-                    continue
                 else:
                     parts.append(f"{value} {field}")
             if parts:
-                l2.addWidget(self._body_label(f"  {plat}: {' · '.join(parts)}"))
+                plat_color = PLATFORM_COLORS.get(plat, ('#374151', '#FFFFFF'))[0]
+                row = QHBoxLayout()
+                row.setSpacing(6)
+                row.addWidget(self._pill(plat.upper(), plat_color))
+                row.addWidget(self._body_label(" · ".join(parts)), 1)
+                l2.addLayout(row)
                 has_donate = True
-        total = donate.get('total_donate_count', 0)
-        if total:
-            l2.addWidget(self._body_label(f"  📊 รวม {total} ครั้ง", bold=True))
+        if total_donate:
+            l2.addWidget(self._body_label(f"รวมทั้งหมด {total_donate} ครั้ง", bold=True))
             has_donate = True
         if events:
-            btn_dh = QPushButton("📋 ดูประวัติ Donation ทั้งหมด")
-            btn_dh.setStyleSheet("color: #06b6d4; font-size: 12px; border: none; text-align: left; padding: 2px 0;")
+            btn_dh = QPushButton("📋 ดูประวัติทั้งหมด")
+            btn_dh.setStyleSheet(
+                "color: #06B6D4; font-size: 12px; border: none; padding: 0; "
+                "min-height: 0; text-align: left;")
             btn_dh.setCursor(Qt.PointingHandCursor)
             btn_dh.clicked.connect(self._show_donate_history)
             l2.addWidget(btn_dh)
         if not has_donate:
-            l2.addWidget(self._body_label("  ยังไม่มี donation"))
+            l2.addWidget(self._body_label("ยังไม่มีบันทึกการสนับสนุน"))
         self.cl.addWidget(s2)
 
-        # ═══ SECTION 3: ข้อความล่าสุด (เสมอ) ═══
-        s3, l3 = _make_section(f"📝 ข้อความล่าสุด ({min(self._msg_limit, self._msg_total)} of {self._msg_total})")
+        # ═══ SECTION: Events (แยกจาก stat — แสดงเฉพาะมีข้อมูล) ═══
+        if events:
+            event_counts = {}
+            for e in events:
+                event_counts[e.event] = event_counts.get(e.event, 0) + 1
+            s4, l4 = _make_section("🏆 กิจกรรม")
+            row = QHBoxLayout()
+            row.setSpacing(6)
+            for ev, cnt in sorted(event_counts.items(), key=lambda x: -x[1])[:6]:
+                icon = EVENT_ICONS.get(ev, '🎉')
+                w = QLabel(f"{icon} {cnt}")
+                w.setAlignment(Qt.AlignCenter)
+                w.setStyleSheet(
+                    f"background-color: {BG_DARK}; color: #D1D5DB; font-size: 12px; "
+                    f"font-weight: 700; border-radius: 8px; padding: 3px 8px; border: none;")
+                row.addWidget(w)
+            row.addStretch()
+            l4.addLayout(row)
+            self.cl.addWidget(s4)
+
+        # ═══ SECTION: ข้อความล่าสุด ═══
+        s3, l3 = _make_section(f"📝 ข้อความล่าสุด ({min(self._msg_limit, self._msg_total)} / {self._msg_total})")
         self._msg_container = QVBoxLayout()
-        self._msg_container.setSpacing(2)
+        self._msg_container.setSpacing(4)
         l3.addLayout(self._msg_container)
-        self.btn_load_more = QPushButton("📥 load more +20")
-        self.btn_load_more.setStyleSheet("color: #06b6d4; font-size: 12px; border: none; padding: 2px;")
+        self.btn_load_more = QPushButton("📥 โหลดเพิ่ม +20")
+        self.btn_load_more.setStyleSheet(
+            "color: #06B6D4; font-size: 12px; border: none; padding: 0; min-height: 0;")
         self.btn_load_more.setCursor(Qt.PointingHandCursor)
         self.btn_load_more.clicked.connect(self._load_more_messages)
         l3.addWidget(self.btn_load_more)
         self.cl.addWidget(s3)
 
-        # โหลดข้อความ
         self._load_messages()
-
-        # ★ spacer ด้านล่างสุด
         self.cl.addStretch()
 
-    def _body_label(self, text, bold=False):
-        """สร้าง label สำหรับ body text — word wrap + fixed width"""
-        lbl = QLabel(text)
-        style = SECTION_BODY_STYLE
-        if bold:
-            style += " font-weight: 600; color: #f59e0b;"
-        lbl.setStyleSheet(style)
-        lbl.setWordWrap(True)
-        lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        return lbl
-
     def _load_messages(self):
-        """โหลดข้อความลงใน history section"""
+        """โหลดข้อความลงใน history section — สไตล์ chat bubble"""
         app = self.parent_app
         messages = []
         if app and hasattr(app, 'message_history') and app.message_history:
@@ -267,8 +419,10 @@ class AuthorModal(QDialog):
                 pass
 
         if not messages and self._msg_offset == 0:
-            empty = QLabel("  ยังไม่มีข้อความ")
-            empty.setStyleSheet(SECTION_BODY_STYLE + " color: #6b7280;")
+            empty = QLabel("ยังไม่มีข้อความ")
+            empty.setStyleSheet(
+                "color: #4B5563; font-size: 12px; border: none; "
+                "background: transparent; padding: 4px;")
             self._msg_container.addWidget(empty)
             self.btn_load_more.setVisible(False)
             return
@@ -277,15 +431,30 @@ class AuthorModal(QDialog):
             plat = msg.get('platform', '?')
             text = msg.get('text', '')
             emotes = msg.get('emotes', '')
-            # ★ ถ้า text ว่าง แต่มี emotes → แสดงชื่อ emote
             if not text and emotes:
                 text = f"🖼️ {emotes}"
             elif not text:
                 text = "(ว่าง)"
-            row = QLabel(f"  [{plat}] {text}")
-            row.setStyleSheet("color: #d1d5db; font-size: 12px;")
-            row.setWordWrap(True)
-            self._msg_container.addWidget(row)
+            bubble = QFrame()
+            bubble.setStyleSheet(
+                f"QFrame {{ background: {BG_DARK}; border: 1px solid {CARD_BORDER}; "
+                f"border-left: 3px solid {PLATFORM_COLORS.get(plat, ('#6B7280',))[0]}; "
+                f"border-radius: 6px; }}")
+            bl = QHBoxLayout(bubble)
+            bl.setContentsMargins(8, 5, 8, 5)
+            bl.setSpacing(6)
+            tag = QLabel(plat.upper())
+            tag.setStyleSheet(
+                f"color: {PLATFORM_COLORS.get(plat, ('#6B7280',))[0]}; font-size: 9px; "
+                f"font-weight: 800; border: none; background: transparent;")
+            tag.setFixedWidth(44)
+            bl.addWidget(tag, 0, Qt.AlignTop)
+            body = QLabel(text)
+            body.setStyleSheet(
+                "color: #E5E7EB; font-size: 12px; border: none; background: transparent;")
+            body.setWordWrap(True)
+            bl.addWidget(body, 1)
+            self._msg_container.addWidget(bubble)
 
         self.btn_load_more.setVisible(self._msg_offset + self._msg_limit < self._msg_total)
 
@@ -293,6 +462,9 @@ class AuthorModal(QDialog):
         self._msg_offset += self._msg_limit
         self._load_messages()
 
+    # ------------------------------------------------------------------ #
+    # Actions (logic เดิม — ไม่แตะ)
+    # ------------------------------------------------------------------ #
     def _show_donate_history(self):
         """แสดงหน้าประวัติ donation"""
         app = self.parent_app
@@ -313,6 +485,7 @@ class AuthorModal(QDialog):
         dlg.setWindowTitle(f"💎 ประวัติ Donation: {self.author}")
         dlg.setFixedWidth(480)
         dlg.setMinimumHeight(350)
+        dlg.setStyleSheet(f"QDialog {{ background: {BG_DARK}; }}")
         dl = QVBoxLayout(dlg)
         dl.setContentsMargins(16, 16, 16, 16)
         dl.setSpacing(4)
@@ -372,6 +545,8 @@ class AuthorModal(QDialog):
         except Exception:
             pass
         QMessageBox.information(self, "เปลี่ยนชื่อ", f"เปลี่ยนชื่อ {self.author} → {new_name}")
+        # ★ sync ชื่อที่แสดงใน header ทันที
+        self.title_label.setText(new_name)
 
     def _show_block_menu(self):
         menu = QMenu(self)
@@ -428,13 +603,32 @@ class AuthorModal(QDialog):
         status = self._get_block_status()
         if status == "block_all":
             self.btn_block.setText("🚫 บล็อกอยู่")
-            self.btn_block.setStyleSheet("background-color: #ef4444; color: white; font-weight: 600; border: none; border-radius: 4px;")
+            self.btn_block.setStyleSheet(
+                "background-color: #ef4444; color: white; font-weight: 700; border: none; "
+                "border-radius: 6px; padding: 0 10px; font-size: 12px;")
+            pill_text, pill_bg = "บล็อกทั้งหมด", "#ef4444"
         elif status == "block_tts":
             self.btn_block.setText("🔇 บล็อก TTS")
-            self.btn_block.setStyleSheet("background-color: #f59e0b; color: white; font-weight: 600; border: none; border-radius: 4px;")
+            self.btn_block.setStyleSheet(
+                "background-color: #f59e0b; color: white; font-weight: 700; border: none; "
+                "border-radius: 6px; padding: 0 10px; font-size: 12px;")
+            pill_text, pill_bg = "บล็อก TTS", "#f59e0b"
         else:
             self.btn_block.setText("🚫 บล็อก")
-            self.btn_block.setStyleSheet("")
+            self.btn_block.setStyleSheet(
+                "QPushButton { background: #1E293B; color: #E2E8F0; border: 1px solid #334155; "
+                "border-radius: 6px; padding: 0 10px; font-size: 12px; font-weight: 600; }"
+                "QPushButton:hover { background: #334155; }")
+            pill_text, pill_bg = "", ""
+        # ★ sync pill สถานะใน header
+        if pill_text:
+            self.status_pill.setText(pill_text)
+            self.status_pill.setStyleSheet(
+                f"background-color: {pill_bg}; color: white; font-size: 10px; font-weight: 700; "
+                f"border-radius: 8px; padding: 1px 8px; border: none;")
+            self.status_pill.setVisible(True)
+        else:
+            self.status_pill.setVisible(False)
 
     def _export_log(self):
         app = self.parent_app

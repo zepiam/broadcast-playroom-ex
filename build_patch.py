@@ -19,7 +19,7 @@ patch ประกอบด้วย:
   - *.html (overlay, game_overlay, playroom)
   - *.json (neon, version)
   - assets/ (logo, fonts, icon)
-  - exe (Broadcast Playroom Lite.exe หรือ BroadcastPlayroom_Full.exe)
+  - exe (Broadcast Playroom Lite.exe หรือ Broadcast Playroom Full.exe)
 
 full ประกอบด้วย:
   - ทั้งโฟลเดอร์ dist/BroadcastPlayroom_*/
@@ -35,9 +35,9 @@ from pathlib import Path
 
 
 # ── ⚠️ เปลี่ยนเป็น GitHub repo ของคุณ (format: user/repo) ──
-GITHUB_REPO = "zepiam/broadcast-playroom"
+GITHUB_REPO = "zepiam/broadcast-playroom-ex"
 # URL สำหรับ major update (Lite → GitHub, Full → Google Drive เพราะใหญ่เกิน 2GB)
-FULL_DOWNLOAD_PAGE = "https://men9ch.com/broadcast-playroom/"
+FULL_DOWNLOAD_PAGE = "https://men9ch.com/broadcast-playroom-v2/"
 
 
 # ── ไฟล์ที่จะรวมใน patch (delta update — เล็ก ~20-50MB) ──
@@ -63,13 +63,13 @@ PATCH_PATTERNS = [
 # ไฟล์ที่จะแยกต่างหาก (ไม่ glob) — exe
 EXE_NAMES = {
     "lite": "Broadcast Playroom Lite.exe",
-    "full": "BroadcastPlayroom_Full.exe",
+    "full": "Broadcast Playroom Full.exe",
 }
 
 # ชื่อโฟลเดอร์ใน dist/ หลัง build (อาจมี space ได้)
 DIST_FOLDER = {
     "lite": "Broadcast Playroom Lite",
-    "full": "BroadcastPlayroom_Full",
+    "full": "Broadcast Playroom Full",
 }
 
 
@@ -128,14 +128,22 @@ def pack_patch(build_type: str) -> str:
         #    เพื่อให้ตอน xcopy ไฟล์ไปถูกที่ (exe → root, *.py/html/json → _internal/)
         internal = dist_dir / "_internal"
         for pattern in PATCH_PATTERNS:
-            if "/" in pattern or "**" in pattern:
-                # recursive pattern — ค้นใน _internal
-                base_dir = internal
-                if pattern.startswith("assets/"):
-                    base_dir = internal
-                for fpath in base_dir.glob(pattern):
+            if pattern.endswith("/**"):
+                # ★ recursive pattern เช่น "assets/**" — Path.glob("assets/**") คืนแต่
+                #   directory (bug เงียบๆ: patch ไม่เคยแนบไฟล์ assets เลย) → ใช้ rglob
+                sub_dir = internal / pattern[:-3]
+                if sub_dir.is_dir():
+                    for fpath in sub_dir.rglob("*"):
+                        if fpath.is_file():
+                            rel = fpath.relative_to(internal)
+                            arcname = str(Path("_internal") / rel)
+                            zf.write(fpath, arcname)
+                            total_size += fpath.stat().st_size
+                            count += 1
+            elif "/" in pattern or "**" in pattern:
+                # recursive pattern อื่น — ค้นใน _internal
+                for fpath in internal.glob(pattern):
                     if fpath.is_file():
-                        # เก็บ path สัมพัทธ์ใต้ _internal แล้วเติม _internal/ นำหน้า
                         rel = fpath.relative_to(internal)
                         arcname = str(Path("_internal") / rel)
                         zf.write(fpath, arcname)
@@ -156,7 +164,11 @@ def pack_patch(build_type: str) -> str:
 
 
 def pack_full(build_type: str) -> str:
-    """สร้าง full zip — คืน path ของไฟล์"""
+    """สร้าง full zip — คืน path ของไฟล์
+
+    ★ ห้ามรวม data/ (dev settings ของเครื่อง build — มี OAuth token ของ dev!)
+      exe ของ user จะสร้าง data/ เองตอนรัน (portable mode → ว่างเปล่า)
+    """
     dist_dir = Path("dist") / DIST_FOLDER[build_type]
     out_path = Path(f"release/full_{build_type}.zip")
 
@@ -164,41 +176,73 @@ def pack_full(build_type: str) -> str:
         print(f"❌ ไม่พบ dist folder: {dist_dir}")
         sys.exit(1)
 
+    # ★ เคลียร์ dev settings ที่หลุดมากับการรัน exe เทส (กันข้อมูล sensitive หลุดไปกับ zip)
+    leaked_data = dist_dir / "data"
+    if leaked_data.exists():
+        import shutil
+        shutil.rmtree(leaked_data, ignore_errors=True)
+        print(f"🗑️  ลบ dev data/ ออกจาก {dist_dir} (กัน OAuth token หลุด)")
+
     out_path.parent.mkdir(parents=True, exist_ok=True)
     if out_path.exists():
         out_path.unlink()
 
     print(f"📦 สร้าง full {build_type} zip... (อาจใช้เวลานาน)")
-    # ใช้ PowerShell Compress-Archive (เร็วกว่า Python zipfile สำหรับไฟล์ใหญ่)
-    ps_cmd = f"Compress-Archive -Path '{dist_dir}/*' -DestinationPath '{out_path}' -Force"
-    result = subprocess.run(
-        ["powershell", "-NoProfile", "-Command", ps_cmd],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        print(f"❌ PowerShell error: {result.stderr}")
-        sys.exit(1)
+    # ★ ใช้ 7-Zip (เร็วกว่า PowerShell มากสำหรับไฟล์ใหญ่) + exclude data/
+    sevenzip = Path("C:/Program Files/7-Zip/7z.exe")
+    if sevenzip.exists():
+        result = subprocess.run(
+            [str(sevenzip), "a", "-tzip", str(out_path), str(dist_dir) + "/",
+             "-xr!data"],  # exclude data/ ทุกระดับ
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            print(f"❌ 7-Zip error: {result.stderr}")
+            sys.exit(1)
+    else:
+        # fallback — Python zipfile (เลือกไฟล์เอง ข้าม data/)
+        with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED, compresslevel=1) as zf:
+            for fpath in dist_dir.rglob("*"):
+                if fpath.is_file() and "data" not in fpath.relative_to(dist_dir).parts[:1]:
+                    zf.write(fpath, fpath.relative_to(dist_dir.parent))
 
     size_mb = out_path.stat().st_size / 1024 / 1024
     print(f"✅ สร้าง full zip เสร็จ: {out_path} ({size_mb:.1f} MB)")
     return str(out_path)
 
 
+def _sha256_of(path: Path) -> str:
+    """คำนวณ SHA-256 ของไฟล์ (สำหรับใส่ version.json → updater ตรวจหลังโหลด)"""
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(65536)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def make_remote_version() -> str:
     """สร้าง remote_version.json สำหรับ GitHub
 
     อ่าน URL อัตโนมัติจาก GITHUB_REPO + ขนาดจาก release/patch_*.zip จริง
+    ★ ใส่ sha256 ของ patch แต่ละตัว — updater เวอร์ชันใหม่ตรวจหลังโหลด (กัน zip ปลอม/ถูกแก้)
+      (updater เวอร์ชันเก่าไม่สน field นี้ — ยังอัพเดทได้ปกติ)
     """
     version = _read_local_version()
     changelog = _read_changelog()
-    base = f"https://github.com/{GITHUB_REPO}/releases/download/latest"
+    base = f"https://github.com/{GITHUB_REPO}/releases/download/v{version}"
 
-    # อ่านขนาด patch จริง (ถ้ามี)
+    # อ่านขนาด + hash ของ patch จริง (ถ้ามี)
     patch_sizes = {}
+    patch_hashes = {}
     for bt in ("lite", "full"):
         p = Path(f"release/patch_{bt}.zip")
         if p.exists():
             patch_sizes[bt] = p.stat().st_size
+            patch_hashes[bt] = _sha256_of(p)
 
     remote = {
         "version": version,
@@ -207,11 +251,13 @@ def make_remote_version() -> str:
             "type": "patch" if "lite" in patch_sizes else "major",
             "url": f"{base}/patch_lite.zip" if "lite" in patch_sizes else FULL_DOWNLOAD_PAGE,
             "size": patch_sizes.get("lite", 0),
+            "sha256": patch_hashes.get("lite", ""),
         },
         "full": {
             "type": "patch" if "full" in patch_sizes else "major",
             "url": f"{base}/patch_full.zip" if "full" in patch_sizes else FULL_DOWNLOAD_PAGE,
             "size": patch_sizes.get("full", 0),
+            "sha256": patch_hashes.get("full", ""),
         },
     }
 

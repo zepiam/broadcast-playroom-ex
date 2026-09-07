@@ -1,5 +1,5 @@
 """popout.py — Popout chat window (แยกจอ)"""
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtWidgets import (
     QDialog, QWidget, QFrame, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
     QScrollArea,
@@ -57,6 +57,11 @@ class PopoutWindow(QDialog):
         self.scroll.setWidget(self.container)
         layout.addWidget(self.scroll, 1)
 
+        # ★ timer อัปเดตตัวนับวินาทีรอคิว TTS ริมข้อความ (เหมือน chat_panel)
+        self._tts_wait_timer = QTimer(self)
+        self._tts_wait_timer.timeout.connect(self._refresh_tts_waits)
+        self._tts_wait_timer.start(1000)
+
     def add_message(self, msg, font_size=None):
         """เพิ่มข้อความเข้า popout — ใหม่สุดอยู่บน"""
         fs = font_size or getattr(self, '_current_font_size', 14)
@@ -82,6 +87,26 @@ class PopoutWindow(QDialog):
         for row in self._rows:
             row.deleteLater()
         self._rows.clear()
+
+    # ★ TTS status — เหมือน chat_panel (ไอคอนริมข้อความ)
+    def update_tts_status(self, tts_id: str, status: str, info: dict | None = None):
+        if not tts_id:
+            return
+        for row in self._rows:
+            try:
+                extra = getattr(getattr(row, 'msg', None), 'extra', None) or {}
+                if extra.get("_tts_id") == tts_id:
+                    row.set_tts_status(status, info)
+                    return
+            except Exception:
+                continue
+
+    def _refresh_tts_waits(self):
+        for row in self._rows:
+            try:
+                row.refresh_tts_wait()
+            except Exception:
+                pass
 
     def update_viewers(self, total):
         self.viewers_label.setText(f"👥 {total:,}")

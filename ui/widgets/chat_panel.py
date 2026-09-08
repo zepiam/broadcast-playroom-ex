@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QFrame, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QScrollArea,
     QWidget, QSizePolicy, QMenu, QWidgetAction, QSlider, QLineEdit, QCheckBox,
 )
-from ui.theme import COLOR_CARD, COLOR_TEXT_DIM, COLOR_BORDER
+import ui.theme as theme  # ★ อ้าง theme.COLOR_X สดตอนสร้าง widget (ตามธีมที่เลือกไว้จริง)
 from ui.widgets.chat_row import ChatRow
 
 
@@ -41,7 +41,7 @@ class ChatPanel(QFrame):
         # ★ Header
         header = QFrame()
         header.setFixedHeight(36)
-        header.setStyleSheet(f"background-color: {COLOR_CARD}; border-bottom: 1px solid {COLOR_BORDER};")
+        header.setStyleSheet(f"background-color: {theme.COLOR_CARD}; border-bottom: 1px solid {theme.COLOR_BORDER};")
         hlayout = QHBoxLayout(header)
         hlayout.setContentsMargins(12, 0, 8, 0)
         hlayout.setSpacing(6)
@@ -159,7 +159,8 @@ class ChatPanel(QFrame):
         self._input_bar = QFrame()
         self._input_bar.setObjectName("ChatInputBar")
         self._input_bar.setStyleSheet(
-            "QFrame#ChatInputBar { background: #0f172a; border-top: 1px solid #334155; }"
+            f"QFrame#ChatInputBar {{ background: {theme.COLOR_BG_DARK}; "
+            f"border-top: 1px solid {theme.COLOR_BORDER}; }}"
         )
         input_outer = QVBoxLayout(self._input_bar)
         input_outer.setContentsMargins(8, 4, 8, 6)
@@ -228,9 +229,10 @@ class ChatPanel(QFrame):
         self.input_field = QLineEdit()
         self.input_field.setPlaceholderText("พิมพ์ข้อความ... (Enter = ส่ง)")
         self.input_field.setStyleSheet(
-            "QLineEdit { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; "
+            f"QLineEdit {{ background: {theme.COLOR_CARD_HI}; color: {theme.COLOR_TEXT}; "
+            f"border: 1px solid {theme.COLOR_BORDER_LIGHT}; "
             "border-radius: 6px; padding: 6px 10px; font-size: 13px; }"
-            "QLineEdit:focus { border-color: #7c3aed; }"
+            f"QLineEdit:focus {{ border-color: {theme.COLOR_ACCENT}; }}"
         )
         self.input_field.returnPressed.connect(self._on_send_clicked)
 
@@ -238,10 +240,10 @@ class ChatPanel(QFrame):
         self.btn_send.setFixedHeight(32)
         self.btn_send.setCursor(Qt.PointingHandCursor)
         self.btn_send.setStyleSheet(
-            "QPushButton { background: #7c3aed; color: white; border: none; "
+            f"QPushButton {{ background: {theme.COLOR_ACCENT}; color: white; border: none; "
             "border-radius: 6px; padding: 0 16px; font-weight: 600; }"
-            "QPushButton:hover { background: #6d28d9; }"
-            "QPushButton:pressed { background: #5b21b6; }"
+            f"QPushButton:hover {{ background: {theme.COLOR_ACCENT_HOVER}; }}"
+            f"QPushButton:pressed {{ background: {theme.COLOR_ACCENT_HOVER}; }}"
         )
         self.btn_send.clicked.connect(self._on_send_clicked)
 

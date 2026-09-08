@@ -5,10 +5,7 @@ from PySide6.QtWidgets import (
     QFrame, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QScrollArea,
     QWidget, QComboBox, QSlider, QSizePolicy,
 )
-from ui.theme import (
-    COLOR_CARD, COLOR_CARD_HI, COLOR_HEADING,
-    COLOR_TEXT, COLOR_TEXT_DIM, COLOR_BORDER,
-)
+import ui.theme as theme  # ★ อ้าง theme.COLOR_X สดตอนสร้าง widget (ตามธีมที่เลือกไว้จริง)
 
 
 class _ConstrainedScrollArea(QScrollArea):
@@ -417,7 +414,7 @@ class Sidebar(QFrame):
         # ★ Separator
         sep = QFrame()
         sep.setFixedHeight(1)
-        sep.setStyleSheet(f"background-color: {COLOR_BORDER};")
+        sep.setStyleSheet(f"background-color: {theme.COLOR_BORDER};")
         clayout.addWidget(sep)
 
         # ★ Voice header — เหลือแค่หัวข้อ (สถานะย้ายไปใต้ RVC combo แล้ว)
@@ -534,7 +531,7 @@ class Sidebar(QFrame):
         # ★ Separator ก่อนปุ่ม action (ทดสอบ / ดาวน์โหลด / รีเฟรช)
         voice_sep = QFrame()
         voice_sep.setFixedHeight(1)
-        voice_sep.setStyleSheet(f"background-color: {COLOR_BORDER};")
+        voice_sep.setStyleSheet(f"background-color: {theme.COLOR_BORDER};")
         clayout.addWidget(voice_sep)
 
         # ★ Voice buttons — text labels: ทดสอบฟัง | ดาวโหลดโมเดลเสียง
@@ -557,7 +554,7 @@ class Sidebar(QFrame):
         # ★ Separator ก่อน sliders
         sep2 = QFrame()
         sep2.setFixedHeight(1)
-        sep2.setStyleSheet(f"background-color: {COLOR_BORDER};")
+        sep2.setStyleSheet(f"background-color: {theme.COLOR_BORDER};")
         clayout.addWidget(sep2)
 
         # ★ Volume slider (label + value on right)

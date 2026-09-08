@@ -12,6 +12,25 @@ from PySide6.QtWidgets import (
     QButtonGroup, QRadioButton,
     QTableWidget, QTableWidgetItem,
 )
+import ui.theme as theme  # ★ อ้าง theme.COLOR_X สดตอน build/re-theme (ไม่ใช่ from-import ตายตัว)
+
+
+class _ContentStack(QStackedWidget):
+    """QStackedWidget ที่ sizeHint ตาม "หน้าปัจจุบัน" เท่านั้น
+
+    ★ ค่า default ของ Qt คือ sizeHint/minimumSizeHint ของ QStackedWidget = ค่ามากสุด
+    ของทุกหน้าที่เคยเพิ่มเข้ากอง (กันหน้าต่างสั่นตอนสลับหน้า) — ผลข้างเคียงคือหน้าที่
+    เนื้อหาน้อยนิดเดียว (เช่น Theme, Canvas) ก็โดน QScrollArea ที่ห่ออยู่คำนวณพื้นที่
+    ตามหน้าที่ยาวที่สุดในกอง (เช่น Chat Bot) เลยมี scrollbar ค้างทั้งที่เนื้อหาไม่พอเลื่อน
+    """
+
+    def sizeHint(self):
+        w = self.currentWidget()
+        return w.sizeHint() if w is not None else super().sizeHint()
+
+    def minimumSizeHint(self):
+        w = self.currentWidget()
+        return w.minimumSizeHint() if w is not None else super().minimumSizeHint()
 
 
 class _ClickableLabel(QLabel):
@@ -69,7 +88,33 @@ class SettingsDialog(QDialog):
             for child in self.findChildren(QWidget):
                 child.updateGeometry()
             self.update()
+            self._resize_stack_to_current()
         QTimer.singleShot(0, _force_refresh)
+
+    def resizeEvent(self, event):
+        """★ ลาก resize หน้าต่าง Settings → คำนวณความสูงหน้าปัจจุบันใหม่ตาม viewport ใหม่"""
+        super().resizeEvent(event)
+        self._resize_stack_to_current()
+
+    def _resize_stack_to_current(self):
+        """บังคับความสูง content_stack ให้พอดีกับ "หน้าปัจจุบัน" เท่านั้น
+
+        ★ เจอจริงว่า QScrollArea (widgetResizable=True) ไม่ query sizeHint()/
+        minimumSizeHint() ของ QStackedWidget ใหม่เองตอนสลับหน้า (แม้ override
+        ทั้งสองเมธอดแล้ว + ลอง updateGeometry()/LayoutRequest event/nudge resize
+        ก็ไม่ช่วย) → มันค้างใช้ความสูงของหน้าที่ยาวที่สุดที่เคยโชว์ตลอดไป
+        ทำให้ทุกหน้ามี scrollbar เท่าหน้าที่ยาวสุด (เช่น 🤖 Chat Bot) แม้เนื้อหาน้อยนิดเดียว
+        วิธีแก้ที่ยืนยันแล้วว่าได้ผลจริง (ทดสอบ headless): บังคับ setFixedHeight()
+        ตรงๆ ตาม sizeHint ของหน้าปัจจุบัน (หรือเท่า viewport ถ้าเนื้อหาน้อยกว่า viewport)
+        """
+        widget = self.content_stack.currentWidget()
+        if widget is None:
+            return
+        vp_h = self.content_scroll.viewport().height()
+        if vp_h <= 0:
+            vp_h = self.content_scroll.height()  # ★ fallback ตอนยังไม่ show จริง (viewport = 0)
+        target_h = max(widget.sizeHint().height(), vp_h)
+        self.content_stack.setFixedHeight(target_h)
 
     def _build_ui(self):
         # ★ Layout structure (สะอาด — ไม่ย้าย layout ภายหลัง):
@@ -90,31 +135,11 @@ class SettingsDialog(QDialog):
         self.sidebar = QListWidget()
         self.sidebar.setFixedWidth(220)
         self.sidebar.setObjectName("SettingsSidebar")
-        self.sidebar.setStyleSheet("""
-            QListWidget {
-                background-color: #060912;
-                border: none;
-                border-right: 1px solid #2a2f45;
-                outline: none;
-                padding: 8px 0;
-            }
-            QListWidget::item {
-                padding: 12px 16px;
-                color: #9ca3af;
-                border: none;
-            }
-            QListWidget::item:selected {
-                background-color: #131726;
-                color: #7c3aed;
-                border-left: 3px solid #7c3aed;
-            }
-            QListWidget::item:hover {
-                background-color: #131726;
-            }
-        """)
+        self._apply_sidebar_theme_qss()
         categories = [
             ("🔌 แพลตฟอร์ม", "platforms"),
             ("🔊 TTS", "tts"),
+            ("🎨 Theme", "app_theme"),
             ("🌐 การแปล", "translate"),
             ("🎮 Playroom", "playroom"),
             ("🎨 Canvas", "canvas"),
@@ -126,7 +151,6 @@ class SettingsDialog(QDialog):
             ("🎟 โค้ดลับ", "secret_code"),
             ("🪟 Overlay+", "overlay_plus"),
             ("🤖 Chat Bot", "twitch_bot"),
-            ("📢 ประกาศถึงผู้ใช้", "announce"),
             ("💚 สนับสนุน", "supporters"),
             ("ℹ️ เกี่ยวกับ", "about"),
         ]
@@ -152,7 +176,7 @@ class SettingsDialog(QDialog):
         self.content_scroll = QScrollArea()
         self.content_scroll.setWidgetResizable(True)
         self.content_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.content_stack = QStackedWidget()
+        self.content_stack = _ContentStack()
         self.content_stack.setMinimumWidth(640)
         self.content_stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.content_scroll.setWidget(self.content_stack)
@@ -164,6 +188,7 @@ class SettingsDialog(QDialog):
         self._sections = {}
         self._build_platforms_section()
         self._build_tts_section()
+        self._build_theme_section()
         self._build_translate_section()
         self._build_playroom_section()
         self._build_canvas_section()
@@ -175,7 +200,8 @@ class SettingsDialog(QDialog):
         self._build_secret_code_section()
         self._build_overlay_plus_section()
         self._build_twitch_bot_section()
-        self._build_announce_section()
+        # ★ _build_announce_section() ถอดออกจาก UI แล้ว — เครื่องมือ dev เท่านั้น
+        #   (ยังใช้งานได้ผ่าน announce_sender.py แยกต่างหาก ไม่ควรให้ end user เห็นในนี้)
         self._build_supporters_section()
         self._build_about_section()
 
@@ -184,8 +210,11 @@ class SettingsDialog(QDialog):
 
         # ★ Bottom bar (ปุ่มปิดอย่างเดียว — auto-save ทำงาน live)
         bottom = QFrame()
+        self._bottom_bar = bottom
         bottom.setFixedHeight(50)
-        bottom.setStyleSheet("background-color: #131726; border-top: 1px solid #2a2f45;")
+        bottom.setStyleSheet(
+            f"background-color: {theme.COLOR_CARD}; border-top: 1px solid {theme.COLOR_BORDER};"
+        )
         bottom_layout = QHBoxLayout(bottom)
         bottom_layout.setContentsMargins(20, 0, 20, 0)
         # ★ auto-save hint
@@ -257,12 +286,53 @@ class SettingsDialog(QDialog):
         widget = self._sections.get(key)
         if widget:
             self.content_stack.setCurrentWidget(widget)
+            # ★ บังคับความสูง content_stack ให้พอดีกับหน้าที่เพิ่งสลับไป (ไม่งั้น
+            #   ค้างความสูงของหน้าที่ยาวที่สุดที่เคยโชว์ — ดู _resize_stack_to_current ทำไม)
+            self._resize_stack_to_current()
             # ★ sync sidebar — หา row ที่ตรงกับ key แล้วไฮไลท์
             for i in range(self.sidebar.count()):
                 item = self.sidebar.item(i)
                 if item and item.data(Qt.UserRole) == key:
                     self.sidebar.setCurrentRow(i)
                     break
+
+    def _apply_sidebar_theme_qss(self):
+        """สไตล์ sidebar หมวดหมู่ (ซ้ายสุดของ Settings) ตามธีมปัจจุบัน — เรียกซ้ำได้เวลาเปลี่ยนธีมสด"""
+        self.sidebar.setStyleSheet(f"""
+            QListWidget {{
+                background-color: {theme.COLOR_BG_DARK};
+                border: none;
+                border-right: 1px solid {theme.COLOR_BORDER};
+                outline: none;
+                padding: 8px 0;
+            }}
+            QListWidget::item {{
+                padding: 12px 16px;
+                color: {theme.COLOR_TEXT_DIM};
+                border: none;
+            }}
+            QListWidget::item:selected {{
+                background-color: {theme.COLOR_CARD};
+                color: {theme.COLOR_ACCENT};
+                border-left: 3px solid {theme.COLOR_ACCENT};
+            }}
+            QListWidget::item:hover {{
+                background-color: {theme.COLOR_CARD};
+            }}
+        """)
+
+    def _apply_dialog_chrome_theme(self):
+        """re-apply สีของ chrome ทั้งหมดของ Settings dialog เอง (sidebar + หัวข้อทุก section +
+        bottom bar) — เรียกตอนเปิด dialog และตอนคลิกเปลี่ยนธีมสด (ไม่งั้นค้างสีเดิมเพราะ
+        setStyleSheet() ระดับ widget ไม่ได้ผูกกับ global QSS ของ apply_theme())
+        """
+        self._apply_sidebar_theme_qss()
+        for lbl in getattr(self, '_section_heading_labels', []):
+            lbl.setStyleSheet(f"font-size: 20px; font-weight: 700; color: {theme.COLOR_HEADING};")
+        if hasattr(self, '_bottom_bar'):
+            self._bottom_bar.setStyleSheet(
+                f"background-color: {theme.COLOR_CARD}; border-top: 1px solid {theme.COLOR_BORDER};"
+            )
 
     def _add_section(self, key, title, description=""):
         """สร้าง section ใหม่ + เพิ่มเข้า QStackedWidget
@@ -278,7 +348,10 @@ class SettingsDialog(QDialog):
         if title:
             lbl = QLabel(title)
             lbl.setObjectName("Heading")
-            lbl.setStyleSheet("font-size: 20px; font-weight: 700; color: #f59e0b;")
+            lbl.setStyleSheet(f"font-size: 20px; font-weight: 700; color: {theme.COLOR_HEADING};")
+            if not hasattr(self, '_section_heading_labels'):
+                self._section_heading_labels = []
+            self._section_heading_labels.append(lbl)
             wlayout.addWidget(lbl)
         if description:
             desc = QLabel(description)
@@ -636,6 +709,124 @@ class SettingsDialog(QDialog):
         is_edge = self.tts_engine_edge.isChecked()
         self._edge_voice_widget.setVisible(is_edge)
         self._omni_voice_widget.setVisible(not is_edge)
+
+    def _build_theme_section(self):
+        """เลือกธีมสีของโปรแกรม (ui/theme.py THEMES) — คลิก thumbnail เปลี่ยนทันที
+
+        ★ ไม่ผ่าน auto-save ปกติ — คลิกแล้ว save + apply_theme() สดเลย (ไม่ต้องรอ
+          ปิด dialog หรือรีสตาร์ทถึงจะเห็นผล — ส่วนที่เหลือ ~ hardcode ไม่กี่จุด
+          ค่อยรีสตาร์ทเอาให้ครบ)
+        """
+        self._add_section(
+            "app_theme", "🎨 Theme",
+            "คลิกเลือกธีมที่ต้องการ — เปลี่ยนทันที (บางจุดเล็กๆ ต้องรีสตาร์ทโปรแกรมเพื่อผลเต็มรูปแบบ)",
+        )
+        from ui.theme import THEME_ORDER, THEME_LABELS, THEMES
+
+        self._theme_thumbs = {}
+        grid = QHBoxLayout()
+        grid.setSpacing(14)
+        for key in THEME_ORDER:
+            pal = THEMES[key]
+            thumb = QFrame()
+            thumb.setFixedSize(150, 108)
+            thumb.setCursor(Qt.PointingHandCursor)
+
+            tlayout = QVBoxLayout(thumb)
+            tlayout.setContentsMargins(8, 8, 8, 8)
+            tlayout.setSpacing(6)
+
+            # ★ mini "หน้าต่างจำลอง" — sidebar mini + card mini + accent dot
+            preview = QFrame()
+            preview.setFixedHeight(52)
+            preview.setStyleSheet("background: transparent; border: none;")
+            players = QHBoxLayout(preview)
+            players.setContentsMargins(0, 0, 0, 0)
+            players.setSpacing(4)
+            sidebar_mini = QFrame()
+            sidebar_mini.setFixedWidth(14)
+            sidebar_mini.setStyleSheet(
+                f"background-color: {pal['BG_DARK']}; border-radius: 3px; border: none;"
+            )
+            players.addWidget(sidebar_mini)
+            card_mini = QFrame()
+            card_mini.setStyleSheet(
+                f"background-color: {pal['CARD']}; border-radius: 3px; border: none;"
+            )
+            card_layout = QVBoxLayout(card_mini)
+            card_layout.setContentsMargins(6, 6, 6, 6)
+            accent_dot = QLabel()
+            accent_dot.setFixedSize(14, 14)
+            accent_dot.setStyleSheet(
+                f"background-color: {pal['ACCENT']}; border-radius: 7px; border: none;"
+            )
+            card_layout.addWidget(accent_dot)
+            card_layout.addStretch()
+            players.addWidget(card_mini, 1)
+            tlayout.addWidget(preview)
+
+            name_lbl = QLabel(THEME_LABELS.get(key, key))
+            name_lbl.setAlignment(Qt.AlignCenter)
+            name_lbl.setWordWrap(True)
+            name_lbl.setStyleSheet(
+                f"color: {pal['TEXT']}; font-size: 11px; font-weight: 600; "
+                "border: none; background: transparent;"
+            )
+            tlayout.addWidget(name_lbl)
+
+            thumb.mousePressEvent = lambda e, k=key: self._on_theme_thumb_clicked(k)
+            self._theme_thumbs[key] = thumb
+            grid.addWidget(thumb)
+        grid.addStretch()
+        self._current_section_layout.insertLayout(
+            self._current_section_layout.count() - 1, grid
+        )
+        self._refresh_theme_thumb_selection()
+
+    def _refresh_theme_thumb_selection(self):
+        """ไฮไลต์ thumbnail ของธีมที่ใช้อยู่ตอนนี้ด้วยขอบสี accent หนาขึ้น"""
+        from ui.theme import THEMES
+        current = getattr(self.settings, 'ui_theme', 'default') if self.settings else 'default'
+        for key, thumb in getattr(self, '_theme_thumbs', {}).items():
+            pal = THEMES[key]
+            border = (
+                f"3px solid {pal['ACCENT']}" if key == current
+                else f"2px solid {pal['BORDER']}"
+            )
+            thumb.setStyleSheet(
+                f"QFrame {{ background-color: {pal['BG']}; border-radius: 10px; border: {border}; }}"
+            )
+
+    def _on_theme_thumb_clicked(self, key):
+        """คลิก thumbnail ธีม → save + apply สดทันที (ไม่ต้องปิด Settings/รีสตาร์ท)"""
+        if self.settings:
+            self.settings.ui_theme = key
+            try:
+                from settings import save_settings
+                save_settings(self.settings)
+            except Exception:
+                pass
+        try:
+            from PySide6.QtWidgets import QApplication
+            from ui.theme import apply_theme
+            app = QApplication.instance()
+            if app is not None:
+                apply_theme(app, key)
+        except Exception:
+            pass
+        # ★ apply_theme() ข้างบนแก้แค่ global QSS ของแอป — chrome ของ Settings dialog เอง
+        #   (sidebar/หัวข้อ/bottom bar) ตั้งด้วย setStyleSheet() ตรงๆ ต้อง re-apply เองด้วย
+        #   ไม่งั้นค้างสีเดิมทั้งที่กำลังมองอยู่ตรงนี้เป๊ะๆ
+        self._apply_dialog_chrome_theme()
+        self._refresh_theme_thumb_selection()
+        # ★ topbar TTS toggle ก็ตั้งสีตรงๆ ผ่าน setStyleSheet() เหมือนกัน (ไม่ผ่าน global QSS)
+        #   ต้อง refresh สดด้วย ไม่งั้นค้างสีจนกว่าจะกด toggle TTS เอง
+        try:
+            if self.parent_app is not None and hasattr(self.parent_app, 'topbar'):
+                self.parent_app.topbar._update_tts_button()
+        except Exception:
+            pass
+        self.settings_changed.emit()
 
     def _build_translate_section(self):
         self._add_section("translate", "🌐 การแปลภาษา + หลายภาษา", "เลือกโหมด: แปลเป็นไทย หรือ อ่านหลายภาษา")
@@ -3866,6 +4057,8 @@ class SettingsDialog(QDialog):
             else:
                 self.tts_engine_edge.setChecked(True)
             self._on_tts_engine_change()
+        if hasattr(self, '_theme_thumbs'):
+            self._refresh_theme_thumb_selection()
         if hasattr(self, 'edge_voice_combo'):
             ev = getattr(s, 'edge_voice', 'premwadee')
             idx = self.edge_voice_combo.findData(ev)
@@ -4060,6 +4253,7 @@ class SettingsDialog(QDialog):
                 s.tts_engine = "omnivoice"
             else:
                 s.tts_engine = "edge"
+        # ★ ui_theme ไม่ผ่านตรงนี้แล้ว — เขียน+apply ทันทีตอนคลิก thumbnail (_on_theme_thumb_clicked)
         if hasattr(self, 'edge_voice_combo'):
             s.edge_voice = self.edge_voice_combo.currentData() or "premwadee"
         if hasattr(self, 'omnivoice_voice_combo'):

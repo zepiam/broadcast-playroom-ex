@@ -7,26 +7,117 @@ from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication
 
 # ═══════════════════════════════════════════════════════════════
-# Color Palette (เดิมจาก v1 — สวย + คุ้นเคย)
+# Themes — palette ต่อธีม (ui_theme ใน settings เก็บ key ในนี้)
+# ★ "default" = ค่าเดิมจาก v1 เป๊ะๆ ทุกตัว (ห้ามแก้ค่าพวกนี้ — ผู้ใช้เดิมต้องไม่เห็นอะไรเปลี่ยน
+#   ถ้าไม่ได้เข้าไปเลือกธีมใหม่เองใน Settings)
 # ═══════════════════════════════════════════════════════════════
-COLOR_BG = "#0a0e1a"           # main background (dark navy)
-COLOR_BG_DARK = "#060912"      # darker variant (sidebar)
-COLOR_CARD = "#131726"         # panel background
-COLOR_CARD_HI = "#1a1f33"      # hover/elevated card
-COLOR_CARD_HOVER = "#1e2438"   # hover state
-COLOR_ACCENT = "#7c3aed"       # primary accent (purple)
-COLOR_ACCENT_HOVER = "#6d28d9"
-COLOR_ACCENT_2 = "#06b6d4"     # secondary accent (cyan)
-COLOR_HEADING = "#f59e0b"      # amber — section headings
-COLOR_DANGER = "#ef4444"       # red — disconnect/danger
-COLOR_DANGER_HOVER = "#dc2626"
-COLOR_SUCCESS = "#10b981"      # green — connected
-COLOR_SUCCESS_HOVER = "#059669"
-COLOR_TEXT = "#e5e7eb"         # primary text
-COLOR_TEXT_DIM = "#9ca3af"     # secondary text
-COLOR_TEXT_FAINT = "#6b7280"   # tertiary text
-COLOR_BORDER = "#2a2f45"
-COLOR_BORDER_LIGHT = "#374151"
+THEMES = {
+    "default": {
+        "BG": "#0a0e1a", "BG_DARK": "#060912", "CARD": "#131726",
+        "CARD_HI": "#1a1f33", "CARD_HOVER": "#1e2438",
+        "ACCENT": "#7c3aed", "ACCENT_HOVER": "#6d28d9", "ACCENT_2": "#06b6d4",
+        "HEADING": "#f59e0b",
+        "DANGER": "#ef4444", "DANGER_HOVER": "#dc2626",
+        "SUCCESS": "#10b981", "SUCCESS_HOVER": "#059669",
+        "TEXT": "#e5e7eb", "TEXT_DIM": "#9ca3af", "TEXT_FAINT": "#6b7280",
+        "BORDER": "#2a2f45", "BORDER_LIGHT": "#374151",
+    },
+    "aurora_violet": {
+        "BG": "#0d0b1a", "BG_DARK": "#08060f", "CARD": "#181430",
+        "CARD_HI": "#211c3d", "CARD_HOVER": "#251f45",
+        "ACCENT": "#8b5cf6", "ACCENT_HOVER": "#7c3aed", "ACCENT_2": "#22d3ee",
+        "HEADING": "#c4b5fd",
+        "DANGER": "#f87171", "DANGER_HOVER": "#ef4444",
+        "SUCCESS": "#34d399", "SUCCESS_HOVER": "#10b981",
+        "TEXT": "#ece9f7", "TEXT_DIM": "#b4aecb", "TEXT_FAINT": "#8b87a3",
+        "BORDER": "#332b52", "BORDER_LIGHT": "#453a6e",
+    },
+    "ember_dusk": {
+        "BG": "#17110d", "BG_DARK": "#100c09", "CARD": "#201611",
+        "CARD_HI": "#2a1d15", "CARD_HOVER": "#33241a",
+        "ACCENT": "#ea580c", "ACCENT_HOVER": "#c2410c", "ACCENT_2": "#fb923c",
+        "HEADING": "#fbbf24",
+        "DANGER": "#dc2626", "DANGER_HOVER": "#991b1b",
+        "SUCCESS": "#16a34a", "SUCCESS_HOVER": "#15803d",
+        "TEXT": "#f5ece2", "TEXT_DIM": "#c9b5a1", "TEXT_FAINT": "#8a7562",
+        "BORDER": "#3d2a1c", "BORDER_LIGHT": "#4d3624",
+    },
+    "nightwave_cyan": {
+        "BG": "#070c0f", "BG_DARK": "#04080a", "CARD": "#0a1417",
+        "CARD_HI": "#0d1a1e", "CARD_HOVER": "#112128",
+        "ACCENT": "#22d3ee", "ACCENT_HOVER": "#0e7490", "ACCENT_2": "#67e8f9",
+        "HEADING": "#22d3ee",
+        "DANGER": "#f87171", "DANGER_HOVER": "#dc2626",
+        "SUCCESS": "#4ade80", "SUCCESS_HOVER": "#22c55e",
+        "TEXT": "#dbe7ea", "TEXT_DIM": "#8fb0b6", "TEXT_FAINT": "#4d6469",
+        "BORDER": "#16292e", "BORDER_LIGHT": "#1c383f",
+    },
+}
+
+THEME_ORDER = ["default", "aurora_violet", "ember_dusk", "nightwave_cyan"]
+THEME_LABELS = {
+    "default": "ค่าเริ่มต้น (ม่วง-กรมท่า)",
+    "aurora_violet": "Aurora Violet",
+    "ember_dusk": "Ember Dusk",
+    "nightwave_cyan": "Nightwave Cyan",
+}
+# ★ swatch สีเด่นของแต่ละธีม (ใช้โชว์ preview ใน Settings)
+THEME_SWATCH = {k: v["ACCENT"] for k, v in THEMES.items()}
+
+
+def _luma(hex_color: str) -> float:
+    """ความสว่างคร่าวๆ ของสี hex (0=ดำ, 255=ขาว) — ใช้เลือกสีตัวอักษรที่อ่านออก"""
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return (r * 299 + g * 587 + b * 114) / 1000
+
+
+def _readable_on(hex_color: str, dark: str = "#0b0e14", light: str = "#ffffff") -> str:
+    """เลือกสีตัวอักษรที่อ่านง่ายบนพื้น hex_color — พื้นสว่างเกิน threshold ใช้ตัวหนังสือเข้มแทนขาว
+
+    ★ Qt Style Sheets ไม่รองรับ text-shadow/box-shadow (ไม่อยู่ใน property ที่ QSS รองรับเลย)
+      วิธีแก้ contrast ที่ถูกต้องคือสลับสีตัวอักษรตามความสว่างพื้นหลัง แทนการใส่เงา
+    """
+    return dark if _luma(hex_color) > 150 else light
+
+
+# ★ เติมสีตัวอักษรที่อ่านออกให้ทุกธีม (คำนวณจาก ACCENT/DANGER/SUCCESS/HEADING ของธีมนั้นๆ)
+#   ใช้กับปุ่ม state="on"/"danger"/"warning" (topbar split-button) + ปุ่ม TTS เขียว/แดง
+for _key, _pal in THEMES.items():
+    _pal["ON_ACCENT_TEXT"] = _readable_on(_pal["ACCENT"])
+    _pal["ON_DANGER_TEXT"] = _readable_on(_pal["DANGER"])
+    _pal["ON_SUCCESS_TEXT"] = _readable_on(_pal["SUCCESS"])
+    _pal["ON_WARNING_TEXT"] = _readable_on(_pal["HEADING"])
+
+# ═══════════════════════════════════════════════════════════════
+# Color constants (module-level) — apply_theme() จะเขียนทับตัวแปรพวกนี้
+# ตาม theme ที่เลือกไว้ใน settings ตอนเปิดโปรแกรม (ก่อนสร้าง widget ใดๆ)
+# ★ ไฟล์ widget อื่นที่ต้องการสีให้ตรงธีมสด ต้อง `import ui.theme as theme` แล้วอ้าง
+#   `theme.COLOR_X` ตอนสร้าง widget (ไม่ใช่ `from ui.theme import COLOR_X` ที่ตายตัว
+#   ตั้งแต่ตอน import module — ค่าจะไม่ขยับตามถ้า apply_theme() มาทีหลัง)
+# ═══════════════════════════════════════════════════════════════
+COLOR_BG = THEMES["default"]["BG"]
+COLOR_BG_DARK = THEMES["default"]["BG_DARK"]
+COLOR_CARD = THEMES["default"]["CARD"]
+COLOR_CARD_HI = THEMES["default"]["CARD_HI"]
+COLOR_CARD_HOVER = THEMES["default"]["CARD_HOVER"]
+COLOR_ACCENT = THEMES["default"]["ACCENT"]
+COLOR_ACCENT_HOVER = THEMES["default"]["ACCENT_HOVER"]
+COLOR_ACCENT_2 = THEMES["default"]["ACCENT_2"]
+COLOR_HEADING = THEMES["default"]["HEADING"]
+COLOR_DANGER = THEMES["default"]["DANGER"]
+COLOR_DANGER_HOVER = THEMES["default"]["DANGER_HOVER"]
+COLOR_SUCCESS = THEMES["default"]["SUCCESS"]
+COLOR_SUCCESS_HOVER = THEMES["default"]["SUCCESS_HOVER"]
+COLOR_TEXT = THEMES["default"]["TEXT"]
+COLOR_TEXT_DIM = THEMES["default"]["TEXT_DIM"]
+COLOR_TEXT_FAINT = THEMES["default"]["TEXT_FAINT"]
+COLOR_BORDER = THEMES["default"]["BORDER"]
+COLOR_BORDER_LIGHT = THEMES["default"]["BORDER_LIGHT"]
+COLOR_ON_ACCENT_TEXT = THEMES["default"]["ON_ACCENT_TEXT"]
+COLOR_ON_DANGER_TEXT = THEMES["default"]["ON_DANGER_TEXT"]
+COLOR_ON_SUCCESS_TEXT = THEMES["default"]["ON_SUCCESS_TEXT"]
+COLOR_ON_WARNING_TEXT = THEMES["default"]["ON_WARNING_TEXT"]
 
 # ═══════════════════════════════════════════════════════════════
 # Fonts
@@ -222,7 +313,7 @@ QPushButton#SplitButtonArrow:hover {
 QPushButton#SplitButtonMain[state="on"],
 QPushButton#SplitButtonArrow[state="on"] {
     background-color: __ACCENT__;
-    color: #ffffff;
+    color: __ON_ACCENT_TEXT__;
 }
 QPushButton#SplitButtonMain[state="on"]:hover,
 QPushButton#SplitButtonArrow[state="on"]:hover {
@@ -232,7 +323,7 @@ QPushButton#SplitButtonArrow[state="on"]:hover {
 QPushButton#SplitButtonMain[state="danger"],
 QPushButton#SplitButtonArrow[state="danger"] {
     background-color: __DANGER__;
-    color: #ffffff;
+    color: __ON_DANGER_TEXT__;
 }
 QPushButton#SplitButtonMain[state="danger"]:hover,
 QPushButton#SplitButtonArrow[state="danger"]:hover {
@@ -242,7 +333,7 @@ QPushButton#SplitButtonArrow[state="danger"]:hover {
 QPushButton#SplitButtonMain[state="warning"],
 QPushButton#SplitButtonArrow[state="warning"] {
     background-color: __HEADING__;
-    color: #ffffff;
+    color: __ON_WARNING_TEXT__;
 }
 QPushButton#SplitButtonMain[state="warning"]:hover,
 QPushButton#SplitButtonArrow[state="warning"]:hover {
@@ -502,9 +593,47 @@ QListWidget::item {
 """
 
 
-def apply_theme(app: QApplication) -> None:
-    """ตั้ง font + apply QSS stylesheet"""
+def apply_theme(app: QApplication, theme_name: str = "default") -> None:
+    """ตั้ง font + apply QSS stylesheet ตามธีมที่เลือก (settings.ui_theme)
+
+    ★ เขียนทับตัวแปร COLOR_* ระดับโมดูลด้วย — ต้องเรียกฟังก์ชันนี้ "ก่อน" สร้าง
+    QMainWindow/widget ใดๆ เสมอ (main.py เรียกก่อน TTSForLivestreamApp() อยู่แล้ว)
+    เพื่อให้ widget ที่อ้าง `theme.COLOR_X` ตอนสร้างตัวเอง (ไม่ใช่ from-import ตายตัว)
+    ได้ค่าตามธีมที่เลือกจริง — ถ้า theme_name ไม่รู้จัก fallback เป็น "default" เงียบๆ
+    (กันไฟล์ settings.json เก่า/พัง ทำให้เปิดโปรแกรมไม่ได้)
+    """
+    global COLOR_BG, COLOR_BG_DARK, COLOR_CARD, COLOR_CARD_HI, COLOR_CARD_HOVER
+    global COLOR_ACCENT, COLOR_ACCENT_HOVER, COLOR_ACCENT_2, COLOR_HEADING
+    global COLOR_DANGER, COLOR_DANGER_HOVER, COLOR_SUCCESS, COLOR_SUCCESS_HOVER
+    global COLOR_TEXT, COLOR_TEXT_DIM, COLOR_TEXT_FAINT, COLOR_BORDER, COLOR_BORDER_LIGHT
+    global COLOR_ON_ACCENT_TEXT, COLOR_ON_DANGER_TEXT, COLOR_ON_SUCCESS_TEXT, COLOR_ON_WARNING_TEXT
+
     setup_fonts(app)
+    palette = THEMES.get(theme_name) or THEMES["default"]
+
+    COLOR_BG = palette["BG"]
+    COLOR_BG_DARK = palette["BG_DARK"]
+    COLOR_CARD = palette["CARD"]
+    COLOR_CARD_HI = palette["CARD_HI"]
+    COLOR_CARD_HOVER = palette["CARD_HOVER"]
+    COLOR_ACCENT = palette["ACCENT"]
+    COLOR_ACCENT_HOVER = palette["ACCENT_HOVER"]
+    COLOR_ACCENT_2 = palette["ACCENT_2"]
+    COLOR_HEADING = palette["HEADING"]
+    COLOR_DANGER = palette["DANGER"]
+    COLOR_DANGER_HOVER = palette["DANGER_HOVER"]
+    COLOR_SUCCESS = palette["SUCCESS"]
+    COLOR_SUCCESS_HOVER = palette["SUCCESS_HOVER"]
+    COLOR_TEXT = palette["TEXT"]
+    COLOR_TEXT_DIM = palette["TEXT_DIM"]
+    COLOR_TEXT_FAINT = palette["TEXT_FAINT"]
+    COLOR_BORDER = palette["BORDER"]
+    COLOR_BORDER_LIGHT = palette["BORDER_LIGHT"]
+    COLOR_ON_ACCENT_TEXT = palette["ON_ACCENT_TEXT"]
+    COLOR_ON_DANGER_TEXT = palette["ON_DANGER_TEXT"]
+    COLOR_ON_SUCCESS_TEXT = palette["ON_SUCCESS_TEXT"]
+    COLOR_ON_WARNING_TEXT = palette["ON_WARNING_TEXT"]
+
     # ★ replace placeholders with actual colors
     qss = QSS
     replacements = {
@@ -512,7 +641,7 @@ def apply_theme(app: QApplication) -> None:
         '__BG_DARK__': COLOR_BG_DARK,
         '__CARD__': COLOR_CARD,
         '__CARD_HI__': COLOR_CARD_HI,
-        '__CARD_HOVER__': '#1e2438',
+        '__CARD_HOVER__': COLOR_CARD_HOVER,
         '__ACCENT__': COLOR_ACCENT,
         '__ACCENT_HOVER__': COLOR_ACCENT_HOVER,
         '__ACCENT_2__': COLOR_ACCENT_2,
@@ -526,6 +655,9 @@ def apply_theme(app: QApplication) -> None:
         '__TEXT_FAINT__': COLOR_TEXT_FAINT,
         '__BORDER__': COLOR_BORDER,
         '__BORDER_LIGHT__': COLOR_BORDER_LIGHT,
+        '__ON_ACCENT_TEXT__': COLOR_ON_ACCENT_TEXT,
+        '__ON_DANGER_TEXT__': COLOR_ON_DANGER_TEXT,
+        '__ON_WARNING_TEXT__': COLOR_ON_WARNING_TEXT,
     }
     for placeholder, color in replacements.items():
         qss = qss.replace(placeholder, color)

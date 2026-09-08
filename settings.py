@@ -351,6 +351,8 @@ class AppSettings:
     chat_emote_size: int = 28                  # ขนาด emote ใน Live Chat (px)
     chat_font_family: str = "Kanit"            # Google Font สำหรับ Live Chat/Popout
     chat_zebra_stripes: bool = True            # สีพื้นหลังสลับ (zebra) — default เปิด
+    # ---- ธีมสีของโปรแกรม (ui/theme.py THEME_ORDER) — "default" = สีเดิมทุกประการ ----
+    ui_theme: str = "default"
 
     # ---- overlay (OBS browser source — เว็บที่ OBS render ทับบนสตรีม) ----
     overlay_enabled: bool = False
@@ -836,6 +838,7 @@ class AppSettings:
             "chat_emote_size": self.chat_emote_size,
             "chat_font_family": self.chat_font_family,
             "chat_zebra_stripes": self.chat_zebra_stripes,
+            "ui_theme": self.ui_theme,
             "overlay_enabled": self.overlay_enabled,
             "overlay_port": self.overlay_port,
             "obs_ws_enabled": self.obs_ws_enabled,
@@ -1306,6 +1309,8 @@ class AppSettings:
             s.chat_font_family = str(data["chat_font_family"])
         if "chat_zebra_stripes" in data:
             s.chat_zebra_stripes = bool(data["chat_zebra_stripes"])
+        if "ui_theme" in data:
+            s.ui_theme = str(data["ui_theme"])
         # overlay
         if "overlay_enabled" in data:
             s.overlay_enabled = bool(data["overlay_enabled"])

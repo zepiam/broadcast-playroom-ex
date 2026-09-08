@@ -1,16 +1,16 @@
 {
-  "version": "2.7.3",
-  "changelog": "- แก้บัคโปรแกรมค้าง เมื่อแชทหลุดการเชื่อมต่อ หรือ แชทของเว็บนั้นๆล่ม\n- แก้บัคปุ่ม ปิดอ่านแชท ไม่ทำงานตามจริง\n- แก้บัค ปุ่มการเชื่อมต่อแพลตฟอร์มแสดงผลสีผิด\n- แก้บัค ปุ่มปิดอ่าน TTS และ Volume แบบรายแพลตฟอร์มไม่ทำงานตามจริง",
+  "version": "2.7.4",
+  "changelog": "- เพิ่มการเปลี่ยนธีมโปรแกรมอยู่ในการตั้งค่าของโปรแกรม\n- แก้บัคโปรแกรมค้าง เมื่อแชทหลุดการเชื่อมต่อ หรือ แชทของเว็บนั้นๆล่ม\n- แก้บัคปุ่ม ปิดอ่านแชท ไม่ทำงานตามจริง\n- แก้บัค ปุ่มการเชื่อมต่อแพลตฟอร์มแสดงผลสีผิด\n- แก้บัค ปุ่มปิดอ่าน TTS และ Volume แบบรายแพลตฟอร์มไม่ทำงานตามจริง",
   "lite": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.7.3/patch_lite.zip",
-    "size": 16680965,
-    "sha256": "b4655ce9c29d90da7d2873b89e8e793668427f35c3c60b34994adb484978b1af"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.7.4/patch_lite.zip",
+    "size": 16687380,
+    "sha256": "46513bf8fd1a0f2ae7869d2e3b92e7eaf87a054152d90c8366f85def6882872f"
   },
   "full": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.7.3/patch_full.zip",
-    "size": 70971073,
-    "sha256": "857e556f795315c58dda759bca0531c28d75a56518d05cc6fcddf55f6c1e7baf"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.7.4/patch_full.zip",
+    "size": 70977249,
+    "sha256": "4165bb386eb1c543e90dbd8fa911bad97fe895d41d0f60d09e5c831105fca06d"
   }
 }

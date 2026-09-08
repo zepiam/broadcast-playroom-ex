@@ -70,6 +70,11 @@ def _load_google_font(family: str) -> bool:
         logger.debug(f"load_google_font({family}) failed: {e}")
     return False
 
+import ui.theme as theme
+
+# ★ ค่าเริ่มต้น (theme "default") — _sync_theme_colors() เขียนทับด้วยธีมจริงตอนเปิด dialog
+#   ทุกเมธอดในไฟล์นี้อ้างชื่อ COL_* แบบ global ตรงๆ (evaluate ตอนเรียก ไม่ใช่ตอน import)
+#   → mutate ตัวแปรโมดูลพวกนี้แล้ว method ที่มีอยู่แล้วทั้งหมดจะเห็นค่าใหม่ทันที ไม่ต้องแก้ทีละบรรทัด
 COL_BG = "#0a0e1a"
 COL_CARD = "#131726"
 COL_BORDER = "#2a2f45"
@@ -79,6 +84,18 @@ COL_HEADING = "#f59e0b"
 COL_ACCENT = "#7c3aed"
 
 
+def _sync_theme_colors():
+    """ดึงสีธีมปัจจุบันจาก ui.theme มาเขียนทับตัวแปร COL_* ระดับโมดูล — เรียกก่อน _build_ui() เสมอ"""
+    global COL_BG, COL_CARD, COL_BORDER, COL_TEXT, COL_TEXT_DIM, COL_HEADING, COL_ACCENT
+    COL_BG = theme.COLOR_BG
+    COL_CARD = theme.COLOR_CARD
+    COL_BORDER = theme.COLOR_BORDER
+    COL_TEXT = theme.COLOR_TEXT
+    COL_TEXT_DIM = theme.COLOR_TEXT_DIM
+    COL_HEADING = theme.COLOR_HEADING
+    COL_ACCENT = theme.COLOR_ACCENT
+
+
 class LiveChatSettingsDialog(QDialog):
     """Live Chat Settings — ปรับแต่งหน้าตาแชทสด"""
 
@@ -86,6 +103,7 @@ class LiveChatSettingsDialog(QDialog):
 
     def __init__(self, parent_app):
         super().__init__(parent_app if isinstance(parent_app, QWidget) else None)
+        _sync_theme_colors()  # ★ ต้องอยู่ก่อน _build_ui() — ให้ทุก COL_* ตรงกับธีมปัจจุบัน
         self.parent_app = parent_app
         self.settings = getattr(parent_app, 'settings', None)
         self.setWindowTitle("💬 ตั้งค่าแชทสด")

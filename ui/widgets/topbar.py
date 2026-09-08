@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QFrame, QLabel, QPushButton, QHBoxLayout, QWidget,
     QSlider, QWidgetAction,
 )
+import ui.theme as theme  # ★ อ้าง theme.COLOR_X สดตอนสร้าง widget (ตามธีมที่เลือกไว้จริง)
 from ui.widgets.split_button import SplitButton
 
 
@@ -280,30 +281,35 @@ class TopBar(QFrame):
         if self._tts_on:
             self.btn_tts.setText("🔊 อ่านแชท")
             self.btn_tts.set_state("on")  # green via custom — but we use "on" (accent)
-            # ★ override to green specifically
+            # ★ override to success color ตามธีมที่เลือกไว้ — สีตัวอักษรสลับเข้ม/อ่อนตามความสว่าง
+            #   ของพื้นหลัง (QSS ไม่รองรับ text-shadow ให้ใส่เงาใต้ตัวอักษร — สลับสีให้ contrast
+            #   พอแทน) ★ ธีมที่พื้นสว่างมาก (เช่น Nightwave Cyan) จะได้ตัวอักษรเข้มแทนขาวอ่านไม่ออก
+            _on_success = theme.COLOR_ON_SUCCESS_TEXT
+            _on_danger = theme.COLOR_ON_DANGER_TEXT
             self.btn_tts._main_btn.setStyleSheet(
-                "QPushButton { background-color: #10b981; color: white; border: none; "
+                f"QPushButton {{ background-color: {theme.COLOR_SUCCESS}; color: {_on_success}; border: none; "
                 "border-radius: 14px 0 0 14px; padding: 4px 6px 4px 14px; "
                 "font-weight: 600; font-size: 12px; }"
-                "QPushButton:hover { background-color: #059669; }"
+                f"QPushButton:hover {{ background-color: {theme.COLOR_SUCCESS_HOVER}; }}"
             )
             self.btn_tts._arrow_btn.setStyleSheet(
-                "QPushButton { background-color: #10b981; color: white; border: none; "
+                f"QPushButton {{ background-color: {theme.COLOR_SUCCESS}; color: {_on_success}; border: none; "
                 "border-radius: 0 14px 14px 0; padding: 4px 2px; font-size: 11px; }"
-                "QPushButton:hover { background-color: #059669; }"
+                f"QPushButton:hover {{ background-color: {theme.COLOR_SUCCESS_HOVER}; }}"
             )
         else:
             self.btn_tts.setText("🔇 ปิดอ่าน")
+            _on_danger = theme.COLOR_ON_DANGER_TEXT
             self.btn_tts._main_btn.setStyleSheet(
-                "QPushButton { background-color: #ef4444; color: white; border: none; "
+                f"QPushButton {{ background-color: {theme.COLOR_DANGER}; color: {_on_danger}; border: none; "
                 "border-radius: 14px 0 0 14px; padding: 4px 6px 4px 14px; "
                 "font-weight: 600; font-size: 12px; }"
-                "QPushButton:hover { background-color: #dc2626; }"
+                f"QPushButton:hover {{ background-color: {theme.COLOR_DANGER_HOVER}; }}"
             )
             self.btn_tts._arrow_btn.setStyleSheet(
-                "QPushButton { background-color: #ef4444; color: white; border: none; "
+                f"QPushButton {{ background-color: {theme.COLOR_DANGER}; color: {_on_danger}; border: none; "
                 "border-radius: 0 14px 14px 0; padding: 4px 2px; font-size: 11px; }"
-                "QPushButton:hover { background-color: #dc2626; }"
+                f"QPushButton:hover {{ background-color: {theme.COLOR_DANGER_HOVER}; }}"
             )
 
     def set_tts_state(self, on):

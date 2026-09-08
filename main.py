@@ -343,9 +343,14 @@ def main():
     #   ★ OmniVoice จะถูกโหลดที่ app.py QTimer.singleShot(2000, ...) — warmup นี้ต้องเสร็จก่อน
     _warmup_transformers()
 
-    # ★ Import + apply theme
+    # ★ Import + apply theme (อ่านค่าธีมจาก settings ก่อนสร้าง widget ใดๆ)
     from ui.theme import apply_theme
-    apply_theme(app)
+    try:
+        from settings import load_settings
+        _theme_name = getattr(load_settings(), "ui_theme", "default")
+    except Exception:
+        _theme_name = "default"
+    apply_theme(app, _theme_name)
 
     # ★ Import + create main window
     from app import TTSForLivestreamApp

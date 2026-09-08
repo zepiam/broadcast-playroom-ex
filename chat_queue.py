@@ -43,6 +43,78 @@ from tts_engine import (
 
 
 # ---------------------------------------------------------------------- #
+# Default skip-notification sound
+# ★ ต้อง "ห้ามหายไปเด็ดขาด" แม้ user ตั้งเสียงเองแล้วกด reset — ใช้ 2 ชั้น:
+#   1. ไฟล์ bundled จริง (assets/default_skip_notify.wav) ← ตัวหลัก
+#   2. ถ้าหาไฟล์ bundled ไม่เจอไม่ว่ากรณีใด (build พัง/ไฟล์หาย) → synth เสียง
+#      "ติ๊ง" สั้นๆ สดๆ เป็น fallback สุดท้าย ไม่มีทางคืนค่าว่างเปล่า
+# ---------------------------------------------------------------------- #
+_default_notify_sound_cache: Optional[str] = None
+
+
+def _bundled_default_notify_path() -> Optional[str]:
+    """หา path ของ assets/default_skip_notify.wav ทั้ง dev mode และ frozen (PyInstaller)"""
+    import sys
+    candidates = []
+    if getattr(sys, "frozen", False):
+        # frozen: assets/ อยู่ข้าง exe ใน _internal/ (ดู main.py:317 สำหรับ pattern เดียวกัน)
+        exe_dir = os.path.dirname(sys.executable)
+        candidates.append(os.path.join(exe_dir, "_internal", "assets", "default_skip_notify.wav"))
+        candidates.append(os.path.join(exe_dir, "assets", "default_skip_notify.wav"))
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            candidates.append(os.path.join(meipass, "assets", "default_skip_notify.wav"))
+    # dev mode: ข้าง chat_queue.py เอง
+    candidates.append(os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "assets", "default_skip_notify.wav"
+    ))
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def get_default_notify_sound_path() -> str:
+    """คืน path ไฟล์เสียงแจ้งเตือน default — ต้องไม่คืนค่าว่าง/พังเด็ดขาด
+
+    ลำดับ: (1) ไฟล์ bundled จริง (assets/default_skip_notify.wav)
+           (2) synth เสียง "ติ๊ง" สั้นๆ สดๆ เป็น fallback สุดท้าย
+    """
+    global _default_notify_sound_cache
+    if _default_notify_sound_cache and os.path.exists(_default_notify_sound_cache):
+        return _default_notify_sound_cache
+
+    bundled = _bundled_default_notify_path()
+    if bundled:
+        _default_notify_sound_cache = bundled
+        return bundled
+
+    # ── fallback: bundled asset หายไปด้วยเหตุผลใดก็ตาม → synth เสียงสดๆ กันเงียบสนิท ──
+    try:
+        from data_dir import get_data_dir
+        path = os.path.join(get_data_dir(), "_default_skip_notify.wav")
+        if not os.path.exists(path):
+            import soundfile as sf
+            sr = 44100
+            dur = 0.25
+            t = np.linspace(0, dur, int(sr * dur), endpoint=False)
+            tone = np.sin(2 * np.pi * 700 * t).astype(np.float32)
+            fade_in = int(0.015 * sr)
+            fade_out = int(0.10 * sr)
+            env = np.ones_like(tone)
+            env[:fade_in] = np.linspace(0, 1, fade_in)
+            env[-fade_out:] *= np.linspace(1, 0, fade_out)
+            audio = tone * env * 0.35
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            sf.write(path, audio, sr, subtype="PCM_16")
+        _default_notify_sound_cache = path
+        return path
+    except Exception as e:
+        logger.debug(f"generate default notify sound failed: {e}")
+        return ""
+
+
+# ---------------------------------------------------------------------- #
 # Spam filter regexes
 # ---------------------------------------------------------------------- #
 # URL ทุกแบบ: http(s)://, www., หรือ domain.tld
@@ -124,11 +196,17 @@ class PipelineConfig:
     tts_engine: str = "edge"
     omnivoice_voice: str = "female"  # "male" | "female" | "child" | "auto"
     edge_voice: str = "premwadee"    # "premwadee" | "niwat"
-    # ★ OmniVoice short word policy — คำเดียวสั้นกว่า min_length → ไม่อ่าน
-    #   แต่ถ้าอยู่ใน whitelist → อ่าน (ยกเว้น)
+    # ★ OmniVoice short word policy — คำเดียวสั้นกว่า min_length → ไม่อ่านด้วย OmniVoice เสมอ
     omnivoice_skip_enabled: bool = True
-    omnivoice_skip_min_length: int = 3
-    omnivoice_short_whitelist: list = field(default_factory=lambda: ["ได้", "มี", "ไป", "กิน", "ดี", "ใช่"])
+    # ★ 5 → 6: ทดสอบจริง 124 คำ + ตรวจด้วย Thai ASR อัตโนมัติ พบว่าอัตราล้มเหลวยังสูงถึง 25%
+    #   ที่ความยาว 5 ตัวอักษร ลดฮวบเหลือ ~6% ตั้งแต่ 6 ตัวอักษรขึ้นไป
+    omnivoice_skip_min_length: int = 6
+    # ★ EXPERIMENTAL: คำสั้นเดี่ยว → ลองให้ OmniVoice อ่านเอง (พูดซ้ำ 2 ครั้งมีช่องว่างคั่น
+    #   แล้วตัดเอาแค่ท่อนหลัง) แทนสลับไป edge-tts ตรงๆ — พังก็ยัง fallback edge-tts เป็น safety net
+    omnivoice_short_word_retry: bool = False
+    # ★ จำนวนครั้งที่พูดซ้ำก่อนตัด (2-5) — ปรับได้จาก Settings โดยไม่ต้อง build ใหม่
+    #   เก็บไว้แค่ท่อนสุดท้าย 1 ใน N ส่วน (ยิ่งเยอะ โมเดลยิ่ง "warm up" นาน แต่ยิ่งช้า)
+    omnivoice_short_word_repeat: int = 3
     read_author: bool = True  # อ่านชื่อผู้แชทก่อน
     read_message: bool = True  # อ่านข้อความ
     rate: int = 0  # % (+10 = เร็วขึรึ้น 10%)
@@ -893,6 +971,20 @@ class ChatPipeline:
     # ------------------------------------------------------------------ #
     # Notification sound playback
     # ------------------------------------------------------------------ #
+    def _play_skip_notification(self) -> None:
+        """เล่นเสียงแจ้งเตือนสั้นๆ ตอนข้ามข้อความ (เสียง OmniVoice ผิดปกติ)
+
+        ★ ใช้ warn_sound_path ที่ user ตั้งไว้ (browse เปลี่ยนได้ใน Settings)
+        ถ้ายังไม่ได้ตั้ง → ใช้เสียง "ติ๊ง" สั้นๆ ที่ generate เองไว้เป็น default
+        (ไม่ต้อง bundle ไฟล์เสียงเพิ่ม — สร้างครั้งแรกแล้ว cache ไว้ใน data dir)
+        """
+        try:
+            path = getattr(self.config, "warn_sound_path", "") or get_default_notify_sound_path()
+            volume = float(getattr(self.config, "warn_sound_volume", 0.6))
+            self._play_notification_sound(path, volume)
+        except Exception:
+            pass
+
     def _play_notification_sound(self, mp3_path: str, volume: float) -> None:
         """เล่นไฟล์เสียงแจ้งเตือน — ทำใน worker thread เพื่อไม่บล็อก chat"""
         if not os.path.exists(mp3_path):
@@ -1174,16 +1266,21 @@ class ChatPipeline:
         Returns None ถ้าข้ามข้อความนี้
         """
         # ── OmniVoice short word policy ──
-        # ★ คำเดียวสั้นกว่า min_length → ไม่อ่าน (default)
-        #   แต่ถ้าอยู่ใน whitelist → อ่าน (ยกเว้น)
+        # ★ คำเดียวสั้นกว่า min_length → ไม่อ่านด้วย OmniVoice เสมอ ไม่มีข้อยกเว้น
+        #   (เดิมมี whitelist คำที่ "เชื่อว่าปลอดภัย" แต่ทดสอบแล้วพบว่าโมเดลสุ่ม noise
+        #   เริ่มต้นทุกครั้งที่ generate → ไม่มีคำไหนปลอดภัย 100% จริง จึงตัด whitelist ออก)
         #   "อ๋อ" (คำเดียว สั้น) → skip / "อ๋อ แบบนี้" (มี space) → อ่านปกติ
         #
         # ★★ สำคัญ: ตรวจ Replace ก่อน skip!
         #   ถ้า user ตั้ง Replace "อ๋อ" → "อ๋อเข้าใจแล้ว" ต้องอ่าน (เพราะเปลี่ยนคำใหม่แล้ว)
         #   จึง apply_pronunciation ก่อน แล้วค่อยเช็ค skip กับข้อความที่แปลงแล้ว
         engine_choice = getattr(self.config, "tts_engine", "edge")
+        _omni_short_retry = False  # ★ EXPERIMENTAL flag — ดู _synth_omnivoice_short_word_sync
         if engine_choice == "omnivoice" and getattr(self.config, "omnivoice_skip_enabled", True):
-            logger.debug(f"omni skip check: enabled={getattr(self.config, 'omnivoice_skip_enabled', True)}, min_len={getattr(self.config, 'omnivoice_skip_min_length', 0)}")
+            # ★ INFO (ไม่ใช่ debug) — log level ของแอปตั้งเป็น INFO เฉยๆ debug ไม่เคยโผล่ในไฟล์
+            #   log จริง ทำให้ตรวจย้อนหลังไม่ได้ว่า min_len ที่ใช้จริงคือค่าไหน (เช่น settings.json
+            #   เก่าที่ migrate มาจากเครื่องเดิม อาจยังค้างค่า min_len=3 ไม่ใช่ 5 ตัวใหม่)
+            logger.info(f"omni skip check: enabled={getattr(self.config, 'omnivoice_skip_enabled', True)}, min_len={getattr(self.config, 'omnivoice_skip_min_length', 0)}, retry={getattr(self.config, 'omnivoice_short_word_retry', False)}")
             # ★ apply Replace (pronunciation) ก่อน — ถ้าเปลี่ยนคำแล้ว ใช้ข้อความใหม่
             check_text = (msg.text or "").strip()
             if self._filter is not None and check_text:
@@ -1194,12 +1291,14 @@ class ChatPipeline:
             if check_text and " " not in check_text:
                 min_len = getattr(self.config, "omnivoice_skip_min_length", 0)
                 if min_len > 0 and len(check_text) < min_len:
-                    # ★ เช็ค whitelist ก่อน fallback (เทียบกับข้อความที่แปลงแล้ว)
-                    whitelist = getattr(self.config, "omnivoice_short_whitelist", [])
-                    if whitelist and check_text.lower() in (w.lower() for w in whitelist):
-                        pass  # อยู่ใน whitelist → OmniVoice อ่าน
+                    if getattr(self.config, "omnivoice_short_word_retry", False):
+                        # ★ EXPERIMENTAL: ลองให้ OmniVoice อ่านเอง (พูดซ้ำ 2 ครั้ง+ตัด)
+                        #   ก่อนยอมสลับไป edge-tts — engine_choice ยังเป็น "omnivoice" อยู่
+                        #   แค่ตั้ง flag ไว้ให้จุด dispatch ข้างล่างรู้ว่าต้องเรียกคนละเมธอด
+                        _omni_short_retry = True
+                        logger.info(f"OmniVoice short word → retry (doubled+trim): {check_text!r} (len={len(check_text)} < {min_len})")
                     else:
-                        # ★ คำสั้น → สลับไป Azure (edge-tts) แทน OmniVoice
+                        # ★ คำสั้น → สลับไป Azure (edge-tts) แทน OmniVoice เสมอ
                         logger.info(f"OmniVoice short word → Azure fallback: {check_text!r} (len={len(check_text)} < {min_len})")
                         engine_choice = "edge"  # fallback ไป edge-tts
         # ประกอบข้อความสำหรับอ่าน
@@ -1350,15 +1449,28 @@ class ChatPipeline:
         audio_np = None  # ★ init กัน UnboundLocalError ตอน fallback
         if engine_choice == "omnivoice" and self.omnivoice is not None and self.omnivoice.is_loaded:
             # ── OmniVoice path (offline, zero-shot) ──
-            audio_bytes = self._synth_omnivoice_sync(text)
+            if _omni_short_retry:
+                # ★ EXPERIMENTAL: คำสั้นเดี่ยว → พูดซ้ำ 2 ครั้ง+ตัด แทน synth ตรงๆ
+                audio_bytes = self._synth_omnivoice_short_word_sync(text)
+            else:
+                audio_bytes = self._synth_omnivoice_sync(text)
             if not audio_bytes:
-                # ★ OmniVoice fail → fallback edge-tts (กันเงียบ)
+                # ★ OmniVoice fail (รวมถึง retry ตัดพัง) → fallback edge-tts (กันเงียบ)
                 engine_choice = "edge"
             else:
                 # decode WAV → numpy (OmniVoice ส่งคืน WAV ไม่ใช่ MP3)
                 audio_np = self._decode_wav(audio_bytes)
                 if audio_np is None or len(audio_np) == 0:
                     engine_choice = "edge"  # fallback
+                elif self._is_abnormal_silence(audio_np):
+                    # ★ safety net: OmniVoice สุ่ม generate เสียงเงียบสนิทแทนคำที่ขอได้
+                    #   (ทดสอบจริง 124 คำ พบว่าเกิดได้แม้คำยาวผ่านเกณฑ์ length filter แล้ว)
+                    #   ไม่ fallback ไป Azure (ช้า/เสียงสลับกลางคัน) → ข้ามเลย +
+                    #   เล่นเสียงแจ้งเตือนสั้นๆ แทน (browse เปลี่ยนเองได้ใน Settings)
+                    logger.info(f"OmniVoice output abnormal (near-silent) → skip: {text[:50]!r}")
+                    self._play_skip_notification()
+                    msg.extra["_tts_skip_reason"] = "OmniVoice สร้างเสียงผิดปกติ (เงียบ) — ข้าม"
+                    return None
                 # ★ audio_np พร้อมแล้ว → ไป RVC overlay section (เหมือน edge-tts path)
         if engine_choice != "omnivoice":
             # ── edge-tts path (online) — ใช้ตอนปกติ + fallback ตอน OmniVoice fail ──
@@ -1449,6 +1561,26 @@ class ChatPipeline:
         return result.get("data")
 
     # ═══ OmniVoice helpers ═══
+    def _is_abnormal_silence(self, audio_np) -> bool:
+        """เช็คว่าเสียงที่ OmniVoice generate ออกมาเงียบผิดปกติไหม (safety net)
+
+        ★ ทดสอบจริง 124 คำ + ตรวจด้วย Thai ASR อัตโนมัติ พบว่า OmniVoice บางครั้ง
+        generate เสียงเงียบสนิทแทนคำที่ขอ (สุ่มจาก diffusion model — เกิดได้แม้คำ
+        ผ่านเกณฑ์ length filter แล้ว) เช็คด้วย RMS/peak ธรรมดา เร็วมาก ไม่ต้องมี ASR
+        ★ เกณฑ์เดียวกับที่ใช้ตอนทดสอบ (peak<0.02 หรือ rms<0.01) — ยืนยันแล้วว่ายัง
+        ใช้ได้หลัง resample+postprocess เพราะ _postprocess_audio ข้าม normalize
+        ตอน peak<=0.01 อยู่แล้ว (กัน silence ถูกขยายเสียงจนเข้าใจผิดว่าปกติ)
+        """
+        try:
+            if audio_np is None or len(audio_np) == 0:
+                return True
+            a = audio_np.astype(np.float64)
+            rms = float(np.sqrt(np.mean(a ** 2)))
+            peak = float(np.max(np.abs(a)))
+            return rms < 0.01 or peak < 0.02
+        except Exception:
+            return False
+
     def _synth_omnivoice_sync(self, text: str, timeout: float = 15.0) -> Optional[bytes]:
         """เรียก OmniVoice engine แบบ synchronous — ส่งคืน WAV bytes (44100Hz)
 
@@ -1486,6 +1618,42 @@ class ChatPipeline:
         if "error" in result:
             if self.on_status is not None:
                 self.on_status(f"❌ OmniVoice: {result['error']}")
+            return None
+        return result.get("data")
+
+    def _synth_omnivoice_short_word_sync(self, text: str, timeout: float = 15.0) -> Optional[bytes]:
+        """★ EXPERIMENTAL — เหมือน _synth_omnivoice_sync แต่เรียก generate_short_word_doubled()
+
+        คำสั้นเดี่ยว → OmniVoiceEngine พูดซ้ำ 2 ครั้ง (มีช่องว่างคั่น = ดูเป็นวลี ไม่ใช่คำโดดๆ)
+        แล้วตัดเอาแค่ท่อนหลัง — ถ้าตัดพัง (เสียงสั้นเกินไป) engine จะ on_error กลับมา
+        → return None → caller (dispatch section) fallback ไป edge-tts ต่อเหมือน OmniVoice fail ปกติ
+        """
+        if not self.omnivoice or not self.omnivoice.is_loaded:
+            return None
+        done_event = threading.Event()
+        result: dict = {}
+
+        def on_done(data: bytes) -> None:
+            result["data"] = data
+            done_event.set()
+
+        def on_error(err: str) -> None:
+            result["error"] = err
+            done_event.set()
+
+        self.omnivoice.set_instruct(getattr(self.config, "omnivoice_voice", "female"))
+        _cfg_rate = getattr(self.config, "rate", 0)
+        if _cfg_rate:
+            self.omnivoice.set_speed(1.0 + (_cfg_rate / 100.0))
+        else:
+            self.omnivoice.set_speed(1.0)
+        repeat_count = int(getattr(self.config, "omnivoice_short_word_repeat", 3))
+        self.omnivoice.generate_short_word_doubled(text, on_done, on_error, repeat_count=repeat_count)
+        if not done_event.wait(timeout):
+            logger.warning(f"OmniVoice short-word retry timeout ({timeout}s) — will fallback to edge-tts")
+            return None
+        if "error" in result:
+            logger.info(f"OmniVoice short-word retry failed ({result['error']}) — fallback to edge-tts")
             return None
         return result.get("data")
 

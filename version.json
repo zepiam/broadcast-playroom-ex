@@ -1,16 +1,16 @@
 {
-  "version": "2.7.4",
-  "changelog": "- เพิ่มการเปลี่ยนธีมโปรแกรมอยู่ในการตั้งค่าของโปรแกรม\n- แก้บัคโปรแกรมค้าง เมื่อแชทหลุดการเชื่อมต่อ หรือ แชทของเว็บนั้นๆล่ม\n- แก้บัคปุ่ม ปิดอ่านแชท ไม่ทำงานตามจริง\n- แก้บัค ปุ่มการเชื่อมต่อแพลตฟอร์มแสดงผลสีผิด\n- แก้บัค ปุ่มปิดอ่าน TTS และ Volume แบบรายแพลตฟอร์มไม่ทำงานตามจริง",
+  "version": "2.7.5",
+  "changelog": "- ออกแบบการอ่านเสียงคำศัพท์สั้นๆบน Omnivoice ใหม่\n- เพิ่มการเปลี่ยนธีมโปรแกรมอยู่ในการตั้งค่าของโปรแกรม\n- แก้บัคโปรแกรมค้าง เมื่อแชทหลุดการเชื่อมต่อ หรือ แชทของเว็บนั้นๆล่ม\n- แก้บัคปุ่ม ปิดอ่านแชท ไม่ทำงานตามจริง\n- แก้บัค ปุ่มการเชื่อมต่อแพลตฟอร์มแสดงผลสีผิด",
   "lite": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.7.4/patch_lite.zip",
-    "size": 16687380,
-    "sha256": "46513bf8fd1a0f2ae7869d2e3b92e7eaf87a054152d90c8366f85def6882872f"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.7.5/patch_lite.zip",
+    "size": 16776453,
+    "sha256": "1221f536c82516fb0f29592e78548e20ab610bae4c200fbfa3eb4d45585eeaf1"
   },
   "full": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.7.4/patch_full.zip",
-    "size": 70977249,
-    "sha256": "4165bb386eb1c543e90dbd8fa911bad97fe895d41d0f60d09e5c831105fca06d"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.7.5/patch_full.zip",
+    "size": 71012813,
+    "sha256": "23e133ea79c3831a1249ded353f7fbe77114477ad446dc092a9654a8371cbb33"
   }
 }

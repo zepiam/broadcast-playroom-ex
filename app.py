@@ -1040,8 +1040,12 @@ class TTSForLivestreamApp(QMainWindow):
                 omnivoice_voice=getattr(s, 'omnivoice_voice', 'female'),
                 edge_voice=getattr(s, 'edge_voice', 'premwadee'),
                 omnivoice_skip_enabled=bool(getattr(s, 'omnivoice_skip_enabled', True)),
-                omnivoice_skip_min_length=int(getattr(s, 'omnivoice_skip_min_length', 3)),
-                omnivoice_short_whitelist=list(getattr(s, 'omnivoice_short_whitelist', ["ได้", "มี", "ไป"])),
+                omnivoice_skip_min_length=int(getattr(s, 'omnivoice_skip_min_length', 6)),
+                # ★ EXPERIMENTAL: คำสั้นเดี่ยว → ลองพูดซ้ำ+ตัดก่อน fallback edge-tts
+                omnivoice_short_word_retry=bool(getattr(s, 'omnivoice_short_word_retry', False)),
+                omnivoice_short_word_repeat=int(getattr(s, 'omnivoice_short_word_repeat', 3)),
+                warn_sound_path=str(getattr(s, 'warn_sound_path', '') or ''),
+                warn_sound_volume=float(getattr(s, 'warn_sound_volume', 0.6)),
                 read_author=getattr(s, 'read_author', True),
                 read_message=getattr(s, 'read_message', True),
                 # ★ ต้องอ่านจาก settings เสมอ — เดิมไม่ได้ใส่ตรงนี้ → ทุกครั้งที่ settings
@@ -3937,11 +3941,15 @@ class TTSForLivestreamApp(QMainWindow):
         self._auto_load_omnivoice()
 
     def _on_omnivoice_loaded(self):
-        """OmniVoice โหลดเสร็จ (main thread)"""
-        ov = getattr(self.settings, 'omnivoice_voice', 'female')
-        self.status_bar.set_status(f"✅ OmniVoice พร้อม ({ov})")
-        self.sidebar.rvc_status.setText(f"✅ OmniVoice ({ov})")
-        self.sidebar.rvc_status.setStyleSheet("color: #10b981; font-size: 13px;")
+        """OmniVoice โหลดเสร็จ (main thread)
+
+        ★ เดิม set rvc_status ตรงๆ เป็น "OmniVoice (เสียง)" เสมอ — ถ้ามี RVC model
+        ถูกเลือกไว้อยู่แล้ว (voice_id) ป้ายจะถูกเขียนทับ ทำให้ดูเหมือน RVC ไม่ได้ใช้งาน
+        ทั้งที่จริงยังใช้อยู่ (แค่ป้ายบอกผิด) → ใช้ _sync_voice_status_label() แทน ซึ่งเช็ค
+        voice_id ก่อนว่ามี RVC model ที่ควรโชว์ชื่อหรือไม่
+        """
+        self.status_bar.set_status(f"✅ OmniVoice พร้อม")
+        self._sync_voice_status_label()
 
     def _on_omnivoice_failed(self, error):
         """OmniVoice โหลดล้มเหลว (main thread) → fallback edge-tts"""

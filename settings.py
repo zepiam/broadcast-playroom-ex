@@ -269,13 +269,17 @@ class AppSettings:
     omnivoice_voice: str = "female"
     # ★ edge-tts voice — "premwadee" (หญิง) | "niwat" (ชาย)
     edge_voice: str = "premwadee"
-    # ★ OmniVoice short word policy — คำเดี่ยวสั้นกว่า min_length → ไม่อ่าน (default)
-    #   แต่ถ้าอยู่ใน whitelist → อ่าน (ยกเว้น)
+    # ★ OmniVoice short word policy — คำเดี่ยวสั้นกว่า min_length → ไม่อ่านด้วย OmniVoice เสมอ
     #   0 = ปิด (อ่านทุกคำ)
     omnivoice_skip_enabled: bool = True  # ★ default ON — คนไม่ชอบไปกดปิดเอง
-    omnivoice_skip_min_length: int = 3
-    # ★ whitelist คำเดียวที่สั้นแต่อ่านได้ (เช่น "ได้" "มี" "ไป" "กิน")
-    omnivoice_short_whitelist: list[str] = field(default_factory=lambda: ["ได้", "มี", "ไป", "กิน", "ดี", "ใช่"])
+    # ★ 5 → 6: ทดสอบจริง 124 คำ + ตรวจด้วย Thai ASR อัตโนมัติ พบว่าอัตราล้มเหลวยังสูงถึง 25%
+    #   ที่ความยาว 5 ตัวอักษร ลดฮวบเหลือ ~6% ตั้งแต่ 6 ตัวอักษรขึ้นไป
+    omnivoice_skip_min_length: int = 6
+    # ★ EXPERIMENTAL: คำสั้นเดี่ยว → ลองให้ OmniVoice อ่านเอง (พูดซ้ำ 2 ครั้ง+ตัด) แทนสลับ
+    #   ไป edge-tts ตรงๆ — พังก็ยัง fallback edge-tts เป็น safety net (ดู chat_queue.py)
+    omnivoice_short_word_retry: bool = False
+    # ★ จำนวนครั้งที่พูดซ้ำก่อนตัด (2-5) — ปรับได้จาก Settings โดยไม่ต้อง build ใหม่
+    omnivoice_short_word_repeat: int = 3
     read_author: bool = False  # ★ default = อ่านแต่ข้อความเท่านั้น (อ่านชื่อเป็นตัวเลือก)
     read_message: bool = True
     # ★ อ่านข้อความที่เราพิมพ์บนหน้าเว็บ (Twitch/KICK) — default เปิด (อ่านเสมอ)
@@ -790,7 +794,8 @@ class AppSettings:
             "edge_voice": self.edge_voice,
             "omnivoice_skip_enabled": bool(self.omnivoice_skip_enabled),
             "omnivoice_skip_min_length": int(self.omnivoice_skip_min_length),
-            "omnivoice_short_whitelist": list(self.omnivoice_short_whitelist),
+            "omnivoice_short_word_retry": bool(self.omnivoice_short_word_retry),
+            "omnivoice_short_word_repeat": int(self.omnivoice_short_word_repeat),
             "read_author": self.read_author,
             "read_message": self.read_message,
             "read_own_web_messages": self.read_own_web_messages,
@@ -1187,16 +1192,17 @@ class AppSettings:
             try:
                 s.omnivoice_skip_min_length = int(data["omnivoice_skip_min_length"])
             except Exception:
-                s.omnivoice_skip_min_length = 3
-        if "omnivoice_short_whitelist" in data:
+                s.omnivoice_skip_min_length = 6
+        if "omnivoice_short_word_retry" in data:
             try:
-                s.omnivoice_short_whitelist = [str(w).strip() for w in list(data["omnivoice_short_whitelist"]) if str(w).strip()]
+                s.omnivoice_short_word_retry = bool(data["omnivoice_short_word_retry"])
             except Exception:
-                s.omnivoice_short_whitelist = ["ได้", "มี", "ไป", "กิน", "ดี", "ใช่"]
-        elif "omnivoice_skip_words" in data:
-            # ★ migration: เดิมเป็น skip_words (blacklist) → ตอนนี้เป็น whitelist
-            #   ใช้ default whitelist แทน เพราะ blacklist เดิมไม่แปลงได้ตรงๆ
-            pass
+                s.omnivoice_short_word_retry = False
+        if "omnivoice_short_word_repeat" in data:
+            try:
+                s.omnivoice_short_word_repeat = max(2, min(5, int(data["omnivoice_short_word_repeat"])))
+            except Exception:
+                s.omnivoice_short_word_repeat = 3
         if "read_author" in data:
             s.read_author = bool(data["read_author"])
         if "read_own_web_messages" in data:
@@ -1922,6 +1928,32 @@ def load_settings() -> AppSettings:
                     _json.dump(data, _f, ensure_ascii=False, indent=2)
             except Exception:
                 pass
+        # ★ migration: บังคับ read_author=False (อ่านแต่ข้อความ) ครั้งเดียว —
+        #   default ในโค้ดเปลี่ยนเป็น False ไปแล้ว แต่ settings.json เก่าที่เคยเซฟ
+        #   "read_author": true ไว้ตั้งแต่ก่อนเปลี่ยน default จะค้างค่าเดิมตลอดไป
+        #   (from_dict อ่านค่าที่เซฟไว้ก่อนเสมอ ไม่สนใจ default ใหม่ของ dataclass)
+        if not data.get("_read_author_default_v2"):
+            s.read_author = False
+            try:
+                data["_read_author_default_v2"] = True
+                import json as _json
+                with open(SETTINGS_FILE, "w", encoding="utf-8") as _f:
+                    _json.dump(data, _f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+        # ★ migration: บังคับ omnivoice_skip_min_length=6 ครั้งเดียว —
+        #   ทดสอบจริง 124 คำพบว่าเกณฑ์เดิม 5 ยังปล่อยคำที่ล้มเหลว 25% หลุดไปใช้ OmniVoice
+        #   (from_dict อ่านค่าที่เซฟไว้ก่อนเสมอ ไม่สนใจ default ใหม่ของ dataclass)
+        if not data.get("_omnivoice_min_len_v2"):
+            s.omnivoice_skip_min_length = 6
+            try:
+                data["omnivoice_skip_min_length"] = 6
+                data["_omnivoice_min_len_v2"] = True
+                import json as _json
+                with open(SETTINGS_FILE, "w", encoding="utf-8") as _f:
+                    _json.dump(data, _f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
         return s
     except (json.JSONDecodeError, OSError, TypeError):
         s = AppSettings()
@@ -1937,5 +1969,7 @@ def save_settings(settings: AppSettings) -> None:
     data["_game_overlay_alpha_reset"] = True  # กัน reset alpha ซ้ำ (migration ครั้งเดียว)
     data["_opacity_reset_v2"] = True  # กัน reset opacity ซ้ำ (migration ครั้งเดียว)
     data["_v242_defaults_set"] = True  # กันบังคับ default ซ้ำ
+    data["_read_author_default_v2"] = True  # กัน migrate ซ้ำ (เดิมหลุดหาย → clobber ค่าที่ user set เอง)
+    data["_omnivoice_min_len_v2"] = True  # กัน migrate ซ้ำ (เดิมหลุดหาย → clobber ค่าที่ user set เอง)
     with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)

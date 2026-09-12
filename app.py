@@ -37,13 +37,14 @@ class _SystemMsg:
 
 
 # ═══ Platform Registry (คัดลอกจาก v1 — แบบย่อ) ═══
-PLATFORM_ORDER = ["twitch", "youtube", "mylive", "tiktok", "kick"]
+PLATFORM_ORDER = ["twitch", "youtube", "mylive", "tiktok", "kick", "soop"]
 PLATFORM_LABELS = {
     "twitch": "Twitch",
     "youtube": "YouTube",
     "mylive": "MyLive",
     "tiktok": "TikTok",
     "kick": "KICK",
+    "soop": "SOOP",
 }
 PLATFORM_ICONS = {
     "twitch": "🟣",
@@ -51,6 +52,7 @@ PLATFORM_ICONS = {
     "mylive": "🟠",
     "tiktok": "⚫",
     "kick": "🟢",
+    "soop": "🔷",
 }
 
 
@@ -1080,6 +1082,7 @@ class TTSForLivestreamApp(QMainWindow):
                     'mylive': getattr(s, 'tts_volume_mylive', 100),
                     'tiktok': getattr(s, 'tts_volume_tiktok', 100),
                     'kick': getattr(s, 'tts_volume_kick', 100),
+                    'soop': getattr(s, 'tts_volume_soop', 100),
                 },
                 # ★ per-platform mute (ปุ่มลำโพงในการ์ดแพลตฟอร์ม) — เดิมไม่เคยส่งเข้า
                 #   pipeline เลย ปุ่มเป็นแค่ไอคอน ไม่เงียบเสียงจริง
@@ -1089,6 +1092,7 @@ class TTSForLivestreamApp(QMainWindow):
                     'mylive': bool(getattr(s, 'tts_muted_mylive', False)),
                     'tiktok': bool(getattr(s, 'tts_muted_tiktok', False)),
                     'kick': bool(getattr(s, 'tts_muted_kick', False)),
+                    'soop': bool(getattr(s, 'tts_muted_soop', False)),
                 },
                 # ★ viewer command ([x2]/[p1]/[v50] chat prefix)
                 viewer_cmd_enabled=getattr(s, 'viewer_cmd_enabled', False),
@@ -1366,6 +1370,7 @@ class TTSForLivestreamApp(QMainWindow):
             'mylive': getattr(self.settings, 'show_mylive', True),
             'tiktok': getattr(self.settings, 'show_tiktok', False),
             'kick': getattr(self.settings, 'show_kick', False),
+            'soop': getattr(self.settings, 'show_soop', False),
         }
 
         for plat in PLATFORM_ORDER:
@@ -1416,6 +1421,7 @@ class TTSForLivestreamApp(QMainWindow):
             'mylive': getattr(self.settings, 'show_mylive', True),
             'tiktok': getattr(self.settings, 'show_tiktok', False),
             'kick': getattr(self.settings, 'show_kick', False),
+            'soop': getattr(self.settings, 'show_soop', False),
         }
         for plat, client in list(self.chat_clients.items()):
             if not show_map.get(plat, True):
@@ -1479,6 +1485,7 @@ class TTSForLivestreamApp(QMainWindow):
             "mylive": getattr(self.settings, 'mylive_url', ''),
             "tiktok": getattr(self.settings, 'tiktok_username', '') or getattr(self.settings, 'tiktok_user', ''),
             "kick": getattr(self.settings, 'kick_channel', ''),
+            "soop": getattr(self.settings, 'soop_bid', ''),
         }
         return target_map.get(platform, '')
 
@@ -1666,6 +1673,9 @@ class TTSForLivestreamApp(QMainWindow):
                     lambda tok, ref: self._on_kick_token_refreshed(tok, ref)
                 )
                 return client
+            elif platform == "soop":
+                from chat_soop import SoopChat
+                return SoopChat(on_message=on_message, on_status=on_status, on_error=on_error, on_viewer_count=on_viewer_count)
         except Exception as e:
             logger.error(f"Failed to create {platform} client: {e}")
         return None
@@ -2390,9 +2400,8 @@ class TTSForLivestreamApp(QMainWindow):
             self._stop_twitch_bot("twitch")
         self.status_bar.set_status(f"🤖 Chat Bot: {'เปิด' if enabled else 'ปิด'}")
 
-    def _on_open_platform_page(self, platform):
-        """★ ปุ่ม 🚀 GO — เปิดหน้าช่อง/ห้อง live ปัจจุบันของแพลตฟอร์มในเบราว์เซอร์"""
-        import webbrowser
+    def _get_platform_live_url(self, platform: str) -> str:
+        """★ หา URL ห้อง live ปัจจุบันของแพลตฟอร์ม (ใช้โดยปุ่ม GO)"""
         url = ""
         try:
             if platform == "twitch":
@@ -2425,8 +2434,18 @@ class TTSForLivestreamApp(QMainWindow):
                       getattr(self.settings, 'kick_bot_username', '') or '').strip().lstrip('@')
                 if ch:
                     url = f"https://kick.com/{ch}"
+            elif platform == "soop":
+                bid = (getattr(self.settings, 'soop_bid', '') or '').strip().lstrip('@')
+                if bid:
+                    url = f"https://play.sooplive.co.kr/{bid}"
         except Exception as e:
             logger.debug(f"go url build error: {e}")
+        return url
+
+    def _on_open_platform_page(self, platform):
+        """★ ปุ่ม 🚀 GO — เปิดหน้าช่อง/ห้อง live ปัจจุบันของแพลตฟอร์มในเบราว์เซอร์"""
+        import webbrowser
+        url = self._get_platform_live_url(platform)
         if url:
             webbrowser.open(url)
             self.status_bar.set_status(f"🚀 เปิดหน้า {platform.upper()}")
@@ -2686,7 +2705,8 @@ class TTSForLivestreamApp(QMainWindow):
             for (plat, _author), _idx in st.get("voters", {}).items():
                 per_plat[plat] = per_plat.get(plat, 0) + 1
             plat_labels = [("twitch", "Twitch"), ("youtube", "YouTube"),
-                           ("mylive", "MyLive"), ("kick", "KICK"), ("tiktok", "TikTok")]
+                           ("mylive", "MyLive"), ("kick", "KICK"), ("tiktok", "TikTok"),
+                           ("soop", "SOOP")]
             plat_parts = []
             for p, lbl in plat_labels:
                 n = per_plat.get(p, 0)
@@ -4232,6 +4252,10 @@ class TTSForLivestreamApp(QMainWindow):
                     return data.get("lazy_properties", {}).get("livestream", {}).get("session_title", "") or ""
                 return ""
 
+            elif platform == "soop":
+                # ★ SOOP: ไม่มี OAuth/public title API ที่ง่าย → ใช้ TITLE ที่ resolve ได้ตอน connect
+                return getattr(client, '_stream_title', '') or ''
+
         except Exception as e:
             logger.debug(f"fetch title {platform}: {e}")
         return ""
@@ -5726,6 +5750,7 @@ class TTSForLivestreamApp(QMainWindow):
             'mylive': getattr(self.settings, 'auto_connect_mylive', False),
             'tiktok': getattr(self.settings, 'auto_connect_tiktok', False),
             'kick': getattr(self.settings, 'auto_connect_kick', False),
+            'soop': getattr(self.settings, 'auto_connect_soop', False),
         }
         for plat, auto in auto_map.items():
             if auto and plat in self._platform_cards:

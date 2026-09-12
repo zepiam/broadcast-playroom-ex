@@ -52,16 +52,6 @@ def _browser_headers(extra=None):
         h.update(extra)
     return h
 
-# ★ Tier thresholds (เปรียบเทียบในหน่วย THB — สกุลอื่นแปลงเป็น THB ก่อนถ้ามีอัตรา)
-#   ตอนนี้ใช้ง่ายๆ: ทุกสกุลเทียบ amount ตรงๆ (assume THB)
-_TIER_THRESHOLDS = [
-    (10000, "👑", "Diamond"),
-    (5000,  "💎", "Platinum"),
-    (2000,  "🥇", "Gold"),
-    (500,   "🥈", "Silver"),
-    (1,     "🥉", "Bronze"),
-]
-
 # ★ currency symbol map
 _CURRENCY_SYMBOL = {
     "THB": "฿",
@@ -70,20 +60,6 @@ _CURRENCY_SYMBOL = {
     "EUR": "€",
     "GBP": "£",
 }
-
-
-def get_tier(amount: float, currency: str = "THB") -> dict:
-    """คำนวณ tier จากยอด → คืน {"icon": "...", "name": "..."}
-
-    ★ ตอนนี้ใช้ amount ตรงๆ (assume THB-equivalent)
-      ถ้ามีหลายสกุลจริงๆ จะต้องแปลงเป็น THB ก่อนเปรียบเทียบ
-    """
-    amt = float(amount or 0)
-    for threshold, icon, name in _TIER_THRESHOLDS:
-        if amt >= threshold:
-            return {"icon": icon, "name": name}
-    # amount = 0 หรือติดลบ → ไม่มี tier
-    return {"icon": "💚", "name": "Supporter"}
 
 
 def format_amount(amount, currency: str = "THB") -> str:

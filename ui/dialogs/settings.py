@@ -3,7 +3,7 @@
 เปลี่ยนจาก tab แบบเดิม → sidebar layout (ซ้ายเลือกหมวด → ขวาแสดง content)
 """
 import logging
-from PySide6.QtCore import Qt, Signal, QTimer, QEvent
+from PySide6.QtCore import Qt, Signal, QTimer, QEvent, QSize
 from PySide6.QtWidgets import (
     QDialog, QWidget, QFrame, QLabel, QPushButton, QLineEdit, QCheckBox,
     QVBoxLayout, QHBoxLayout, QGridLayout, QScrollArea,
@@ -234,15 +234,15 @@ class SettingsDialog(QDialog):
     def _wire_auto_save(self):
         """เชื่อมทุก widget กับ _auto_save (หลัง build UI เสร็จ) — ใช้ getattr กัน crash"""
         # QLineEdit → editingFinished
-        for attr in ['tw_channel', 'yt_id', 'ml_url', 'tt_user', 'kc_channel',
+        for attr in ['tw_channel', 'yt_id', 'ml_url', 'tt_user', 'kc_channel', 'sp_bid',
                       'at_apikey', 'at_host',
                       'obs_ws_host', 'obs_ws_password', 'ann_token', 'ann_url']:
             w = getattr(self, attr, None)
             if w and hasattr(w, 'editingFinished'):
                 w.editingFinished.connect(self._auto_save)
         # QCheckBox → stateChanged
-        for attr in ['auto_reconnect', 'tw_auto', 'yt_auto', 'ml_auto', 'tt_auto', 'kc_auto',
-                      'tw_show', 'yt_show', 'ml_show', 'tt_show', 'kc_show',
+        for attr in ['auto_reconnect', 'tw_auto', 'yt_auto', 'ml_auto', 'tt_auto', 'kc_auto', 'sp_auto',
+                      'tw_show', 'yt_show', 'ml_show', 'tt_show', 'kc_show', 'sp_show',
                       'playroom_enabled', 'mode_translate', 'mode_multilang',
                       'at_enabled', 'ml_enabled', 'mv_enabled',
                       'read_author', 'read_message', 'read_own_web',
@@ -380,17 +380,58 @@ class SettingsDialog(QDialog):
     # Section builders
     # ════════════════════════════════════════════════════════════
     def _build_platforms_section(self):
-        w = self._add_section("platforms", "🔌 แพลตฟอร์ม", "ตั้งค่า channel/URL สำหรับแต่ละแพลตฟอร์ม")
-        # ★ helper: สร้าง row แพลตฟอร์ม (label ด้านบน / บรรทัดล่าง = channel + auto + show)
-        def _platform_row(label, channel_widget, auto_cb_name, show_cb_name):
-            # ★ vertical layout: label ด้านบน, row ของ input/checkbox ด้านล่าง
-            card = QVBoxLayout()
-            card.setSpacing(4)
-            name_lbl = QLabel(label)
-            name_lbl.setStyleSheet("color: #e5e7eb; font-weight: 600;")
-            card.addWidget(name_lbl)
+        w = self._add_section(
+            "platforms", "🔌 แพลตฟอร์ม",
+            "ตั้งค่า channel/URL สำหรับแต่ละแพลตฟอร์ม — กดหัวข้อการ์ดเพื่อย่อ/ขยาย",
+        )
+        from ui.platform_icons import get_platform_icon
+
+        # ★ การ์ดพับได้ต่อ 1 แพลตฟอร์ม — กันหน้าตั้งค่ารกตอนมีหลายแพลตฟอร์ม (v2.7.7)
+        #   เดิมทุกอย่าง (input + checkbox + OAuth card) เรียงชนกันเป็นพรืดเดียว แยกไม่ออก
+        #   ว่าอันไหนของแพลตฟอร์มไหน → ครอบด้วยกรอบการ์ดเดียวต่อแพลตฟอร์ม + พับเก็บได้
+        def _platform_card(platform_key, title):
+            card = QFrame()
+            card.setObjectName("PlatformCard")
+            card.setStyleSheet(
+                "QFrame#PlatformCard { background: #1e293b; border: 1px solid #334155; border-radius: 8px; }"
+            )
+            outer = QVBoxLayout(card)
+            outer.setContentsMargins(0, 0, 0, 0)
+            outer.setSpacing(0)
+
+            body = QWidget()
+            body_layout = QVBoxLayout(body)
+            body_layout.setContentsMargins(14, 2, 14, 14)
+            body_layout.setSpacing(8)
+
+            header_btn = QPushButton(f"▼  {title}")
+            header_btn.setCheckable(True)
+            header_btn.setChecked(True)  # ★ เปิดไว้ก่อนเสมอ — เหมือนพฤติกรรมเดิมทุกประการ (ไม่มีอะไรถูกซ่อนโดย default)
+            header_btn.setCursor(Qt.PointingHandCursor)
+            icon = get_platform_icon(platform_key, 18)
+            if not icon.isNull():
+                header_btn.setIcon(icon)
+                header_btn.setIconSize(QSize(18, 18))
+            header_btn.setStyleSheet(
+                "QPushButton { background: transparent; border: none; color: #e5e7eb; "
+                "font-weight: 600; font-size: 13px; padding: 10px 12px; text-align: left; }"
+                "QPushButton:hover { background: #263449; border-radius: 8px; }"
+            )
+
+            def _toggle(checked, _btn=header_btn, _body=body, _title=title):
+                _body.setVisible(checked)
+                _btn.setText(f"{'▼' if checked else '▶'}  {_title}")
+            header_btn.toggled.connect(_toggle)
+
+            outer.addWidget(header_btn)
+            outer.addWidget(body)
+            self._current_section_layout.insertWidget(self._current_section_layout.count() - 1, card)
+            return body_layout
+
+        # ★ helper: แถว channel/URL input + เชื่อมอัตโนมัติ + แสดง (ใส่ใน body ของการ์ด)
+        def _channel_row(body_layout, channel_widget, label, auto_cb_name, show_cb_name):
             row = QHBoxLayout()
-            row.setSpacing(4)
+            row.setSpacing(6)
             row.addWidget(channel_widget, 1)
             auto_cb = QCheckBox("เชื่อมอัตโนมัติ")
             auto_cb.setToolTip(f"เชื่อมต่อ {label} อัตโนมัติตอนเปิดโปรแกรม")
@@ -400,148 +441,126 @@ class SettingsDialog(QDialog):
             show_cb.setToolTip(f"แสดง {label} ในหน้าหลัก (เลิกติ๊กเพื่อซ่อน)")
             row.addWidget(show_cb)
             setattr(self, show_cb_name, show_cb)
-            card.addLayout(row)
-            self._current_section_layout.insertLayout(self._current_section_layout.count() - 1, card)
+            body_layout.addLayout(row)
 
-        # Twitch
+        # ★ helper: บล็อก OAuth login (สถานะ + ปุ่ม) — ใส่ต่อท้าย channel row ในการ์ดเดียวกัน
+        #   (เดิมเป็นกรอบซ้อนกรอบแยกต่างหาก ดูรกกว่านี้ — ตอนนี้รวมอยู่ในการ์ดเดียวกับ channel input)
+        def _oauth_block(body_layout, title_text, title_color, status_attr,
+                          btn_connect_attr, btn_disconnect_attr, btn_bot_attr,
+                          connect_label, on_connect, on_disconnect):
+            divider = QFrame()
+            divider.setFrameShape(QFrame.HLine)
+            divider.setStyleSheet("background: #334155; max-height: 1px; border: none;")
+            body_layout.addWidget(divider)
+
+            title = QLabel(title_text)
+            title.setStyleSheet(f"font-weight: 600; color: {title_color}; border: none;")
+            body_layout.addWidget(title)
+
+            status = QLabel("⏳ กำลังตรวจสอบ...")
+            status.setWordWrap(True)
+            status.setStyleSheet("color: #94a3b8; font-size: 12px; border: none;")
+            body_layout.addWidget(status)
+            setattr(self, status_attr, status)
+
+            btn_row = QHBoxLayout()
+            btn_connect = QPushButton(connect_label)
+            btn_connect.setCursor(Qt.PointingHandCursor)
+            btn_connect.setStyleSheet(
+                "QPushButton { background: #334155; color: #e2e8f0; border: 1px solid #475569; "
+                "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
+                "QPushButton:hover { background: #475569; }"
+            )
+            btn_disconnect = QPushButton("⚪ ยกเลิกการเชื่อมต่อ")
+            btn_disconnect.setCursor(Qt.PointingHandCursor)
+            btn_disconnect.setStyleSheet(
+                "QPushButton { background: #dc2626; color: white; border: none; "
+                "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
+                "QPushButton:hover { background: #b91c1c; }"
+            )
+            # ★ ปุ่ม "ตั้งค่า Chat Bot" — แสดงหลังเชื่อมต่อสำเร็จ → เด้งไป section Chat Bot
+            btn_bot = QPushButton("🤖 ตั้งค่า Chat Bot")
+            btn_bot.setCursor(Qt.PointingHandCursor)
+            btn_bot.setStyleSheet(
+                "QPushButton { background: #7c3aed; color: white; border: none; "
+                "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
+                "QPushButton:hover { background: #6d28d9; }"
+            )
+            btn_bot.setVisible(False)  # ★ ซ่อนจนกว่าจะเชื่อมต่อสำเร็จ
+            btn_bot.clicked.connect(self._goto_chat_bot_section)
+
+            btn_row.addWidget(btn_connect)
+            btn_row.addWidget(btn_disconnect)
+            btn_row.addWidget(btn_bot)
+            btn_row.addStretch()
+            body_layout.addLayout(btn_row)
+
+            btn_connect.clicked.connect(on_connect)
+            btn_disconnect.clicked.connect(on_disconnect)
+
+            setattr(self, btn_connect_attr, btn_connect)
+            setattr(self, btn_disconnect_attr, btn_disconnect)
+            setattr(self, btn_bot_attr, btn_bot)
+
+        # ── Twitch ──
+        body = _platform_card("twitch", "Twitch")
         self.tw_channel = QLineEdit()
         self.tw_channel.setPlaceholderText("เช่น men9ch")
-        _platform_row("Twitch:", self.tw_channel, 'tw_auto', 'tw_show')
-
-        # ★ Twitch OAuth (ส่งแชท + Bot) — ปุ่มเชื่อมต่อ + สถานะ
-        tw_oauth_card = QFrame()
-        tw_oauth_card.setStyleSheet(
-            "QFrame { background: #1e293b; border: 1px solid #334155; border-radius: 8px; }"
-        )
-        tw_oauth_layout = QVBoxLayout(tw_oauth_card)
-        tw_oauth_layout.setContentsMargins(12, 10, 12, 10)
-        tw_oauth_layout.setSpacing(6)
-
-        tw_oauth_title = QLabel("🔐 ล็อกอิน Twitch (ส่งแชท + Bot)")
-        tw_oauth_title.setStyleSheet("font-weight: 600; color: #f59e0b; border: none;")
-        tw_oauth_layout.addWidget(tw_oauth_title)
-
-        self.tw_oauth_status = QLabel("⏳ กำลังตรวจสอบ...")
-        self.tw_oauth_status.setWordWrap(True)
-        self.tw_oauth_status.setStyleSheet("color: #94a3b8; font-size: 12px; border: none;")
-        tw_oauth_layout.addWidget(self.tw_oauth_status)
-
-        tw_oauth_btn_row = QHBoxLayout()
-        self.btn_tw_connect = QPushButton("🔗 เชื่อมต่อ Twitch")
-        self.btn_tw_connect.setCursor(Qt.PointingHandCursor)
-        self.btn_tw_connect.setStyleSheet(
-            "QPushButton { background: #334155; color: #e2e8f0; border: 1px solid #475569; "
-            "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
-            "QPushButton:hover { background: #475569; }"
-        )
-        self.btn_tw_disconnect = QPushButton("⚪ ยกเลิกการเชื่อมต่อ")
-        self.btn_tw_disconnect.setCursor(Qt.PointingHandCursor)
-        self.btn_tw_disconnect.setStyleSheet(
-            "QPushButton { background: #dc2626; color: white; border: none; "
-            "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
-            "QPushButton:hover { background: #b91c1c; }"
-        )
-        # ★ ปุ่ม "ตั้งค่า Chat Bot" — แสดงหลังเชื่อมต่อสำเร็จ → เด้งไป section Chat Bot
-        self.btn_tw_bot_settings = QPushButton("🤖 ตั้งค่า Chat Bot")
-        self.btn_tw_bot_settings.setCursor(Qt.PointingHandCursor)
-        self.btn_tw_bot_settings.setStyleSheet(
-            "QPushButton { background: #7c3aed; color: white; border: none; "
-            "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
-            "QPushButton:hover { background: #6d28d9; }"
-        )
-        self.btn_tw_bot_settings.setVisible(False)  # ★ ซ่อนจนกว่าจะเชื่อมต่อสำเร็จ
-        self.btn_tw_bot_settings.clicked.connect(self._goto_chat_bot_section)
-
-        tw_oauth_btn_row.addWidget(self.btn_tw_connect)
-        tw_oauth_btn_row.addWidget(self.btn_tw_disconnect)
-        tw_oauth_btn_row.addWidget(self.btn_tw_bot_settings)
-        tw_oauth_btn_row.addStretch()
-        tw_oauth_layout.addLayout(tw_oauth_btn_row)
-        # ★ เชื่อมปุ่ม
-        self.btn_tw_connect.clicked.connect(self._on_tw_connect_clicked)
-        self.btn_tw_disconnect.clicked.connect(self._on_tw_disconnect_clicked)
-
-        self._current_section_layout.insertWidget(
-            self._current_section_layout.count() - 1, tw_oauth_card
+        _channel_row(body, self.tw_channel, "Twitch", 'tw_auto', 'tw_show')
+        _oauth_block(
+            body, "🔐 ล็อกอิน Twitch (ส่งแชท + Bot)", "#f59e0b",
+            'tw_oauth_status', 'btn_tw_connect', 'btn_tw_disconnect', 'btn_tw_bot_settings',
+            "🔗 เชื่อมต่อ Twitch", self._on_tw_connect_clicked, self._on_tw_disconnect_clicked,
         )
 
-        # YouTube
+        # ── YouTube ──
+        body = _platform_card("youtube", "YouTube")
         self.yt_id = QLineEdit()
         self.yt_id.setPlaceholderText("@ชื่อช่อง เช่น @MeN9CH (แนะนำ — หาห้อง live เอง) หรือ URL ห้อง")
-        _platform_row("YouTube:", self.yt_id, 'yt_auto', 'yt_show')
+        _channel_row(body, self.yt_id, "YouTube", 'yt_auto', 'yt_show')
+        # ★ ปุ่มล็อกอิน YouTube (ส่งแชท+Bot) ถูกพับเก็บไว้ก่อน — quota 10,000 units/วัน
+        #   ใช้ร่วมกันทุกคนที่ใช้โปรแกรม (~200 ข้อความ/วันรวมทั้งระบบ) ไม่พอใช้งานจริง
+        #   โค้ดฝั่ง backend (chat_youtube.py, youtube_oauth.py, server/youtube_token.php)
+        #   ยังอยู่ครบ พร้อมเปิดกลับได้ทันทีถ้าแก้เรื่อง quota ได้ — ดู setup_youtube_oauth_handlers
+        #   ที่ถูกลบออกจากไฟล์นี้ (เคยมีตอน v2.7.7 restore แล้วพับกลับ)
 
-        # MyLive
+        # ── MyLive ──
+        body = _platform_card("mylive", "MyLive")
         self.ml_url = QLineEdit()
         self.ml_url.setPlaceholderText("https://mylive.in.th/streams/XXXXX")
-        _platform_row("MyLive:", self.ml_url, 'ml_auto', 'ml_show')
-        # KICK (★ ไว้ก่อน TikTok — รองรับส่งแชท + bot)
+        _channel_row(body, self.ml_url, "MyLive", 'ml_auto', 'ml_show')
+
+        # ── KICK (รองรับส่งแชท + bot) ──
+        body = _platform_card("kick", "KICK")
         self.kc_channel = QLineEdit()
         self.kc_channel.setPlaceholderText("channel")
-        _platform_row("KICK:", self.kc_channel, 'kc_auto', 'kc_show')
-
-        # ★ KICK OAuth (ส่งแชท + Bot + แก้ชื่อห้อง) — ปุ่มเชื่อมต่อ + สถานะ
-        kc_oauth_card = QFrame()
-        kc_oauth_card.setStyleSheet(
-            "QFrame { background: #1e293b; border: 1px solid #334155; border-radius: 8px; }"
-        )
-        kc_oauth_layout = QVBoxLayout(kc_oauth_card)
-        kc_oauth_layout.setContentsMargins(12, 10, 12, 10)
-        kc_oauth_layout.setSpacing(6)
-
-        kc_oauth_title = QLabel("🔐 ล็อกอิน KICK (ส่งแชท + Bot + แก้ชื่อห้อง)")
-        kc_oauth_title.setStyleSheet("font-weight: 600; color: #53fc18; border: none;")
-        kc_oauth_layout.addWidget(kc_oauth_title)
-
-        self.kc_oauth_status = QLabel("⏳ กำลังตรวจสอบ...")
-        self.kc_oauth_status.setWordWrap(True)
-        self.kc_oauth_status.setStyleSheet("color: #94a3b8; font-size: 12px; border: none;")
-        kc_oauth_layout.addWidget(self.kc_oauth_status)
-
-        kc_oauth_btn_row = QHBoxLayout()
-        self.btn_kc_connect = QPushButton("🔗 เชื่อมต่อ KICK")
-        self.btn_kc_connect.setCursor(Qt.PointingHandCursor)
-        self.btn_kc_connect.setStyleSheet(
-            "QPushButton { background: #334155; color: #e2e8f0; border: 1px solid #475569; "
-            "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
-            "QPushButton:hover { background: #475569; }"
-        )
-        self.btn_kc_disconnect = QPushButton("⚪ ยกเลิกการเชื่อมต่อ")
-        self.btn_kc_disconnect.setCursor(Qt.PointingHandCursor)
-        self.btn_kc_disconnect.setStyleSheet(
-            "QPushButton { background: #dc2626; color: white; border: none; "
-            "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
-            "QPushButton:hover { background: #b91c1c; }"
-        )
-        self.btn_kc_bot_settings = QPushButton("🤖 ตั้งค่า Chat Bot")
-        self.btn_kc_bot_settings.setCursor(Qt.PointingHandCursor)
-        self.btn_kc_bot_settings.setStyleSheet(
-            "QPushButton { background: #7c3aed; color: white; border: none; "
-            "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
-            "QPushButton:hover { background: #6d28d9; }"
-        )
-        self.btn_kc_bot_settings.setVisible(False)
-        self.btn_kc_bot_settings.clicked.connect(self._goto_chat_bot_section)
-
-        kc_oauth_btn_row.addWidget(self.btn_kc_connect)
-        kc_oauth_btn_row.addWidget(self.btn_kc_disconnect)
-        kc_oauth_btn_row.addWidget(self.btn_kc_bot_settings)
-        kc_oauth_btn_row.addStretch()
-        kc_oauth_layout.addLayout(kc_oauth_btn_row)
-        # ★ เชื่อมปุ่ม
-        self.btn_kc_connect.clicked.connect(self._on_kc_connect_clicked)
-        self.btn_kc_disconnect.clicked.connect(self._on_kc_disconnect_clicked)
-
-        self._current_section_layout.insertWidget(
-            self._current_section_layout.count() - 1, kc_oauth_card
+        _channel_row(body, self.kc_channel, "KICK", 'kc_auto', 'kc_show')
+        _oauth_block(
+            body, "🔐 ล็อกอิน KICK (ส่งแชท + Bot + แก้ชื่อห้อง)", "#53fc18",
+            'kc_oauth_status', 'btn_kc_connect', 'btn_kc_disconnect', 'btn_kc_bot_settings',
+            "🔗 เชื่อมต่อ KICK", self._on_kc_connect_clicked, self._on_kc_disconnect_clicked,
         )
 
-        # TikTok (★ ไว้ล่างสุด — อ่านอย่างเดียว)
+        # ── TikTok (อ่านอย่างเดียว) ──
+        body = _platform_card("tiktok", "TikTok")
         self.tt_user = QLineEdit()
         self.tt_user.setPlaceholderText("username")
-        _platform_row("TikTok:", self.tt_user, 'tt_auto', 'tt_show')
-        # Auto-reconnect
-        self.auto_reconnect = QCheckBox("เชื่อมต่อใหม่อัตโนมัติเมื่อหลุด")
-        self._current_section_layout.insertWidget(self._current_section_layout.count() - 1,  self.auto_reconnect
+        _channel_row(body, self.tt_user, "TikTok", 'tt_auto', 'tt_show')
+
+        # ── SOOP (เดิม AfreecaTV) — อ่านอย่างเดียว ไม่มี OAuth (ยังไม่รองรับส่งแชท/อีโมติคอน) ──
+        body = _platform_card("soop", "SOOP")
+        self.sp_bid = QLineEdit()
+        self.sp_bid.setPlaceholderText("เช่น men9ch")
+        _channel_row(body, self.sp_bid, "SOOP", 'sp_auto', 'sp_show')
+        sp_hint = QLabel("⚠️ ต้องเปิด Live อยู่เท่านั้นถึงจะเชื่อมต่อแชทได้ — ถ้ายังไม่ได้ไลฟ์ จะเชื่อมต่อไม่สำเร็จ")
+        sp_hint.setWordWrap(True)
+        sp_hint.setStyleSheet("color: #94a3b8; font-size: 11px; border: none;")
+        body.addWidget(sp_hint)
+
+        # Auto-reconnect (การตั้งค่ารวมทุกแพลตฟอร์ม — แยกไว้นอกการ์ด ไม่ใช่ per-platform)
+        self.auto_reconnect = QCheckBox("เชื่อมต่อใหม่อัตโนมัติเมื่อหลุด (ทุกแพลตฟอร์ม)")
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, self.auto_reconnect
         )
 
     def _build_tts_section(self):
@@ -2735,7 +2754,8 @@ class SettingsDialog(QDialog):
         plat_lbl.setStyleSheet("color: #e5e7eb; font-size: 12px;")
         plat_row.addWidget(plat_lbl)
         self.bot_plat_cbs = {}
-        # ★ แสดงเฉพาะแพลตฟอร์มที่มี Bot จริง (YouTube ยังไม่มี)
+        # ★ แสดงเฉพาะแพลตฟอร์มที่มี Bot จริง (YouTube พับเก็บไว้ก่อน — ดูคอมเมนต์ที่การ์ด YouTube
+        #   ใน _build_platforms_section — quota ไม่พอใช้งานจริง)
         for key, label in (("twitch", "Twitch"), ("kick", "KICK")):
             cb = QCheckBox(label)
             cb.setToolTip(f"เปิด/ปิด Bot เฉพาะ {label} (ปิดแล้ว Bot เงียบเฉพาะที่นี่)")
@@ -3066,6 +3086,108 @@ class SettingsDialog(QDialog):
         self._bot_timer_layout.addWidget(row)
         self._bot_timer_rows.append(row)
 
+    # ★ credential ที่ห้ามหลุดออกไปกับไฟล์ export (ถ้าไฟล์แชร์/หลุด จะได้ไม่มีใครสวมรอยได้)
+    _SETTINGS_EXPORT_EXCLUDE = [
+        'twitch_oauth_token', 'twitch_oauth_refresh',
+        'kick_oauth_token', 'kick_oauth_refresh',
+        'youtube_oauth_token', 'youtube_oauth_refresh',
+        'supporters_admin_secret',
+        'announce_gh_token',
+    ]
+
+    def _full_settings_export(self):
+        """💾 Export การตั้งค่าทั้งหมดในโปรแกรมเป็นไฟล์เดียว (ไม่รวม OAuth token/secret)"""
+        import json, time
+        from PySide6.QtWidgets import QFileDialog
+        if not self.settings:
+            return
+        data = self.settings.to_dict()
+        for key in self._SETTINGS_EXPORT_EXCLUDE:
+            data.pop(key, None)
+        envelope = {
+            "type": "full_settings",
+            "version": 1,
+            "exported_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "settings": data,
+        }
+        default_name = f"broadcast_playroom_settings_{time.strftime('%Y%m%d')}.json"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "ส่งออกการตั้งค่าทั้งหมด", default_name, "JSON (*.json)"
+        )
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(envelope, f, ensure_ascii=False, indent=2)
+            QMessageBox.information(
+                self, "✅ ส่งออกสำเร็จ",
+                f"ส่งออกการตั้งค่าทั้งหมดไปยัง:\n{path}\n\n"
+                "⚠ ไม่รวมการล็อกอิน/token ของ Twitch, KICK, YouTube — "
+                "ต้องล็อกอินใหม่เองหลัง import"
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "❌ ส่งออกไม่ได้", str(e))
+
+    def _full_settings_import(self):
+        """📥 Import การตั้งค่าทั้งหมด — เขียนทับค่าปัจจุบัน (ยกเว้น token ที่ไม่ได้อยู่ในไฟล์)"""
+        import json
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getOpenFileName(
+            self, "นำเข้าการตั้งค่าทั้งหมด", "", "JSON (*.json)"
+        )
+        if not path:
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                envelope = json.load(f)
+        except Exception as e:
+            QMessageBox.critical(self, "❌ อ่านไฟล์ไม่ได้", str(e))
+            return
+
+        incoming = envelope.get("settings") if isinstance(envelope, dict) else None
+        if not isinstance(envelope, dict) or envelope.get("type") != "full_settings" or not isinstance(incoming, dict):
+            QMessageBox.warning(
+                self, "ไฟล์ไม่ถูกต้อง",
+                "ไฟล์นี้ไม่ใช่ไฟล์ export การตั้งค่าทั้งหมดของ Broadcast Playroom"
+            )
+            return
+
+        reply = QMessageBox.question(
+            self, "⚠ ยืนยันการนำเข้า",
+            "การนำเข้าจะเขียนทับการตั้งค่าปัจจุบันเกือบทั้งหมด "
+            "(การล็อกอิน/token ต่างๆ ที่ยังเชื่อมต่ออยู่จะไม่ถูกลบ)\n\n"
+            "ต้องการดำเนินการต่อไหม?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        if not self.settings:
+            return
+        try:
+            from settings import AppSettings, save_settings
+            # ★ merge: เอาค่าปัจจุบัน (มี token ครบ) เป็นฐาน แล้วทับด้วยค่าที่ import มา
+            #   ไฟล์ import ไม่มี key ของ token อยู่แล้ว (ถูกตัดออกตอน export) → token เดิมไม่โดนทับ/ลบ
+            merged = self.settings.to_dict()
+            merged.update(incoming)
+            new_settings = AppSettings.from_dict(merged)
+            # ★ คัดลอกค่าทีละ field ลงใน object เดิม (ไม่สร้าง object ใหม่ทับ self.settings)
+            #   เพราะ app.py ถือ reference เดียวกันอยู่ — ถ้าสร้างใหม่ทับ จะหลุดจากกันทันที
+            for field_name in new_settings.__dataclass_fields__:
+                setattr(self.settings, field_name, getattr(new_settings, field_name))
+            save_settings(self.settings)
+        except Exception as e:
+            QMessageBox.critical(self, "❌ นำเข้าไม่ได้", str(e))
+            return
+
+        self._load_values()
+        self.settings_changed.emit()
+        QMessageBox.information(
+            self, "✅ นำเข้าสำเร็จ",
+            "นำเข้าการตั้งค่าทั้งหมดแล้ว — ถ้ามีแพลตฟอร์มที่ต้องล็อกอิน "
+            "(Twitch/KICK/YouTube) ให้กดเชื่อมต่อใหม่ในหน้าแพลตฟอร์ม"
+        )
+
     def _build_about_section(self):
         """ℹ️ เกี่ยวกับ — เนื้อหาจาก v1 AboutDialog (port มา PySide6)"""
         self._add_section("about", "", "")
@@ -3168,6 +3290,54 @@ class SettingsDialog(QDialog):
             else:
                 lbl.setStyleSheet("font-size: 15px; color: #e5e7eb;")
             layout.insertWidget(ci(), lbl)
+
+        # ── สำรอง/กู้คืนการตั้งค่าทั้งหมด ──
+        backup_card = QFrame()
+        backup_card.setObjectName("BackupCard")
+        backup_card.setStyleSheet(
+            "QFrame#BackupCard { background: #1e293b; border: 1px solid #334155; border-radius: 8px; }"
+        )
+        backup_layout = QVBoxLayout(backup_card)
+        backup_layout.setContentsMargins(14, 12, 14, 12)
+        backup_layout.setSpacing(6)
+
+        backup_title = QLabel("💾 สำรอง / กู้คืนการตั้งค่าทั้งหมด")
+        backup_title.setStyleSheet("font-weight: 600; color: #e5e7eb; border: none;")
+        backup_layout.addWidget(backup_title)
+
+        backup_hint = QLabel(
+            "ส่งออกการตั้งค่าทั้งหมดในโปรแกรม (channel, TTS, RVC, NG words, Replace, โค้ดลับ, "
+            "overlay, Playroom ฯลฯ) เป็นไฟล์เดียว เอาไว้ย้ายเครื่องหรือสำรองข้อมูล — "
+            "⚠ ไม่รวมการล็อกอิน/token ของ Twitch, KICK, YouTube (ต้องล็อกอินใหม่เองหลัง import "
+            "เพื่อความปลอดภัย)"
+        )
+        backup_hint.setWordWrap(True)
+        backup_hint.setStyleSheet("color: #6b7280; font-size: 11px; border: none;")
+        backup_layout.addWidget(backup_hint)
+
+        backup_btn_row = QHBoxLayout()
+        btn_settings_export = QPushButton("📤 Export การตั้งค่าทั้งหมด")
+        btn_settings_export.setCursor(Qt.PointingHandCursor)
+        btn_settings_export.setStyleSheet(
+            "QPushButton { background: #334155; color: #06b6d4; border: none; "
+            "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
+            "QPushButton:hover { background: #475569; }"
+        )
+        btn_settings_export.clicked.connect(self._full_settings_export)
+        btn_settings_import = QPushButton("📥 Import การตั้งค่าทั้งหมด")
+        btn_settings_import.setCursor(Qt.PointingHandCursor)
+        btn_settings_import.setStyleSheet(
+            "QPushButton { background: #334155; color: #e2e8f0; border: 1px solid #475569; "
+            "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
+            "QPushButton:hover { background: #475569; }"
+        )
+        btn_settings_import.clicked.connect(self._full_settings_import)
+        backup_btn_row.addWidget(btn_settings_export)
+        backup_btn_row.addWidget(btn_settings_import)
+        backup_btn_row.addStretch()
+        backup_layout.addLayout(backup_btn_row)
+
+        layout.insertWidget(ci(), backup_card)
 
         # ── credit ──
         credit = QLabel("By MeN9CH")
@@ -3510,7 +3680,7 @@ class SettingsDialog(QDialog):
             return
 
         # ★ success case — ตารางรายชื่อผู้สนับสนุน
-        from supporters_api import get_tier, format_amount
+        from supporters_api import format_amount
         self._supporters_status_label.setText(f"✅ {count} ผู้สนับสนุน")
         self._supporters_status_label.setStyleSheet("font-size: 13px; color: #10b981; margin-bottom: 4px;")
 
@@ -3567,7 +3737,6 @@ class SettingsDialog(QDialog):
             platform = str(sup.get("platform", "")).strip()
             channel_url = str(sup.get("channel_url", "")).strip()
 
-            tier = get_tier(amount, currency)
             amount_str = format_amount(amount, currency)
 
             # ★ zebra stripes (สลับสีพื้นหลัง)
@@ -3591,12 +3760,6 @@ class SettingsDialog(QDialog):
             name_col = QHBoxLayout(name_container)
             name_col.setContentsMargins(0, 0, 0, 0)
             name_col.setSpacing(6)
-
-            tier_lbl = QLabel(tier["icon"])
-            tier_lbl.setStyleSheet("font-size: 16px; background: transparent; border: none;")
-            tier_lbl.setFixedSize(20, 20)
-            tier_lbl.setToolTip(f"{tier['name']} tier")
-            name_col.addWidget(tier_lbl)
 
             name_lbl = QLabel(name)
             name_lbl.setStyleSheet("font-size: 13px; font-weight: 600; color: #f3f4f6; background: transparent; border: none;")
@@ -4000,6 +4163,7 @@ class SettingsDialog(QDialog):
         if hasattr(self, 'ann_token'):
             self.ann_token.setText(getattr(s, 'announce_gh_token', '') or '')
         self.kc_channel.setText(getattr(s, 'kick_channel', '') or '')
+        self.sp_bid.setText(getattr(s, 'soop_bid', '') or '')
         # ★ KICK OAuth status
         self._refresh_kick_oauth_status()
         self.auto_reconnect.setChecked(getattr(s, 'auto_reconnect_enabled', True))
@@ -4009,12 +4173,14 @@ class SettingsDialog(QDialog):
         self.ml_auto.setChecked(getattr(s, 'auto_connect_mylive', False))
         self.tt_auto.setChecked(getattr(s, 'auto_connect_tiktok', False))
         self.kc_auto.setChecked(getattr(s, 'auto_connect_kick', False))
+        self.sp_auto.setChecked(getattr(s, 'auto_connect_soop', False))
         # show per platform
         self.tw_show.setChecked(getattr(s, 'show_twitch', True))
         self.yt_show.setChecked(getattr(s, 'show_youtube', True))
         self.ml_show.setChecked(getattr(s, 'show_mylive', True))
         self.tt_show.setChecked(getattr(s, 'show_tiktok', False))
         self.kc_show.setChecked(getattr(s, 'show_kick', False))
+        self.sp_show.setChecked(getattr(s, 'show_soop', False))
         # playroom
         self.playroom_enabled.setChecked(getattr(s, 'playroom_enabled', False))
         # translate mode
@@ -4112,17 +4278,20 @@ class SettingsDialog(QDialog):
             if hasattr(self, 'ann_token'):
                 s.announce_gh_token = self.ann_token.text().strip()
             s.kick_channel = self.kc_channel.text().strip()
+            s.soop_bid = self.sp_bid.text().strip()
             s.auto_reconnect_enabled = self.auto_reconnect.isChecked()
             s.auto_connect_twitch = self.tw_auto.isChecked()
             s.auto_connect_youtube = self.yt_auto.isChecked()
             s.auto_connect_mylive = self.ml_auto.isChecked()
             s.auto_connect_tiktok = self.tt_auto.isChecked()
             s.auto_connect_kick = self.kc_auto.isChecked()
+            s.auto_connect_soop = self.sp_auto.isChecked()
             s.show_twitch = self.tw_show.isChecked()
             s.show_youtube = self.yt_show.isChecked()
             s.show_mylive = self.ml_show.isChecked()
             s.show_tiktok = self.tt_show.isChecked()
             s.show_kick = self.kc_show.isChecked()
+            s.show_soop = self.sp_show.isChecked()
         # playroom
         if hasattr(self, 'playroom_enabled'):
             s.playroom_enabled = self.playroom_enabled.isChecked()

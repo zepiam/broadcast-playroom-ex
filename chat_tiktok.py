@@ -37,7 +37,7 @@ try:
         GiftEvent,
         JoinEvent,
         LikeEvent,
-        RoomUpdateEvent,
+        RoomUserSeqEvent,  # ★ เดิมชื่อ RoomUpdateEvent — เปลี่ยนชื่อใน TikTokLive รุ่นใหม่
         SocialEvent,
     )
     from TikTokLive.client.client import TikTokLiveClient
@@ -49,7 +49,12 @@ except Exception as exc:  # noqa: BLE001
     _IMPORT_ERROR = str(exc)
     CommentEvent = ConnectEvent = DisconnectEvent = None  # type: ignore[assignment]
     FollowEvent = GiftEvent = JoinEvent = LikeEvent = SocialEvent = None  # type: ignore[assignment]
+    RoomUserSeqEvent = None  # type: ignore[assignment]
     TikTokLiveClient = None  # type: ignore[assignment]
+
+# ★ เวลารอสูงสุดให้ ConnectEvent ยิงหลังเรียก client.start() — กันแฮงค์ตลอดกาล
+#   (TikTokLive library ไม่มี timeout ในตัวเอง ดู comment ที่จุดเรียกใช้)
+_CONNECT_TIMEOUT = 20.0
 
 
 # ---------------------------------------------------------------------- #
@@ -418,23 +423,47 @@ class TikTokChat:
             )
 
         # viewer count — TikTok push event ~ทุก 5-10s
-        @self._client.on(RoomUpdateEvent)  # type: ignore[union-attr]
+        @self._client.on(RoomUserSeqEvent)  # type: ignore[union-attr]
         async def on_room_update(event):  # noqa: ANN001
             try:
-                count = getattr(event, "viewer_count", None)
+                # ★ field เดิมชื่อ viewer_count — เปลี่ยนเป็น total_user ใน TikTokLive รุ่นใหม่
+                count = getattr(event, "total_user", None)
                 if count is not None:
                     self.on_viewer_count("tiktok", int(count))
             except Exception:
                 pass
 
         # connect + รัน forever (จนกว่าจะ disconnect)
-        try:
-            await self._client.start(
+        # ★ TikTokLive.start() ไม่มี timeout ในตัวเองเลย (ต่างจากทุกแพลตฟอร์มอื่นในโปรแกรมนี้
+        #   ที่มี socket/HTTP timeout กันไว้แล้ว — Twitch 15s, KICK/SOOP 5s, YouTube 10-20s)
+        #   ถ้า internal request ของไลบรารีค้าง (เช่น DNS/TCP ครึ่งๆ กลางๆ) coroutine นี้จะ
+        #   แฮงค์ตลอดกาล ไม่มีทางให้ reconnect logic ใน app.py รู้ตัวเลย (thread ไม่มีวันจบ)
+        #   → ครอบ deadline รอ ConnectEvent เอง (เทียบเท่า ws.settimeout ของแพลตฟอร์มอื่น)
+        start_task = asyncio.ensure_future(
+            self._client.start(
                 process_connect_events=True,
                 fetch_room_info=True,  # เพื่อ initial viewer count
                 fetch_gift_info=False,
                 fetch_live_check=True,
             )
+        )
+        connect_deadline = time.monotonic() + _CONNECT_TIMEOUT
+        while not self._is_connected and not start_task.done():
+            if time.monotonic() > connect_deadline:
+                start_task.cancel()
+                if not self._should_stop:
+                    self.on_error(
+                        f"TikTok: เชื่อมต่อไม่สำเร็จภายใน {int(_CONNECT_TIMEOUT)} วิ "
+                        "(เซิร์ฟเวอร์ไม่ตอบสนอง) — ลองใหม่อีกครั้ง"
+                    )
+                self._is_connecting = False
+                return
+            await asyncio.sleep(0.2)
+
+        try:
+            await start_task
+        except asyncio.CancelledError:
+            pass
         except Exception as exc:  # noqa: BLE001
             err_msg = str(exc)
             if not self._should_stop:

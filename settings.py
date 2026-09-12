@@ -177,6 +177,7 @@ class AppSettings:
     kick_token_expiry_ts: float = 0.0 # ★ เวลา (unix) ที่ token หมดอายุ (2 ชม. — ต่ออายุอัตโนมัติ)
     kick_bot_username: str = ""       # ชื่อบัญชีจาก OAuth (auto-filled)
     kick_user_id: int = 0             # broadcaster_user_id (ใช้ส่ง type=user)
+    soop_bid: str = ""  # SOOP (AfreecaTV) BJID — อ่านอย่างเดียว ไม่มี OAuth
     # ★ Announcement — ประกาศจากเจ้าของโปรแกรม (เจ้าของใช้ token เผยแพร่, user แค่ดู)
     announce_gh_token: str = ""  # fine-grained PAT (จำกัด repo เดียว + Contents rw) — ใช้เฉพาะเครื่องเจ้าของ
     announce_dismissed_id: str = ""  # id ของประกาศที่ user กดปิดล่าสุด
@@ -187,12 +188,14 @@ class AppSettings:
     auto_connect_mylive: bool = False
     auto_connect_tiktok: bool = False
     auto_connect_kick: bool = False
+    auto_connect_soop: bool = False
     # แพลตฟอร์มที่จะแสดงใน sidebar (เปิด/ปิดได้ — ซ่อนเว็บที่ไม่ใช้ออกไป)
     show_twitch: bool = True
     show_youtube: bool = True
     show_mylive: bool = True
     show_tiktok: bool = False
     show_kick: bool = False
+    show_soop: bool = False
     # TTS toggle per platform (อ่าน TTS เฉพาะแพลตฟอร์มที่เปิด)
     read_tts_twitch: bool = True
     read_tts_youtube: bool = True
@@ -207,6 +210,7 @@ class AppSettings:
     tts_volume_mylive: int = 100
     tts_volume_tiktok: int = 100
     tts_volume_kick: int = 100
+    tts_volume_soop: int = 100
     # ★ Twitch OAuth (ส่งแชท + bot) — ถ้าว่าง = anonymous (อ่านอย่างเดียว)
     twitch_oauth_token: str = ""        # access token (เก็บตรงๆ — จะใช้ต่อจากนี้)
     twitch_oauth_refresh: str = ""      # refresh token (แลก token ใหม่เมื่อหมดอายุ)
@@ -728,6 +732,7 @@ class AppSettings:
             "kick_token_expiry_ts": float(self.kick_token_expiry_ts or 0.0),
             "kick_bot_username": self.kick_bot_username,
             "kick_user_id": int(self.kick_user_id or 0),
+            "soop_bid": self.soop_bid,
             "announce_gh_token": self.announce_gh_token,
             "announce_dismissed_id": self.announce_dismissed_id,
             "auto_connect": self.auto_connect,
@@ -736,11 +741,13 @@ class AppSettings:
             "auto_connect_mylive": self.auto_connect_mylive,
             "auto_connect_tiktok": self.auto_connect_tiktok,
             "auto_connect_kick": self.auto_connect_kick,
+            "auto_connect_soop": self.auto_connect_soop,
             "show_twitch": self.show_twitch,
             "show_youtube": self.show_youtube,
             "show_mylive": self.show_mylive,
             "show_tiktok": self.show_tiktok,
             "show_kick": self.show_kick,
+            "show_soop": self.show_soop,
             "read_tts_twitch": self.read_tts_twitch,
             "read_tts_youtube": self.read_tts_youtube,
             "read_tts_mylive": self.read_tts_mylive,
@@ -752,6 +759,7 @@ class AppSettings:
             "tts_volume_mylive": self.tts_volume_mylive,
             "tts_volume_tiktok": self.tts_volume_tiktok,
             "tts_volume_kick": self.tts_volume_kick,
+            "tts_volume_soop": self.tts_volume_soop,
             # ★ Twitch OAuth + bot
             "twitch_oauth_token": self.twitch_oauth_token,
             "twitch_oauth_refresh": self.twitch_oauth_refresh,
@@ -1068,13 +1076,15 @@ class AppSettings:
             s.kick_bot_username = str(data["kick_bot_username"])
         if "kick_user_id" in data:
             s.kick_user_id = int(data["kick_user_id"] or 0)
+        if "soop_bid" in data:
+            s.soop_bid = str(data["soop_bid"])
         if "announce_gh_token" in data:
             s.announce_gh_token = str(data["announce_gh_token"])
         if "announce_dismissed_id" in data:
             s.announce_dismissed_id = str(data["announce_dismissed_id"])
         if "auto_connect" in data:
             s.auto_connect = bool(data["auto_connect"])
-        for plat in ("twitch", "youtube", "mylive", "tiktok", "kick"):
+        for plat in ("twitch", "youtube", "mylive", "tiktok", "kick", "soop"):
             key = f"auto_connect_{plat}"
             if key in data:
                 setattr(s, key, bool(data[key]))
@@ -1088,6 +1098,8 @@ class AppSettings:
             s.show_tiktok = bool(data["show_tiktok"])
         if "show_kick" in data:
             s.show_kick = bool(data["show_kick"])
+        if "show_soop" in data:
+            s.show_soop = bool(data["show_soop"])
         if "read_tts_twitch" in data:
             s.read_tts_twitch = bool(data["read_tts_twitch"])
         if "read_tts_youtube" in data:
@@ -1101,7 +1113,8 @@ class AppSettings:
         if "platforms_collapsed" in data:
             s.platforms_collapsed = bool(data["platforms_collapsed"])
         for vol_field in ("tts_volume_twitch", "tts_volume_youtube",
-                           "tts_volume_mylive", "tts_volume_tiktok", "tts_volume_kick"):
+                           "tts_volume_mylive", "tts_volume_tiktok", "tts_volume_kick",
+                           "tts_volume_soop"):
             if vol_field in data:
                 val = int(data[vol_field])
                 # ★ migration: ค่าเดิมเป็น 0 (offset -50..+50) → แปลงเป็น 100 (no change)

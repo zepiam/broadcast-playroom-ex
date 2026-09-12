@@ -35,3 +35,6 @@ youtube_oauth.py
 # Supporters backend (PHP, deployed separately to men9ch.com) — unrelated to
 # app version releases on GitHub, keep entirely out of this repo
 server/
+
+# Contains a live client_secret — delete after deploying, never commit
+YOUTUBE_TOKEN_DEPLOY.md

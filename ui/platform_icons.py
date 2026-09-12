@@ -17,6 +17,7 @@ PLATFORM_FILES = {
     "mylive": "mylive.png",
     "tiktok": "tiktok.png",
     "kick": "kick.png",
+    "soop": "soop.png",
 }
 
 # ── cache: {(platform, size): QPixmap} ──
@@ -89,7 +90,7 @@ def make_icon_label(platform: str, size: int = 16):
     # fallback: emoji
     emoji_fallback = {
         "twitch": "🟣", "youtube": "🔴", "mylive": "🔵",
-        "tiktok": "⚫", "kick": "🟢",
+        "tiktok": "⚫", "kick": "🟢", "soop": "🔷",
     }
     lbl.setText(emoji_fallback.get(platform, "📺"))
     lbl.setStyleSheet(f"font-size: {size}px;")

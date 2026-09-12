@@ -665,6 +665,7 @@ class ChatRow(QWidget):
         colors = {
             'twitch': '#bf94ff', 'youtube': '#ff4444',
             'mylive': '#ff8800', 'tiktok': '#00f2ea', 'kick': '#53fc18',
+            'soop': '#00d9ff',
         }
         return colors.get(platform, '#06b6d4')
 
@@ -677,6 +678,7 @@ class ChatRow(QWidget):
             icon_map = {
                 'twitch': 'twitch.png', 'youtube': 'youtube.png',
                 'mylive': 'mylive.png', 'tiktok': 'tiktok.png', 'kick': 'kick.png',
+                'soop': 'soop.png',
             }
             fname = icon_map.get(platform)
             if fname:

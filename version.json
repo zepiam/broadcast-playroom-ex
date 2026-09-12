@@ -1,16 +1,16 @@
 {
-  "version": "2.7.5",
-  "changelog": "- ออกแบบการอ่านเสียงคำศัพท์สั้นๆบน Omnivoice ใหม่\n- เพิ่มการเปลี่ยนธีมโปรแกรมอยู่ในการตั้งค่าของโปรแกรม\n- แก้บัคโปรแกรมค้าง เมื่อแชทหลุดการเชื่อมต่อ หรือ แชทของเว็บนั้นๆล่ม\n- แก้บัคปุ่ม ปิดอ่านแชท ไม่ทำงานตามจริง\n- แก้บัค ปุ่มการเชื่อมต่อแพลตฟอร์มแสดงผลสีผิด",
+  "version": "2.7.6",
+  "changelog": "- เพิ่มรองรับการดึงแชทจากแพลตฟอร์ม Soop Live (แต่มีเงื่อนไขว่าต้องยิงสตรีมก่อนถึงเชื่อมได้)\n- เพิ่มฟีเจอร์ Export/Import เซฟข้อมูลการตั้งค่าในโปรแกรมแทบทั้งหมด\n- แก้บั๊ก Tiktok ทำโปรแกรมค้าง",
   "lite": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.7.5/patch_lite.zip",
-    "size": 16776453,
-    "sha256": "1221f536c82516fb0f29592e78548e20ab610bae4c200fbfa3eb4d45585eeaf1"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.7.6/patch_lite.zip",
+    "size": 16814758,
+    "sha256": "013cc8311d9a28a609d5960c6acd8aee64572c30f7bd9d530330b89980c230ff"
   },
   "full": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.7.5/patch_full.zip",
-    "size": 71012813,
-    "sha256": "23e133ea79c3831a1249ded353f7fbe77114477ad446dc092a9654a8371cbb33"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.7.6/patch_full.zip",
+    "size": 71051239,
+    "sha256": "a8eabb4cd60cde6823806718a0e01ec206abd7b6de85874d7388f207ed78584a"
   }
 }

@@ -1,16 +1,16 @@
 {
-  "version": "2.7.6",
-  "changelog": "- เพิ่มรองรับการดึงแชทจากแพลตฟอร์ม Soop Live (แต่มีเงื่อนไขว่าต้องยิงสตรีมก่อนถึงเชื่อมได้)\n- เพิ่มฟีเจอร์ Export/Import เซฟข้อมูลการตั้งค่าในโปรแกรมแทบทั้งหมด\n- แก้บั๊ก Tiktok ทำโปรแกรมค้าง",
+  "version": "2.7.7",
+  "changelog": "- แก้บั๊กเล็กน้อย",
   "lite": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.7.6/patch_lite.zip",
-    "size": 16814758,
-    "sha256": "013cc8311d9a28a609d5960c6acd8aee64572c30f7bd9d530330b89980c230ff"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.7.7/patch_lite.zip",
+    "size": 16814538,
+    "sha256": "296a487ad39b9368decda245bd2581b5a886cda8b756ea75333686c9d640db98"
   },
   "full": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.7.6/patch_full.zip",
-    "size": 71051239,
-    "sha256": "a8eabb4cd60cde6823806718a0e01ec206abd7b6de85874d7388f207ed78584a"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.7.7/patch_full.zip",
+    "size": 71051564,
+    "sha256": "52eb5e2cd6b7df7c205d1d3ecc749abe1df338f78108ddb391899d13706eb58c"
   }
 }

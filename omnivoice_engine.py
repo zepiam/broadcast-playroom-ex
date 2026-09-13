@@ -27,6 +27,12 @@ TARGET_SR = 44100
 # ★ OmniVoice ส่งคืน 24kHz
 OMNIVOICE_SR = 24000
 
+# ★ guidance_scale ต่ำกว่า default ของโมเดล (2.0) — ลดความ "ใส่อารมณ์" ที่โมเดลชอบทำเอง
+#   ทดสอบฟังเทียบหลายค่าจริงแล้วเลือก 0.5 เป็นจุดที่นิ่งสุดโดยยังฟังเป็นธรรมชาติ (ต่ำกว่านี้
+#   เริ่มหลุด/ไม่เป็นธรรมชาติ) — สำคัญเพราะเสียงนี้จะถูกส่งต่อเข้า RVC อีกที ถ้าต้นทางมีอารมณ์
+#   ขึ้นๆ ลงๆ RVC จะพาอารมณ์นั้นติดไปด้วย ไม่ได้ทำให้เสียงนิ่งขึ้นเอง
+OMNIVOICE_GUIDANCE_SCALE = 0.5
+
 
 class OmniVoiceEngine:
     """Wrapper สำหรับ OmniVoice TTS — เลียนแบบ TTSEngine API"""
@@ -218,6 +224,11 @@ class OmniVoiceEngine:
     def current_instruct(self) -> str:
         return self._instruct
 
+    def _make_generation_config(self):
+        """คืน OmniVoiceGenerationConfig ที่ลด guidance_scale ลง — ดู OMNIVOICE_GUIDANCE_SCALE"""
+        from omnivoice.models.omnivoice import OmniVoiceGenerationConfig
+        return OmniVoiceGenerationConfig(guidance_scale=OMNIVOICE_GUIDANCE_SCALE)
+
     def generate(
         self,
         text: str,
@@ -253,6 +264,7 @@ class OmniVoiceEngine:
                     "instruct": instruct_val,
                     "language": lang,
                     "normalize_text": self._normalize_text,
+                    "generation_config": self._make_generation_config(),
                 }
                 # ★ speed เฉพาะกรณีไม่ใช่ default (1.0) — ปล่อยให้โมเดลเดาถ้า default
                 if self._speed and abs(self._speed - 1.0) > 0.01:
@@ -325,6 +337,7 @@ class OmniVoiceEngine:
                     "instruct": instruct_val,
                     "language": lang,
                     "normalize_text": self._normalize_text,
+                    "generation_config": self._make_generation_config(),
                 }
                 if self._speed and abs(self._speed - 1.0) > 0.01:
                     kwargs["speed"] = self._speed

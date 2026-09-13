@@ -1275,7 +1275,7 @@ class ChatPipeline:
         #   ถ้า user ตั้ง Replace "อ๋อ" → "อ๋อเข้าใจแล้ว" ต้องอ่าน (เพราะเปลี่ยนคำใหม่แล้ว)
         #   จึง apply_pronunciation ก่อน แล้วค่อยเช็ค skip กับข้อความที่แปลงแล้ว
         engine_choice = getattr(self.config, "tts_engine", "edge")
-        _omni_short_retry = False  # ★ EXPERIMENTAL flag — ดู _synth_omnivoice_short_word_sync
+        _omni_short_retry = False  # ★ ดู _synth_omnivoice_short_word_sync (generate_best_of_n)
         if engine_choice == "omnivoice" and getattr(self.config, "omnivoice_skip_enabled", True):
             # ★ INFO (ไม่ใช่ debug) — log level ของแอปตั้งเป็น INFO เฉยๆ debug ไม่เคยโผล่ในไฟล์
             #   log จริง ทำให้ตรวจย้อนหลังไม่ได้ว่า min_len ที่ใช้จริงคือค่าไหน (เช่น settings.json
@@ -1292,11 +1292,12 @@ class ChatPipeline:
                 min_len = getattr(self.config, "omnivoice_skip_min_length", 0)
                 if min_len > 0 and len(check_text) < min_len:
                     if getattr(self.config, "omnivoice_short_word_retry", False):
-                        # ★ EXPERIMENTAL: ลองให้ OmniVoice อ่านเอง (พูดซ้ำ 2 ครั้ง+ตัด)
-                        #   ก่อนยอมสลับไป edge-tts — engine_choice ยังเป็น "omnivoice" อยู่
-                        #   แค่ตั้ง flag ไว้ให้จุด dispatch ข้างล่างรู้ว่าต้องเรียกคนละเมธอด
+                        # ★ EXPERIMENTAL: ลองให้ OmniVoice อ่านเอง (เจนซ้ำหลายครั้งเลือกอันยาว
+                        #   ที่สุด — ดู generate_best_of_n) ก่อนยอมสลับไป edge-tts — ปิดเป็น
+                        #   default แล้ว (ดู comment ที่ settings.py) เพราะแก้ได้แค่เคส "สั้น
+                        #   ผิดปกติ" ไม่ใช่เคส "ออกเสียงผิดสม่ำเสมอ" ที่เจอภายหลังกับคำอุทาน
                         _omni_short_retry = True
-                        logger.info(f"OmniVoice short word → retry (doubled+trim): {check_text!r} (len={len(check_text)} < {min_len})")
+                        logger.info(f"OmniVoice short word → retry (best-of-n): {check_text!r} (len={len(check_text)} < {min_len})")
                     else:
                         # ★ คำสั้น → สลับไป Azure (edge-tts) แทน OmniVoice เสมอ
                         logger.info(f"OmniVoice short word → Azure fallback: {check_text!r} (len={len(check_text)} < {min_len})")
@@ -1621,12 +1622,13 @@ class ChatPipeline:
             return None
         return result.get("data")
 
-    def _synth_omnivoice_short_word_sync(self, text: str, timeout: float = 15.0) -> Optional[bytes]:
-        """★ EXPERIMENTAL — เหมือน _synth_omnivoice_sync แต่เรียก generate_short_word_doubled()
+    def _synth_omnivoice_short_word_sync(self, text: str, timeout: float = 20.0) -> Optional[bytes]:
+        """เหมือน _synth_omnivoice_sync แต่เรียก generate_best_of_n()
 
-        คำสั้นเดี่ยว → OmniVoiceEngine พูดซ้ำ 2 ครั้ง (มีช่องว่างคั่น = ดูเป็นวลี ไม่ใช่คำโดดๆ)
-        แล้วตัดเอาแค่ท่อนหลัง — ถ้าตัดพัง (เสียงสั้นเกินไป) engine จะ on_error กลับมา
+        คำสั้นเดี่ยว → OmniVoiceEngine เจนซ้ำหลายครั้งแล้วเลือกไฟล์ที่ยาวที่สุด (ดู
+        docstring ของ generate_best_of_n) — ถ้าพังหมดทุกครั้ง engine จะ on_error กลับมา
         → return None → caller (dispatch section) fallback ไป edge-tts ต่อเหมือน OmniVoice fail ปกติ
+        ★ timeout ยาวกว่า _synth_omnivoice_sync ปกติ (20s ไม่ใช่ 15s) เพราะเจนหลายรอบ
         """
         if not self.omnivoice or not self.omnivoice.is_loaded:
             return None
@@ -1647,13 +1649,13 @@ class ChatPipeline:
             self.omnivoice.set_speed(1.0 + (_cfg_rate / 100.0))
         else:
             self.omnivoice.set_speed(1.0)
-        repeat_count = int(getattr(self.config, "omnivoice_short_word_repeat", 3))
-        self.omnivoice.generate_short_word_doubled(text, on_done, on_error, repeat_count=repeat_count)
+        attempts = int(getattr(self.config, "omnivoice_short_word_repeat", 3))
+        self.omnivoice.generate_best_of_n(text, on_done, on_error, attempts=attempts)
         if not done_event.wait(timeout):
-            logger.warning(f"OmniVoice short-word retry timeout ({timeout}s) — will fallback to edge-tts")
+            logger.warning(f"OmniVoice best-of-n timeout ({timeout}s) — will fallback to edge-tts")
             return None
         if "error" in result:
-            logger.info(f"OmniVoice short-word retry failed ({result['error']}) — fallback to edge-tts")
+            logger.info(f"OmniVoice best-of-n failed ({result['error']}) — fallback to edge-tts")
             return None
         return result.get("data")
 

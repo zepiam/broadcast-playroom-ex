@@ -33,6 +33,12 @@ OMNIVOICE_SR = 24000
 #   ขึ้นๆ ลงๆ RVC จะพาอารมณ์นั้นติดไปด้วย ไม่ได้ทำให้เสียงนิ่งขึ้นเอง
 OMNIVOICE_GUIDANCE_SCALE = 0.5
 
+# ★ guidance_scale เฉพาะ path คำสั้นเดี่ยว (generate_best_of_n) — ★★ ห้ามใช้ค่า 0.5 ข้างบน
+#   ทดสอบจริงพบว่า guidance_scale ต่ำทำให้คำสั้นเดี่ยวๆ พังหนักขึ้นมาก (7/8 ครั้ง generate()
+#   คืน array ว่างเปล่า/throw exception จากภายใน library เอง — เทียบกับ 0/8 ที่ guidance_scale
+#   default 2.0) คำเดียวโดดๆ ไม่ค่อยมี "อารมณ์" ให้ลดอยู่แล้ว ความเสถียรสำคัญกว่าตรงนี้
+OMNIVOICE_SHORT_WORD_GUIDANCE_SCALE = 2.0
+
 
 class OmniVoiceEngine:
     """Wrapper สำหรับ OmniVoice TTS — เลียนแบบ TTSEngine API"""
@@ -224,10 +230,10 @@ class OmniVoiceEngine:
     def current_instruct(self) -> str:
         return self._instruct
 
-    def _make_generation_config(self):
-        """คืน OmniVoiceGenerationConfig ที่ลด guidance_scale ลง — ดู OMNIVOICE_GUIDANCE_SCALE"""
+    def _make_generation_config(self, guidance_scale: float = OMNIVOICE_GUIDANCE_SCALE):
+        """คืน OmniVoiceGenerationConfig — ดู OMNIVOICE_GUIDANCE_SCALE / OMNIVOICE_SHORT_WORD_GUIDANCE_SCALE"""
         from omnivoice.models.omnivoice import OmniVoiceGenerationConfig
-        return OmniVoiceGenerationConfig(guidance_scale=OMNIVOICE_GUIDANCE_SCALE)
+        return OmniVoiceGenerationConfig(guidance_scale=guidance_scale)
 
     def generate(
         self,
@@ -298,84 +304,94 @@ class OmniVoiceEngine:
             logger.error(f"OmniVoice generate failed: {e}")
             on_error(str(e))
 
-    def generate_short_word_doubled(
+    def generate_best_of_n(
         self,
-        word: str,
+        text: str,
         on_done: Callable[[bytes], None],
         on_error: Callable[[str], None],
-        repeat_count: int = 2,
+        attempts: int = 3,
     ) -> None:
-        """★ EXPERIMENTAL — คำเดี่ยวสั้นๆ (เช่น "ครับ", "โอเค") ที่ OmniVoice อ่านพังบ่อย
+        """★ คำเดี่ยวสั้นๆ (เช่น "ครับ", "โอเค") ที่ OmniVoice มีโอกาสสุ่มอ่านพัง
 
-        แนวคิด: OmniVoice อ่านคำสั้นได้ปกติถ้าอยู่ใน "วลี" (มีคำอื่นร่วมด้วย) ปัญหาเกิด
-        เฉพาะตอนเป็นคำโดดๆ คำเดียว → เราจึงสร้างวลีปลอมโดยพูดคำเดิมซ้ำ N ครั้ง
-        ("ครับ ครับ ครับ") ให้โมเดล "warm up" จังหวะจากคำแรกๆ ก่อน แล้วตัดเอาแค่
-        ท่อนสุดท้าย (คำที่ N) มาเป็นเสียงจริงที่เล่น — ไม่ต้องพึ่ง fallback ไป edge-tts
+        ยืนยันจากการทดสอบสถิติจริง: เจนคำเดียวกัน ("ครับ") ด้วยโค้ดเดียวกันเป๊ะ 5 รอบ
+        → 4/5 ได้เสียงปกติ (ความยาวเท่ากันทุกรอบ) 1/5 พัง (เสียงสั้นกว่าปกติเกือบครึ่ง)
+        คือปัญหานี้เป็นเรื่องสุ่ม (sampling) ไม่ใช่พังทุกครั้งแน่นอน — วิธีแก้คือ**เจนซ้ำ
+        หลายครั้งแล้วเลือกไฟล์ที่ยาวที่สุด** เพราะรอบที่พังจะได้เสียงสั้นกว่าปกติชัดเจน
+        เจน 3 ครั้งแล้วเลือกยาวสุด ลดโอกาสได้ของพังทั้งชุดเหลือ ~0.8% (ถ้าอัตราพังจริง
+        อยู่ราว 20%) — ไม่ต้องเดา "ความยาวที่ควรจะเป็น" ล่วงหน้า แค่เทียบกันเองในชุดตัวอย่าง
 
-        repeat_count: จำนวนครั้งที่พูดซ้ำ (2-5, จาก settings.omnivoice_short_word_repeat) —
-        ยิ่งเยอะยิ่งให้โมเดล warm up นานขึ้น แต่ก็ยิ่งช้าลง (synth ยาวขึ้นตามจำนวนครั้ง)
+        แทนที่ generate_short_word_doubled() เดิม (พูดซ้ำ+ตัด) เพราะวิธีนี้ตรงไปตรงมากว่า
+        ไม่ต้องพึ่ง heuristic หาจุดตัดที่อาจตัดผิดจุดได้เอง
 
-        ถ้าตัดไม่ได้ผลดี (เสียงที่ได้สั้นผิดปกติ) → on_error() ให้ caller fallback เอง
-        (เหมือนกรณี OmniVoice fail ปกติ — ไม่มีความเสี่ยงเพิ่มจาก path เดิม)
+        attempts: จำนวนครั้งที่เจน (2-5, จาก settings.omnivoice_short_word_repeat)
+        ถ้าทุกครั้งพังหมด (เคสซวยสุดๆ) → on_error() ให้ caller fallback ไป edge-tts เอง
+        เหมือนกรณี OmniVoice fail ปกติ
         """
         if not self._loaded or self._model is None:
             on_error("OmniVoice not loaded")
             return
-        word = (word or "").strip()
-        if not word:
+        text = (text or "").strip()
+        if not text:
             on_error("empty text")
             return
-        repeat_count = max(2, min(5, int(repeat_count or 2)))
+        attempts = max(1, min(5, int(attempts or 3)))
 
-        doubled_text = " ".join([word] * repeat_count)
+        candidates = []
+        last_error = None
+        for i in range(attempts):
+            try:
+                with self._lock:
+                    instruct_val = self.VALID_INSTRUCTS.get(self._instruct, "female")
+                    lang = self._resolve_language(text)
+                    kwargs = {
+                        "text": text,
+                        "instruct": instruct_val,
+                        "language": lang,
+                        "normalize_text": self._normalize_text,
+                        # ★ ใช้ guidance_scale ปลอดภัย (default 2.0) ไม่ใช่ค่านิ่งอารมณ์ 0.5 —
+                        #   ดู OMNIVOICE_SHORT_WORD_GUIDANCE_SCALE ว่าทำไม
+                        "generation_config": self._make_generation_config(
+                            guidance_scale=OMNIVOICE_SHORT_WORD_GUIDANCE_SCALE
+                        ),
+                    }
+                    if self._speed and abs(self._speed - 1.0) > 0.01:
+                        kwargs["speed"] = self._speed
+                    audio_list = self._model.generate(**kwargs)
+                if audio_list and len(audio_list) > 0:
+                    audio_np = audio_list[0]  # (T,) ที่ 24kHz — ก่อน resample/postprocess
+                    self._log_audio_stats(
+                        f"best-of-n attempt {i + 1}/{attempts} {text!r}", audio_np, OMNIVOICE_SR
+                    )
+                    # ★ โมเดลบางครั้งคืน array ความยาว 0 มาเป็น "สำเร็จ" (ไม่ throw exception เลย)
+                    #   ต้องกรองทิ้งตรงนี้ ไม่งั้น max(candidates, key=len) อาจเลือกอันว่างมา
+                    #   แล้ว _postprocess_audio ไปพัง (np.max บน array ว่าง)
+                    if audio_np is not None and len(audio_np) > 0:
+                        candidates.append(audio_np)
+                    else:
+                        logger.warning(f"OmniVoice best-of-n attempt {i + 1}: got empty audio array")
+            except Exception as e:
+                last_error = str(e)
+                logger.error(f"OmniVoice best-of-n attempt {i + 1} failed: {e}")
+
+        if not candidates:
+            on_error(last_error or "OmniVoice returned empty audio (all attempts)")
+            return
+
+        # ★ เลือกอันที่ยาวที่สุด — รอบที่พังจะสั้นกว่าปกติชัดเจนจากที่ทดสอบจริง
+        best = max(candidates, key=len)
+        logger.info(
+            f"OmniVoice best-of-n: {len(candidates)}/{attempts} succeeded, "
+            f"picked longest ({len(best) / OMNIVOICE_SR * 1000:.0f}ms) for {text!r}"
+        )
+
         try:
-            with self._lock:
-                instruct_val = self.VALID_INSTRUCTS.get(self._instruct, "female")
-                lang = self._resolve_language(doubled_text)
-                kwargs = {
-                    "text": doubled_text,
-                    "instruct": instruct_val,
-                    "language": lang,
-                    "normalize_text": self._normalize_text,
-                    "generation_config": self._make_generation_config(),
-                }
-                if self._speed and abs(self._speed - 1.0) > 0.01:
-                    kwargs["speed"] = self._speed
-                logger.info(f"OmniVoice short-word retry (x{repeat_count}): {doubled_text!r}")
-                audio_list = self._model.generate(**kwargs)
-
-            if not audio_list or len(audio_list) == 0:
-                on_error("OmniVoice returned empty audio (doubled)")
-                return
-
-            audio_np = audio_list[0]  # (T,) ที่ 24kHz — ก่อน resample/postprocess
-            self._log_audio_stats(f"retry raw (x{repeat_count}) {doubled_text!r}", audio_np, OMNIVOICE_SR)
-
-            split_idx = self._find_repeat_split(audio_np, OMNIVOICE_SR, repeat_count)
-            trimmed = audio_np[split_idx:]
-            logger.info(
-                f"OmniVoice short-word split: total={len(audio_np)/OMNIVOICE_SR*1000:.0f}ms, "
-                f"split_at={split_idx/OMNIVOICE_SR*1000:.0f}ms, kept={len(trimmed)/OMNIVOICE_SR*1000:.0f}ms, "
-                f"repeat_count={repeat_count}"
-            )
-            self._log_audio_stats(f"retry trimmed (pre-postprocess) {word!r}", trimmed, OMNIVOICE_SR)
-
-            # ★ กันเคสตัดพัง — เหลือสั้นกว่า 120ms ถือว่าไม่ใช่คำจริง (ตัดผิดจุด/โมเดลพังทั้งคู่)
-            min_samples = int(0.12 * OMNIVOICE_SR)
-            if len(trimmed) < min_samples:
-                on_error(
-                    f"trim produced too-short audio ({len(trimmed)/OMNIVOICE_SR*1000:.0f}ms) — likely bad split"
-                )
-                return
-
-            trimmed = self._resample(trimmed, OMNIVOICE_SR, TARGET_SR)
-            trimmed = self._postprocess_audio(trimmed)
-            self._log_audio_stats(f"retry final (post-postprocess) {word!r}", trimmed, TARGET_SR)
-            wav_bytes = self._numpy_to_wav(trimmed, TARGET_SR)
+            audio_np = self._resample(best, OMNIVOICE_SR, TARGET_SR)
+            audio_np = self._postprocess_audio(audio_np)
+            self._log_audio_stats(f"best-of-n final (post-postprocess) {text!r}", audio_np, TARGET_SR)
+            wav_bytes = self._numpy_to_wav(audio_np, TARGET_SR)
             on_done(wav_bytes)
-
         except Exception as e:
-            logger.error(f"OmniVoice short-word retry failed: {e}")
+            logger.error(f"OmniVoice best-of-n postprocess failed: {e}")
             on_error(str(e))
 
     def _log_audio_stats(self, label: str, audio_np, sr: int) -> None:
@@ -401,52 +417,6 @@ class OmniVoiceEngine:
             )
         except Exception as e:
             logger.debug(f"_log_audio_stats failed: {e}")
-
-    def _find_repeat_split(self, audio_np, sr: int, repeat_count: int = 2) -> int:
-        """หาจุดตัดก่อนคำ "สุดท้าย" ของเสียงที่พูดซ้ำ N ครั้ง ("word word ... word")
-
-        กลยุทธ์: มอง short-time RMS energy (หน้าต่าง 20ms, overlap 50%) เฉพาะรอบๆ
-        จุดที่คาดว่าเป็นรอยต่อระหว่างคำที่ (N-1) กับคำที่ N คือประมาณ (N-1)/N ของ
-        ความยาวคลิปทั้งหมด (แต่ละคำควรยาวใกล้เคียงกัน) หาโพสิชันที่เงียบที่สุดในช่วงนั้น
-        — ถ้าเงียบกว่า RMS เฉลี่ยทั้งคลิปมากพอ (< 25%) ถือว่าเจอช่องว่างจริงระหว่างคำ
-        ตัดตรงนั้น ★ ถ้าโมเดลพูดต่อกันไม่มีช่วงเงียบชัดเจน (เจอบ่อยกับโมเดลเร็ว) →
-        fallback ไปจุด (N-1)/N ของความยาวทั้งหมดเป๊ะๆ (คร่าวกว่า แต่ยังดีกว่าไม่ตัดเลย)
-        """
-        import numpy as np
-        n = len(audio_np)
-        repeat_count = max(2, int(repeat_count or 2))
-        win = max(1, int(0.02 * sr))  # 20ms
-
-        # ★ จุดแบ่งที่คาดไว้ = (N-1)/N ของความยาวทั้งหมด — ค้นหารอบๆ จุดนี้ในช่วง
-        #   กว้าง 1 ท่อน (1/N ของความยาวทั้งหมด) โดยเอาครึ่งท่อนก่อน+หลังจุดที่คาด
-        center = n * (repeat_count - 1) / repeat_count
-        half_span = n / repeat_count / 2
-        lo = int(max(0, center - half_span))
-        hi = int(min(n, center + half_span))
-        fallback_split = int(center)
-        if hi <= lo + win:
-            return fallback_split  # คลิปสั้นเกินจะหาแบบละเอียด
-
-        audio_f = audio_np.astype(np.float64)
-        overall_rms = float(np.sqrt(np.mean(audio_f ** 2)) + 1e-9)
-
-        best_idx = lo
-        best_rms = None
-        step = max(1, win // 2)
-        i = lo
-        while i < hi:
-            seg = audio_f[i:i + win]
-            if len(seg) == 0:
-                break
-            rms = float(np.sqrt(np.mean(seg ** 2)) + 1e-9)
-            if best_rms is None or rms < best_rms:
-                best_rms = rms
-                best_idx = i
-            i += step
-
-        if best_rms is not None and best_rms < overall_rms * 0.25:
-            return best_idx + win // 2  # กึ่งกลางของช่วงเงียบที่เจอ
-        return fallback_split  # ไม่เจอช่วงเงียบชัดเจน → ใช้จุด (N-1)/N ตรงๆ
 
     def _postprocess_audio(self, audio_np):
         """post-process audio หลัง OmniVoice generate — แก้ปัญหา DC offset

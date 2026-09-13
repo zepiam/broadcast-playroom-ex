@@ -279,10 +279,15 @@ class AppSettings:
     # ★ 5 → 6: ทดสอบจริง 124 คำ + ตรวจด้วย Thai ASR อัตโนมัติ พบว่าอัตราล้มเหลวยังสูงถึง 25%
     #   ที่ความยาว 5 ตัวอักษร ลดฮวบเหลือ ~6% ตั้งแต่ 6 ตัวอักษรขึ้นไป
     omnivoice_skip_min_length: int = 6
-    # ★ EXPERIMENTAL: คำสั้นเดี่ยว → ลองให้ OmniVoice อ่านเอง (พูดซ้ำ 2 ครั้ง+ตัด) แทนสลับ
-    #   ไป edge-tts ตรงๆ — พังก็ยัง fallback edge-tts เป็น safety net (ดู chat_queue.py)
+    # ★ EXPERIMENTAL: คำสั้นเดี่ยว → ลองให้ OmniVoice อ่านเอง (เจนซ้ำหลายครั้งเลือกไฟล์ที่ยาว
+    #   ที่สุด — ดู OmniVoiceEngine.generate_best_of_n) แทนสลับไป edge-tts ตรงๆ
+    #   ★ ปิดกลับเป็น default — วิธีนี้แก้ได้แค่เคส "เสียงสั้นผิดปกติ" (สุ่มพัง ~6-20%)
+    #   แต่มีอีกเคสที่พบภายหลัง: คำอุทาน/คำแสดงอารมณ์บางคำ (เช่น "งง", "โห", "อื้ม") โมเดิล
+    #   ออกเสียงผิดสม่ำเสมอทุกรอบ (ความยาวปกติ แต่เนื้อเสียงเพี้ยน) — เจนซ้ำเลือกยาวสุดช่วย
+    #   ไม่ได้เลยเพราะทุกรอบยาวเท่ากันหมด ต้องใช้ ASR ตรวจเนื้อหาจริงถึงจะจับได้ (ยังไม่ทำ)
+    #   → กลับไปใช้ทาง fallback edge-tts ตรงๆ ที่เสถียรกว่าและเข้าใจง่ายกว่าแทน
     omnivoice_short_word_retry: bool = False
-    # ★ จำนวนครั้งที่พูดซ้ำก่อนตัด (2-5) — ปรับได้จาก Settings โดยไม่ต้อง build ใหม่
+    # ★ จำนวนครั้งที่เจนซ้ำก่อนเลือกอันยาวสุด (2-5) — ปรับได้จาก Settings โดยไม่ต้อง build ใหม่
     omnivoice_short_word_repeat: int = 3
     read_author: bool = False  # ★ default = อ่านแต่ข้อความเท่านั้น (อ่านชื่อเป็นตัวเลือก)
     read_message: bool = True
@@ -1206,11 +1211,10 @@ class AppSettings:
                 s.omnivoice_skip_min_length = int(data["omnivoice_skip_min_length"])
             except Exception:
                 s.omnivoice_skip_min_length = 6
-        if "omnivoice_short_word_retry" in data:
-            try:
-                s.omnivoice_short_word_retry = bool(data["omnivoice_short_word_retry"])
-            except Exception:
-                s.omnivoice_short_word_retry = False
+        # ★ ไม่อ่านค่าเดิมจาก data — field นี้ไม่เคยมี UI ให้ user ตั้งเองเลยมาก่อน v2.7.8
+        #   (แค่ default False ภายใน) แต่ to_dict() เขียนค่าลง settings.json ของทุกคนไปแล้ว
+        #   ถ้าอ่านค่าเก่ากลับมา ทุกคนจะติด False ถาวร ไม่ได้ประโยชน์จาก default ใหม่เลย
+        #   → บังคับใช้ dataclass default (True) เสมอ จนกว่าจะมี UI ให้ user ตั้งเองจริงๆ
         if "omnivoice_short_word_repeat" in data:
             try:
                 s.omnivoice_short_word_repeat = max(2, min(5, int(data["omnivoice_short_word_repeat"])))

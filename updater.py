@@ -32,7 +32,12 @@ except ImportError:
 
 logger = logging.getLogger("updater")
 
-# ★ URL สำหรับเช็คเวอร์ชั่นล่าสุด (GitHub API releases/latest)
+# ★ URL หลัก — static redirect ของ GitHub (ไม่ใช่ REST API) ชี้ไป asset "version.json"
+#   ของ release ล่าสุดเสมอ ไม่มี rate limit (ต่างจาก api.github.com ที่จำกัด 60
+#   request/ชม./IP แบบไม่ auth — โควตานี้ใช้ร่วมกันทั้งบ้าน/office network เดียวกัน
+#   ทุกอุปกรณ์ ทำให้ auto-check ตอนเปิดโปรแกรมชนกันเองจนโควตาหมดได้ง่ายมาก)
+LATEST_ASSET_URL = "https://github.com/zepiam/broadcast-playroom-ex/releases/latest/download/version.json"
+# ★ URL สำรอง (GitHub API) — ใช้เฉพาะตอน static redirect ข้างบนล้มเหลวจริงๆ เท่านั้น
 VERSION_API_URL = "https://api.github.com/repos/zepiam/broadcast-playroom-ex/releases/latest"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
 
@@ -95,108 +100,94 @@ def is_version_newer(remote: str, local: str) -> bool:
     return _parse_version(remote) > _parse_version(local)
 
 
-def fetch_remote_version(retries: int = 2, timeout: int = 10) -> Optional[dict]:
-    """ดาวน์โหลด version.json จาก GitHub Releases (ผ่าน API latest → assets)
-
-    ★ 3-layer SSL fallback (ทุกชั้น verify cert — ไม่มี CERT_NONE แล้ว):
+def _fetch_json_3layer(url: str, timeout: int, accept: Optional[str] = None) -> tuple[Optional[dict], Optional[Exception]]:
+    """ดึง JSON จาก url เดียว ด้วย 3-layer SSL fallback (verify cert ทุกชั้น):
       1. requests (รองรับ redirect + certifi)
       2. urllib + Windows cert store
       3. urllib + default SSL
-    ★ ถ้าทุกชั้น fail (เช่น AV ตัด SSL) → คืน None = เงียบๆ ไม่มีปุ่ม update
+    คืน (data, None) ถ้าสำเร็จ, (None, last_error) ถ้าทุกชั้น fail
+    """
+    headers = {"User-Agent": USER_AGENT}
+    if accept:
+        headers["Accept"] = accept
+    last_error = None
+
+    if requests is not None:
+        try:
+            r = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True)
+            if r.status_code == 200 and r.text:
+                return r.json(), None
+        except Exception as e:
+            last_error = e
+            logger.debug(f"_fetch_json_3layer requests ({url}): {e}")
+
+    for ctx_mode in ("win_cert", "default"):
+        try:
+            ctx = None
+            if ctx_mode == "win_cert":
+                ctx = ssl.create_default_context()
+                ctx.load_default_certs()
+            req = urllib.request.Request(url, headers=headers)
+            kw = {"timeout": timeout}
+            if ctx:
+                kw["context"] = ctx
+            with urllib.request.urlopen(req, **kw) as r:
+                data = r.read()
+                if data:
+                    return json.loads(data.decode("utf-8")), None
+        except Exception as e:
+            last_error = e
+            logger.debug(f"_fetch_json_3layer urllib ({ctx_mode}, {url}): {e}")
+
+    return None, last_error
+
+
+def fetch_remote_version(retries: int = 2, timeout: int = 10) -> Optional[dict]:
+    """ดาวน์โหลด version.json ของ release ล่าสุดจาก GitHub
+
+    ★ Path หลัก: static redirect `releases/latest/download/version.json` —
+      ไม่ใช่ REST API เลย จึงไม่มี rate limit (ต่างจาก api.github.com ที่จำกัด
+      60 request/ชม./IP แบบไม่ auth ซึ่งเป็น IP เดียวกันทั้งบ้าน/office —
+      auto-check ตอนเปิดโปรแกรมของทุกเครื่อง/ทุกครั้งชนโควตาเดียวกันได้ง่ายมาก)
+    ★ Path สำรอง: GitHub API (releases/latest → หา asset "version.json") —
+      ใช้เฉพาะตอน static redirect ล้มเหลวจริงๆ (เช่น release ไม่มีไฟล์แนบ)
+    ★ ถ้าทุก path fail (เช่น AV ตัด SSL) → คืน None = เงียบๆ ไม่มีปุ่ม update
       ดีกว่าเสี่ยงโหลดของปลอมแบบเดิม (MITM → RCE ผ่านช่องอัพเดท)
     """
     last_error = None
     for attempt in range(retries + 1):
-        # ★ Stage 1: หา version.json URL จาก GitHub API
-        release_data = None
-        # Layer 1: requests
-        if requests is not None:
-            try:
-                r = requests.get(VERSION_API_URL, headers={
-                    "User-Agent": USER_AGENT,
-                    "Accept": "application/vnd.github+json",
-                }, timeout=timeout, allow_redirects=True)
-                if r.status_code == 200:
-                    release_data = r.json()
-            except Exception as e:
-                last_error = e
-                logger.debug(f"fetch_remote_version requests: {e}")
+        # ── Path หลัก: static asset redirect (ไม่มี rate limit) ──
+        data, err = _fetch_json_3layer(LATEST_ASSET_URL, timeout)
+        if data:
+            return data
+        if err:
+            last_error = err
 
-        # Layer 2-3: urllib (verify เท่านั้น — ไม่มี unverified)
-        if release_data is None:
-            for ctx_mode in ("win_cert", "default"):
-                try:
-                    if ctx_mode == "win_cert":
-                        ctx = ssl.create_default_context()
-                        ctx.load_default_certs()
-                    else:
-                        ctx = None  # default
-                    req = urllib.request.Request(VERSION_API_URL, headers={
-                        "User-Agent": USER_AGENT,
-                        "Accept": "application/vnd.github+json",
-                    })
-                    kw = {"timeout": timeout}
-                    if ctx:
-                        kw["context"] = ctx
-                    with urllib.request.urlopen(req, **kw) as r:
-                        release_data = json.loads(r.read().decode("utf-8"))
-                        break
-                except Exception as e:
-                    last_error = e
-                    logger.debug(f"fetch_remote_version urllib ({ctx_mode}): {e}")
+        # ── Path สำรอง: GitHub API ──
+        release_data, err2 = _fetch_json_3layer(VERSION_API_URL, timeout, accept="application/vnd.github+json")
+        if err2:
+            last_error = err2
+        if release_data:
+            version_url = None
+            for asset in release_data.get("assets", []):
+                if asset.get("name") == "version.json":
+                    version_url = asset.get("browser_download_url")
+                    break
+            if not version_url:
+                tag = release_data.get("tag_name", "latest")
+                version_url = f"https://github.com/zepiam/broadcast-playroom-ex/releases/download/{tag}/version.json"
 
-        if not release_data:
-            if attempt < retries:
-                time.sleep(1)
-            continue
+            # ★ security: URL ต้องเป็น https + github.com ของเราเท่านั้น
+            #   (กัน version.json ปลอม/API ปลอมชี้ไปโดเมนอื่น)
+            if not version_url.startswith("https://github.com/zepiam/broadcast-playroom-ex/"):
+                logger.error(f"blocked non-github version url: {version_url}")
+                return None
 
-        # ★ Stage 2: หา version.json URL ใน assets
-        version_url = None
-        for asset in release_data.get("assets", []):
-            if asset.get("name") == "version.json":
-                version_url = asset.get("browser_download_url")
-                break
-        if not version_url:
-            tag = release_data.get("tag_name", "latest")
-            version_url = f"https://github.com/zepiam/broadcast-playroom-ex/releases/download/{tag}/version.json"
-
-        # ★ security: URL ต้องเป็น https + github.com ของเราเท่านั้น
-        #   (กัน version.json ปลอม/API ปลอมชี้ไปโดเมนอื่น)
-        if not version_url.startswith("https://github.com/zepiam/broadcast-playroom-ex/"):
-            logger.error(f"blocked non-github version url: {version_url}")
-            return None
-
-        # ★ Stage 3: ดาวน์โหลด version.json (verify เท่านั้น)
-        # Layer 1: requests
-        if requests is not None:
-            try:
-                r2 = requests.get(version_url, headers={"User-Agent": USER_AGENT},
-                                  timeout=timeout, allow_redirects=True)
-                if r2.status_code == 200 and r2.text:
-                    return r2.json()
-            except Exception as e:
-                last_error = e
-                logger.debug(f"fetch version.json requests: {e}")
-
-        # Layer 2-3: urllib
-        for ctx_mode in ("win_cert", "default"):
-            try:
-                if ctx_mode == "win_cert":
-                    ctx = ssl.create_default_context()
-                    ctx.load_default_certs()
-                else:
-                    ctx = None
-                req2 = urllib.request.Request(version_url, headers={"User-Agent": USER_AGENT})
-                kw = {"timeout": timeout}
-                if ctx:
-                    kw["context"] = ctx
-                with urllib.request.urlopen(req2, **kw) as r2:
-                    data = r2.read()
-                    if data:
-                        return json.loads(data.decode("utf-8"))
-            except Exception as e:
-                last_error = e
-                logger.debug(f"fetch version.json urllib ({ctx_mode}): {e}")
+            data2, err3 = _fetch_json_3layer(version_url, timeout)
+            if data2:
+                return data2
+            if err3:
+                last_error = err3
 
         if attempt < retries:
             time.sleep(1)

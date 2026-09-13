@@ -1,16 +1,16 @@
 {
-  "version": "2.7.8",
+  "version": "2.7.9",
   "changelog": "- แก้บั๊กเล็กน้อย",
   "lite": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.7.8/patch_lite.zip",
-    "size": 16814742,
-    "sha256": "102fb08036c30fe0c378bdd72d7c54e506abe4895ffbcdbc4650d7138afdf62a"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.7.9/patch_lite.zip",
+    "size": 16815650,
+    "sha256": "902eb795c5f6849ac7e9b3e5216c03bc68a9f99ede988e37873df528307c5131"
   },
   "full": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.7.8/patch_full.zip",
-    "size": 71050849,
-    "sha256": "8c123c450fafda995264373561ee5aa1626b047ce766a9cb19972553c2e9e4e1"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.7.9/patch_full.zip",
+    "size": 71051770,
+    "sha256": "036bbe47e754eae6259d8cc0571ba299d4aa09aff2492120881aed7e41fe5087"
   }
 }

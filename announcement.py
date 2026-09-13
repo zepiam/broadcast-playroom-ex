@@ -24,14 +24,20 @@ import ssl
 import time
 import urllib.request
 import urllib.error
+from typing import Optional
 
 logger = logging.getLogger("announcement")
 
 GITHUB_REPO = "zepiam/broadcast-playroom-ex"
 ANNOUNCE_BRANCH = "main"
 ANNOUNCE_PATH = "announce.json"
-# ★ ใช้ Contents API แทน raw.githubusercontent — raw มี CDN cache ~5 นาที (ประกาศเห็นช้า)
-#   API สดทันที + rate limit แบบไม่มี token 60 req/hr ต่อ IP (เราใช้แค่ ~8 req/hr)
+# ★ Path หลักสำหรับ "อ่าน" — raw.githubusercontent.com ไม่ใช้โควตา 60 req/hr/IP
+#   ของ api.github.com (ซึ่งใช้ร่วมกับ updater.py + ทุกเครื่องบน IP เดียวกัน — เคย
+#   เจอปัญหาโควตาหมดจริงจากตรงนี้ + updater รวมกัน) แลกกับ CDN cache ~5 นาที
+#   ซึ่งยอมรับได้สำหรับประกาศ (ไม่ต้องเห็นทันทีวินาทีนั้น)
+RAW_ANNOUNCE_URL = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{ANNOUNCE_BRANCH}/{ANNOUNCE_PATH}"
+# ★ Path สำรอง (ใช้ตอน raw fail จริงๆ) + ใช้เสมอสำหรับ publish/delete (ต้อง auth อยู่แล้ว
+#   ด้วย token ซึ่งมีโควตาแยกต่างหาก 5000 req/hr ไม่ชนกับโควตา anonymous)
 CONTENTS_API = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{ANNOUNCE_PATH}"
 
 VALID_TYPES = ("update", "info", "warning")
@@ -66,26 +72,25 @@ def is_safe_url(url: str) -> bool:
     return url.startswith("http://") or url.startswith("https://")
 
 
-def _fetch_via_requests(timeout: int):
+def _fetch_via_requests(url: str, timeout: int, accept: str = "application/vnd.github+json"):
     """ชั้น 1: requests (มี certifi มาในตัว — ใช้ได้ทุกเครื่อง)"""
     import requests
     r = requests.get(
-        CONTENTS_API, timeout=timeout,
-        headers={"User-Agent": "BroadcastPlayroom/2.x",
-                 "Accept": "application/vnd.github+json"},
+        url, timeout=timeout,
+        headers={"User-Agent": "BroadcastPlayroom/2.x", "Accept": accept},
     )
     r.raise_for_status()
-    return r.json()
+    return r.text
 
 
-def _fetch_via_urllib(timeout: int):
+def _fetch_via_urllib(url: str, timeout: int, accept: str = "application/vnd.github+json"):
     """ชั้น 2-3: urllib (win_cert จาก Windows store → default) — เหมือน updater.py
 
     ★ exe บางเครื่อง default context หา CA ไม่เจอ → ต้องโหลดจาก Windows cert store
     """
-    req = urllib.request.Request(CONTENTS_API, headers={
+    req = urllib.request.Request(url, headers={
         "User-Agent": "BroadcastPlayroom/2.x",
-        "Accept": "application/vnd.github+json",
+        "Accept": accept,
     })
     last_err = None
     for ctx_mode in ("win_cert", "default"):
@@ -96,51 +101,78 @@ def _fetch_via_urllib(timeout: int):
                 ctx.load_default_certs()  # ★ โหลดจาก Windows cert store
                 kw["context"] = ctx
             with urllib.request.urlopen(req, **kw) as resp:
-                return json.loads(resp.read().decode("utf-8"))
+                return resp.read().decode("utf-8")
         except Exception as e:
             last_err = e
     raise last_err or RuntimeError("urllib fetch failed")
 
 
-def fetch_announcement(timeout: int = 8):
-    """ดึงประกาศล่าสุดผ่าน GitHub Contents API (anonymous — สดทันที ไม่โดน CDN cache)
-
-    ★ 3 ชั้นตามลำดับ: requests (certifi) → urllib+win_cert → urllib default
-      (เครื่องที่ SSL fail เงียบๆ เคยทำให้ประกาศไม่ขึ้น — เหมือนปัญหา updater เดิม)
-    คืน dict {id, text, type, url} ถ้ามีประกาศที่ id ไม่เป็น null
-    คืน None ถ้าไม่มีประกาศ / ยังไม่มีไฟล์ / โหลดไม่ได้ (เงียบๆ ผ่าน)
+def _fetch_text_3layer(url: str, timeout: int, accept: str = "application/vnd.github+json"):
+    """ดึง text/JSON ดิบจาก url เดียว ด้วย 3 ชั้น: requests → urllib+win_cert → urllib default
+    คืน (text, None) ถ้าสำเร็จ, (None, last_error) ถ้าทุกชั้น fail
     """
-    resp_data = None
     last_err = None
     for fetcher in (_fetch_via_requests, _fetch_via_urllib):
         try:
-            resp_data = fetcher(timeout)
-            break
+            return fetcher(url, timeout, accept), None
         except Exception as e:
             last_err = e
-    if resp_data is None:
-        # ★ เหลือชั้นเดียวก็ยังไปไม่ถึง → log warning ให้ตรวจได้จริง (ไม่เงียบอีก)
-        logger.warning(f"fetch_announcement: ทุกชั้น fail — {last_err}")
+    return None, last_err
+
+
+def _parse_announce_json(data: dict) -> Optional[dict]:
+    """sanitize + clamp ค่าจาก announce.json ที่ parse แล้ว (ข้อมูลจากภายนอก — ไม่เชื่ออะไรทั้งสิ้น)"""
+    if not isinstance(data, dict) or not data.get("id"):
         return None
-    try:
-        # Contents API คืน {content: <base64>, encoding: "base64", ...}
-        if not isinstance(resp_data, dict) or not resp_data.get("content"):
+    url = str(data.get("url") or "").strip()
+    return {
+        "id": str(data.get("id", ""))[:64],
+        "text": str(data.get("text", ""))[:MAX_TEXT_LEN],
+        "type": data.get("type") if data.get("type") in VALID_TYPES else "info",
+        "url": url[:MAX_URL_LEN] if is_safe_url(url) else "",
+    }
+
+
+def fetch_announcement(timeout: int = 8):
+    """ดึงประกาศล่าสุด
+
+    ★ Path หลัก: raw.githubusercontent.com — anonymous, ไม่ใช้โควตา 60 req/hr/IP
+      ของ api.github.com (โควตานี้ใช้ร่วมกับ updater.py + ทุกเครื่องบน IP เดียวกัน
+      เคยทำให้ทั้งเช็คอัพเดทและประกาศพร้อมกันล้มเหลวเมื่อโควตาหมด) แลกกับ CDN
+      cache ~5 นาที ซึ่งยอมรับได้สำหรับประกาศทั่วไป
+    ★ Path สำรอง: GitHub Contents API — ใช้เฉพาะตอน raw fail จริงๆ
+    ★ 3 ชั้น SSL ในแต่ละ path: requests (certifi) → urllib+win_cert → urllib default
+      (เครื่องที่ SSL fail เงียบๆ เคยทำให้ประกาศไม่ขึ้น)
+    คืน dict {id, text, type, url} ถ้ามีประกาศที่ id ไม่เป็น null
+    คืน None ถ้าไม่มีประกาศ / ยังไม่มีไฟล์ / โหลดไม่ได้ (เงียบๆ ผ่าน)
+    """
+    # ── Path หลัก: raw.githubusercontent.com (ไม่มี rate limit, ไฟล์ตรงๆ ไม่ต้อง decode) ──
+    text, err = _fetch_text_3layer(RAW_ANNOUNCE_URL, timeout, accept="application/vnd.github.raw")
+    if text:
+        try:
+            return _parse_announce_json(json.loads(text))
+        except Exception as e:
+            logger.debug(f"fetch_announcement raw parse: {e}")
+    last_err = err
+
+    # ── Path สำรอง: GitHub Contents API (base64-wrapped) ──
+    resp_text, err2 = _fetch_text_3layer(CONTENTS_API, timeout, accept="application/vnd.github+json")
+    if err2:
+        last_err = err2
+    if resp_text:
+        try:
+            resp_data = json.loads(resp_text)
+            if not isinstance(resp_data, dict) or not resp_data.get("content"):
+                return None
+            raw = base64.b64decode(resp_data["content"]).decode("utf-8")
+            return _parse_announce_json(json.loads(raw))
+        except Exception as e:
+            logger.debug(f"fetch_announcement contents-api parse: {e}")
             return None
-        raw = base64.b64decode(resp_data["content"]).decode("utf-8")
-        data = json.loads(raw)
-        if not isinstance(data, dict) or not data.get("id"):
-            return None
-        # sanitize + clamp ค่า (ข้อมูลจากภายนอก — ไม่เชื่ออะไรทั้งสิ้น)
-        url = str(data.get("url") or "").strip()
-        return {
-            "id": str(data.get("id", ""))[:64],
-            "text": str(data.get("text", ""))[:MAX_TEXT_LEN],
-            "type": data.get("type") if data.get("type") in VALID_TYPES else "info",
-            "url": url[:MAX_URL_LEN] if is_safe_url(url) else "",
-        }
-    except Exception as e:
-        logger.debug(f"fetch_announcement parse: {e}")
-        return None
+
+    # ★ ทั้งสอง path ไปไม่ถึง → log warning ให้ตรวจได้จริง (ไม่เงียบอีก)
+    logger.warning(f"fetch_announcement: ทุก path fail — {last_err}")
+    return None
 
 
 def _github_request(url: str, token: str, method: str = "GET", payload: dict | None = None):

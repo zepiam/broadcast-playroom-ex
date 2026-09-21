@@ -629,17 +629,17 @@ class MyLiveChat:
         if kind == "gift":
             return ChatMessage(
                 platform="mylive", author=author, text=text_for_tts, event="bits",
-                system_text="ส่งของขวัญ", extra=extra,
+                system_text="ส่งของขวัญ", extra={**extra, "detail": {"kind": "gift"}},
             )
         if kind == "tip":
             return ChatMessage(
                 platform="mylive", author=author, text=text_for_tts, event="bits",
-                system_text="บริจาค", extra=extra,
+                system_text="บริจาค", extra={**extra, "detail": {"kind": "tip"}},
             )
         if kind == "subscribe":
             return ChatMessage(
                 platform="mylive", author=author, text=text_for_tts, event="sub",
-                system_text="สมัครสมาชิก", extra=extra,
+                system_text="สมัครสมาชิก", extra={**extra, "detail": {"kind": "subscribe"}},
             )
 
         # poll / system / announce — ข้าม (ไม่ใช่ chat ที่ต้องอ่าน)

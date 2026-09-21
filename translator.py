@@ -121,6 +121,9 @@ class Translator:
             # ── 4. cache ผลลัพธ์ ──
             if result:
                 self._cache[cache_key] = result
+                # ★ cache โตตามจำนวนข้อความไม่ซ้ำตลอดสตรีม → เก็บล่าสุดแค่ 3,000 รายการ (dict เรียงตามลำดับใส่)
+                while len(self._cache) > 3000:
+                    self._cache.pop(next(iter(self._cache)), None)
             return result
         except Exception as exc:
             _log.warning("translate failed (%s): %s", self.provider, exc)

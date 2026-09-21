@@ -251,12 +251,12 @@ class SettingsDialog(QDialog):
             if w and hasattr(w, 'stateChanged'):
                 w.stateChanged.connect(lambda _: self._auto_save())
         # QSlider / QSpinBox → valueChanged
-        for attr in ['tts_volume', 'tts_rate', 'max_msg_length', 'obs_ws_port']:
+        for attr in ['tts_volume', 'tts_rate', 'max_msg_length', 'obs_ws_port', 'tts_max_wait']:
             w = getattr(self, attr, None)
             if w and hasattr(w, 'valueChanged'):
                 w.valueChanged.connect(lambda _: self._auto_save())
         # QComboBox → currentIndexChanged
-        for attr in ['at_provider', 'edge_voice_combo', 'omnivoice_voice_combo']:
+        for attr in ['at_provider', 'edge_voice_combo']:
             w = getattr(self, attr, None)
             if w and hasattr(w, 'currentIndexChanged'):
                 w.currentIndexChanged.connect(lambda _: self._auto_save())
@@ -266,8 +266,8 @@ class SettingsDialog(QDialog):
                 for cb in checks.values():
                     if hasattr(cb, 'stateChanged'):
                         cb.stateChanged.connect(lambda _: self._auto_save())
-        # TTS read radio buttons + engine radios
-        for attr in ['tts_read_both', 'tts_read_message_only', 'tts_engine_edge', 'tts_engine_omni']:
+        # TTS read radio buttons
+        for attr in ['tts_read_both', 'tts_read_message_only']:
             rb = getattr(self, attr, None)
             if rb and hasattr(rb, 'toggled'):
                 rb.toggled.connect(lambda _: self._auto_save())
@@ -568,63 +568,19 @@ class SettingsDialog(QDialog):
         layout = self._current_section_layout
         ci = lambda: layout.count() - 1
 
-        # ═══ Engine selector ═══
-        engine_label = QLabel("เสียงหลัก (Base Engine):")
+        # ═══ เสียงหลัก (edge-tts) ═══
+        engine_label = QLabel("เสียงหลัก (edge-tts — ออนไลน์):")
         engine_label.setStyleSheet("font-weight: 600; color: #f59e0b;")
         layout.insertWidget(ci(), engine_label)
-
-        # ★ radio: edge-tts (online) | OmniVoice (offline RTX)
-        self.tts_engine_edge = QRadioButton("🌐 edge-tts (ออนไลน์ — เสียง Azure คมชัด)")
-        self.tts_engine_omni = QRadioButton("🎤 OmniVoice (ออฟไลน์ — ไม่ต้องเน็ต, ต้องมี RTX)")
-        # ★ check OmniVoice available (ผ่าน plugin loader → fallback import ตรง)
-        omni_available = False
-        try:
-            from engine_plugin_loader import is_plugin_available
-            omni_available = is_plugin_available("omnivoice")
-        except Exception:
-            pass
-        if not omni_available:
-            try:
-                from omnivoice_engine import is_omnivoice_available
-                omni_available = is_omnivoice_available()
-            except Exception:
-                pass
-        if not omni_available:
-            # ★ Lite build ไม่มี OmniVoice → ซ่อนปุ่มเลย (ไม่แสดง disabled)
-            self.tts_engine_omni.setVisible(False)
-        engine_group = QButtonGroup(self)
-        engine_group.addButton(self.tts_engine_edge)
-        engine_group.addButton(self.tts_engine_omni)
-        layout.insertWidget(ci(), self.tts_engine_edge)
-        layout.insertWidget(ci(), self.tts_engine_omni)
-
-        # ═══ edge-tts voice selector ═══
         self._edge_voice_widget = QWidget()
         ev_layout = QVBoxLayout(self._edge_voice_widget)
         ev_layout.setContentsMargins(20, 4, 0, 4)
         ev_layout.setSpacing(4)
-        ev_layout.addWidget(QLabel("เสียง edge-tts:"))
         self.edge_voice_combo = QComboBox()
         self.edge_voice_combo.addItem("Premwadee หญิง (th-TH-PremwadeeNeural)", "premwadee")
         self.edge_voice_combo.addItem("Niwat ชาย (th-TH-NiwatNeural)", "niwat")
         ev_layout.addWidget(self.edge_voice_combo)
         layout.insertWidget(ci(), self._edge_voice_widget)
-
-        # ═══ OmniVoice voice selector ═══
-        self._omni_voice_widget = QWidget()
-        ov_layout = QVBoxLayout(self._omni_voice_widget)
-        ov_layout.setContentsMargins(20, 4, 0, 4)
-        ov_layout.setSpacing(4)
-        ov_layout.addWidget(QLabel("เสียง OmniVoice (design — ไม่ต้องมี ref audio):"))
-        self.omnivoice_voice_combo = QComboBox()
-        self.omnivoice_voice_combo.addItem("หญิง (female)", "female")
-        self.omnivoice_voice_combo.addItem("ชาย (male)", "male")
-        ov_layout.addWidget(self.omnivoice_voice_combo)
-        layout.insertWidget(ci(), self._omni_voice_widget)
-
-        # ★ engine radio → show/hide voice selectors
-        self.tts_engine_edge.toggled.connect(self._on_tts_engine_change)
-        self.tts_engine_omni.toggled.connect(self._on_tts_engine_change)
 
         # Volume
         self.tts_volume = QSlider(Qt.Horizontal)
@@ -638,7 +594,10 @@ class SettingsDialog(QDialog):
         read_label = QLabel("การอ่าน:")
         read_label.setStyleSheet("font-weight: 600; color: #f59e0b;")
         layout.insertWidget(ci(), read_label)
-        self.tts_read_both = QRadioButton("อ่านชื่อและข้อความ")
+        self.tts_read_both = QRadioButton("อ่านชื่อและข้อความ  —  “ชื่อ … พูดว่า … ข้อความ”")
+        self.tts_read_both.setToolTip(
+            "อ่านเป็น: ชื่อ → หยุด 0.5 วินาที → \"พูดว่า\" → หยุด 0.5 วินาที → ข้อความ\n"
+            "ถ้าตั้ง \"ชื่อที่แสดง\" ให้ผู้ชมคนนั้นไว้ใน User Manager จะอ่านชื่อใหม่แทนชื่อเดิม")
         layout.insertWidget(ci(), self.tts_read_both)
         self.tts_read_message_only = QRadioButton("อ่านแต่ข้อความเท่านั้น")
         # ★ default = อ่านแต่ข้อความเท่านั้น (อ่านชื่อเป็นตัวเลือก — ตามที่ user สั่ง)
@@ -661,6 +620,27 @@ class SettingsDialog(QDialog):
         self.read_message = QCheckBox()
         self.read_author.setVisible(False)
         self.read_message.setVisible(False)
+
+        # ═══ ข้อความที่รอคิวนานเกินไป ═══
+        from PySide6.QtWidgets import QSpinBox as _QSB
+        mw_row = QHBoxLayout()
+        mw_row.setContentsMargins(0, 4, 0, 0)
+        mw_label = QLabel("ข้ามแชทที่รอคิวอ่านนานเกิน (วินาที):")
+        mw_label.setToolTip(
+            "ตอนแชทท่วม คิวอ่านจะยาว — ข้อความที่รอนานเกินเวลานี้จะถูกข้าม เพื่อไม่ให้ได้ยินข้อความที่ล้าสมัยไปแล้ว\n"
+            "0 = ไม่จำกัด | โดเนท/ซับ/event อื่นๆ ไม่ถูกข้าม (คงลำดับคิวตามปกติ)")
+        mw_row.addWidget(mw_label)
+        self.tts_max_wait = _QSB()
+        self.tts_max_wait.setRange(0, 600)
+        self.tts_max_wait.setSingleStep(5)
+        self.tts_max_wait.setValue(45)
+        self.tts_max_wait.setSuffix(" วิ")
+        self.tts_max_wait.setSpecialValueText("ไม่จำกัด")
+        self.tts_max_wait.setFixedWidth(120)
+        self.tts_max_wait.setToolTip(mw_label.toolTip())
+        mw_row.addWidget(self.tts_max_wait)
+        mw_row.addStretch()
+        layout.insertLayout(ci(), mw_row)
 
         # ═══ Viewer interaction commands ([x2]/[p1]/[v50] chat prefix) ═══
         from PySide6.QtWidgets import QCheckBox as _QCB, QDoubleSpinBox as _QDSB
@@ -694,41 +674,6 @@ class SettingsDialog(QDialog):
         vc_help.setWordWrap(True)
         layout.insertWidget(ci(), vc_help)
 
-        # ═══ OmniVoice short word policy ═══
-        # ★ ซ่อนทั้งหมดใน Lite build (ไม่มี OmniVoice)
-        self._omni_skip_widgets = []
-        omni_skip_label = QLabel("คำสั้น OmniVoice:")
-        omni_skip_label.setStyleSheet("font-weight: 600; color: #f59e0b;")
-        layout.insertWidget(ci(), omni_skip_label)
-        self._omni_skip_widgets.append(omni_skip_label)
-        omni_skip_btn = QPushButton("✅ จัดการคำสั้น OmniVoice (min length + เสียงแจ้งเตือน)")
-        omni_skip_btn.setToolTip("คำเดียวสั้นกว่า X ตัว → ไม่อ่านด้วย OmniVoice เสมอ ไม่มีข้อยกเว้น")
-        omni_skip_btn.clicked.connect(self._open_omni_skip)
-        layout.insertWidget(ci(), omni_skip_btn)
-        self._omni_skip_widgets.append(omni_skip_btn)
-        # ★ Lite build: ซ่อนถ้าไม่มี OmniVoice
-        try:
-            from omnivoice_engine import is_omnivoice_available
-            if not is_omnivoice_available():
-                for w in self._omni_skip_widgets:
-                    w.setVisible(False)
-        except Exception:
-            for w in self._omni_skip_widgets:
-                w.setVisible(False)
-
-    def _open_omni_skip(self):
-        """เปิด OmniVoice Word Skip editor"""
-        from ui.dialogs.omni_skip import OmniSkipDialog
-        dlg = OmniSkipDialog(self.parent_app)
-        dlg.settings_changed.connect(self._auto_save)
-        dlg.exec()
-
-    def _on_tts_engine_change(self):
-        """engine radio เปลี่ยน → show/hide voice selectors"""
-        is_edge = self.tts_engine_edge.isChecked()
-        self._edge_voice_widget.setVisible(is_edge)
-        self._omni_voice_widget.setVisible(not is_edge)
-
     def _build_theme_section(self):
         """เลือกธีมสีของโปรแกรม (ui/theme.py THEMES) — คลิก thumbnail เปลี่ยนทันที
 
@@ -743,9 +688,12 @@ class SettingsDialog(QDialog):
         from ui.theme import THEME_ORDER, THEME_LABELS, THEMES
 
         self._theme_thumbs = {}
-        grid = QHBoxLayout()
-        grid.setSpacing(14)
-        for key in THEME_ORDER:
+        from PySide6.QtWidgets import QGridLayout as _QGrid
+        grid = _QGrid()          # ★ กริด 4 คอลัมน์ — ธีมเยอะแล้ว แถวเดียวไม่พอดีหน้าจอ
+        grid.setHorizontalSpacing(14)
+        grid.setVerticalSpacing(14)
+        _THEME_COLS = 4
+        for _i, key in enumerate(THEME_ORDER):
             pal = THEMES[key]
             thumb = QFrame()
             thumb.setFixedSize(150, 108)
@@ -795,8 +743,8 @@ class SettingsDialog(QDialog):
 
             thumb.mousePressEvent = lambda e, k=key: self._on_theme_thumb_clicked(k)
             self._theme_thumbs[key] = thumb
-            grid.addWidget(thumb)
-        grid.addStretch()
+            grid.addWidget(thumb, _i // _THEME_COLS, _i % _THEME_COLS)
+        grid.setColumnStretch(_THEME_COLS, 1)
         self._current_section_layout.insertLayout(
             self._current_section_layout.count() - 1, grid
         )
@@ -2133,7 +2081,10 @@ class SettingsDialog(QDialog):
         self.max_msg_length.setRange(0, 10000)
         self.max_msg_length.setValue(getattr(self.settings, 'max_msg_length', 500))
         self.max_msg_length.setSpecialValueText("ไม่จำกัด")
-        self._add_row("ความยาวสูงสุด:", self.max_msg_length)
+        self.max_msg_length.setSuffix(" ตัวอักษร")
+        self.max_msg_length.setToolTip("แชทที่ยาวเกินค่านี้จะถูกข้าม ไม่อ่านเลย (ไม่ตัดอ่านแค่ครึ่งเดียว) แต่ยังแสดงในแชทตามปกติ\n"
+                                       "โดเนท/ซับ/อีเวนต์ไม่ถูกข้าม · 0 = ไม่จำกัด · แนะนำ 200–300")
+        self._add_row("ข้ามข้อความที่ยาวเกิน:", self.max_msg_length)
 
     def _add_blocked_user(self):
         """เพิ่มผู้ใช้เข้า block table"""
@@ -3091,7 +3042,6 @@ class SettingsDialog(QDialog):
         'twitch_oauth_token', 'twitch_oauth_refresh',
         'kick_oauth_token', 'kick_oauth_refresh',
         'youtube_oauth_token', 'youtube_oauth_refresh',
-        'supporters_admin_secret',
         'announce_gh_token',
     ]
 
@@ -3244,18 +3194,9 @@ class SettingsDialog(QDialog):
              "โดยไม่ต้องเหลือบมามองโปรแกรมเลย เหมาะสำหรับผู้ที่ชอบโฟกัสกับจอเกมขณะถ่ายทอดสด "
              "และเหมาะกับผู้ที่มีจอคอมเพียงจอเดียว", None),
 
-            ("ตั้งแต่เวอร์ชั่น 2.0 เป็นต้นไป โปรแกรมถูกออกแบบมาให้เลือกใช้ TTS ได้ 2 โมเดล "
-             "คือ Azure และ Omnivoice โดยทั้งสองแบบจะมีจุดเด่นที่ต่างกันไปคือ", None),
-
-            ("Azure จะสามารถอ่านข้อความได้ชัดและแม่นยำกว่า Omnivoice มาก "
+            ("โปรแกรมใช้ Azure (edge-tts) เป็นเสียงอ่านหลัก อ่านข้อความได้ชัดและแม่นยำ "
              "แต่จำเป็นจะต้องใช้อินเตอร์เน็ตในการส่งข้อมูลไปอ่าน (ONLINE MODE) "
              "บางครั้งถ้าเซิฟเวอร์ปลายทางไม่ดี อาจจะพบปัญหาเสียงอ่านมาช้า", None),
-
-            ("Omnivoice เป็นอีกโมเดล TTS อีกตัวนึง ซึ่งมีความสามารถในการอ่านเสียงภาษาไทยที่ดีมากอีกตัว "
-             "ข้อดีคือประมวลทุกอย่างในคอมได้เลย (OFFLINE MODE) "
-             "แต่จะมีจุดอ่อนตรงที่ไม่สามารถอ่านคำที่ถูกโพสมาสั้นๆได้ เช่น \"อ่อ , ครับ , เค\" เป็นต้น", None),
-
-            ("ฉะนั้นผู้ใช้งานจะต้องเลือกใช้ตามความเหมาะสม หากชอบแบบไหนก็ลองเลือกใช้กันดูครับ", None),
 
             ("หลังจากตั้งเสียงเสร็จแล้วยังมีการ Filter เสียง ด้วยระบบ RVC "
              "เพื่อให้โทนเสียงต่างออกไปอีก สามารถเลือกโหลดโมเดลเสียงต่างๆได้ที่ปุ่มดาวโหลดโมเดล "
@@ -3267,18 +3208,18 @@ class SettingsDialog(QDialog):
 
             ("⚠️ สิ่งที่ควรทราบไว้ก่อนใช้โปรแกรมนี้", "#f59e0b"),
 
-            ("การใช้ Omnivoice และ RVC นั้นจำเป็นจะต้องใช้การ์ดจอที่รองรับ CUDA "
+            ("การใช้ RVC นั้นจำเป็นจะต้องใช้การ์ดจอที่รองรับ CUDA "
              "ซึ่งมีแค่บนการ์ดจอซีรี่ย์ RTX ทุกรุ่น "
              "ขนาดของโปรแกรมที่รองรับ RVC นั้นจะมีขนาดใหญ่มาก "
              "และยังไม่รวมโมเดลเสียง RVC ที่โหลดมาใช้เพิ่มเติม "
              "สาเหตุที่โปรแกรมใหญ่นั้น เกิดจากไฟล์ของ CUDA ล้วนๆ "
              "ไม่ใช่ตัวหลักของโปรแกรมนี้เลย "
              "และเราไม่สามารถลดขนาดไฟล์ให้ต่ำกว่านี้ได้แล้ว "
-             "เป็นขีดจำกัดของระบบ TTS ล้วนๆ", None),
+             "เป็นขีดจำกัดของระบบ RVC ล้วนๆ", None),
 
             ("หากผู้ใดคิดว่าโปรแกรมเวอร์ชั่น FULL ที่ใช้พื้นที่เยอะเกินไป "
              "สามารถเลือกใช้เวอร์ชั่น LITE ได้เช่นกัน "
-             "เพียงแต่จะไม่มี Omnivoice และ RVC "
+             "เพียงแต่จะไม่มี RVC "
              "แต่ยังมี Azure ให้ใช้ตามเดิมครับ", None),
         ]
         for text, color in paragraphs:
@@ -3877,15 +3818,6 @@ class SettingsDialog(QDialog):
         dlg = SupporterUploadDialog(self, api_url=api_url)
         dlg.exec()
 
-    def _open_supporter_admin(self):
-        """★ เปิดหน้า admin ในเบราว์เซอร์ — สำหรับ streamer เข้าไป approve/reject/ban"""
-        api_url = getattr(self.settings, 'supporters_api_url', 'https://men9ch.com/api') if self.settings else "https://men9ch.com/api"
-        # ★ เปิดหน้า admin.php ในเบราว์เซอร์ (admin จะใส่ token เองบนหน้าเว็บ)
-        from supporters_api import open_admin_url
-        # ★ ใช้ secret จาก settings (ถ้ามี) หรือเปิดหน้า login ให้ใส่เอง
-        admin_secret = getattr(self.settings, 'supporters_admin_secret', '') if self.settings else ""
-        open_admin_url(admin_secret, api_url)
-
     def _show_qr(self, filename, title):
         """แสดง QR popup — ขนาดคำนวณจากเนื้อหาจริง (กัน QR ถูกบีบ)"""
         import os
@@ -4215,14 +4147,6 @@ class SettingsDialog(QDialog):
         # TTS
         self.tts_volume.setValue(getattr(s, 'volume', 100))
         self.tts_rate.setValue(getattr(s, 'rate', 0))
-        # ★ TTS engine + voice selectors
-        if hasattr(self, 'tts_engine_edge'):
-            engine = getattr(s, 'tts_engine', 'edge')
-            if engine == 'omnivoice':
-                self.tts_engine_omni.setChecked(True)
-            else:
-                self.tts_engine_edge.setChecked(True)
-            self._on_tts_engine_change()
         if hasattr(self, '_theme_thumbs'):
             self._refresh_theme_thumb_selection()
         if hasattr(self, 'edge_voice_combo'):
@@ -4230,11 +4154,8 @@ class SettingsDialog(QDialog):
             idx = self.edge_voice_combo.findData(ev)
             if idx >= 0:
                 self.edge_voice_combo.setCurrentIndex(idx)
-        if hasattr(self, 'omnivoice_voice_combo'):
-            ov = getattr(s, 'omnivoice_voice', 'female')
-            idx = self.omnivoice_voice_combo.findData(ov)
-            if idx >= 0:
-                self.omnivoice_voice_combo.setCurrentIndex(idx)
+        if hasattr(self, 'tts_max_wait'):
+            self.tts_max_wait.setValue(int(getattr(s, 'tts_max_wait_seconds', 45.0) or 0))
         # ★ Viewer command toggle + cooldown
         if hasattr(self, 'viewer_cmd_enabled'):
             self.viewer_cmd_enabled.setChecked(getattr(s, 'viewer_cmd_enabled', False))
@@ -4416,22 +4337,16 @@ class SettingsDialog(QDialog):
             else:
                 s.read_author = self.read_author.isChecked()
                 s.read_message = self.read_message.isChecked()
-        # ★ TTS engine + voice (edge-tts / OmniVoice)
-        if hasattr(self, 'tts_engine_edge'):
-            if self.tts_engine_omni.isChecked():
-                s.tts_engine = "omnivoice"
-            else:
-                s.tts_engine = "edge"
         # ★ ui_theme ไม่ผ่านตรงนี้แล้ว — เขียน+apply ทันทีตอนคลิก thumbnail (_on_theme_thumb_clicked)
         if hasattr(self, 'edge_voice_combo'):
             s.edge_voice = self.edge_voice_combo.currentData() or "premwadee"
-        if hasattr(self, 'omnivoice_voice_combo'):
-            s.omnivoice_voice = self.omnivoice_voice_combo.currentData() or "female"
         # ★ Viewer command toggle + cooldown
         if hasattr(self, 'viewer_cmd_enabled'):
             s.viewer_cmd_enabled = self.viewer_cmd_enabled.isChecked()
         if hasattr(self, 'viewer_cmd_cooldown'):
             s.viewer_cmd_cooldown = float(self.viewer_cmd_cooldown.value())
+        if hasattr(self, 'tts_max_wait'):
+            s.tts_max_wait_seconds = float(self.tts_max_wait.value())
         # Translate detailed (ถ้ามี)
         if hasattr(self, 'at_enabled'):
             s.auto_translate_enabled = self.at_enabled.isChecked()

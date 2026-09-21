@@ -23,7 +23,7 @@ import random
 import re
 import threading
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
@@ -192,23 +192,13 @@ class PipelineConfig:
     """ตั้งค่าการอ่าน"""
 
     voice: str = "th-TH-PremwadeeNeural"  # edge-tts voice id หรือ rvc_model_id
-    # ★ TTS engine: "edge" (edge-tts online) | "omnivoice" (offline, RTX only)
-    tts_engine: str = "edge"
-    omnivoice_voice: str = "female"  # "male" | "female" | "child" | "auto"
     edge_voice: str = "premwadee"    # "premwadee" | "niwat"
-    # ★ OmniVoice short word policy — คำเดียวสั้นกว่า min_length → ไม่อ่านด้วย OmniVoice เสมอ
-    omnivoice_skip_enabled: bool = True
-    # ★ 5 → 6: ทดสอบจริง 124 คำ + ตรวจด้วย Thai ASR อัตโนมัติ พบว่าอัตราล้มเหลวยังสูงถึง 25%
-    #   ที่ความยาว 5 ตัวอักษร ลดฮวบเหลือ ~6% ตั้งแต่ 6 ตัวอักษรขึ้นไป
-    omnivoice_skip_min_length: int = 6
-    # ★ EXPERIMENTAL: คำสั้นเดี่ยว → ลองให้ OmniVoice อ่านเอง (พูดซ้ำ 2 ครั้งมีช่องว่างคั่น
-    #   แล้วตัดเอาแค่ท่อนหลัง) แทนสลับไป edge-tts ตรงๆ — พังก็ยัง fallback edge-tts เป็น safety net
-    omnivoice_short_word_retry: bool = False
-    # ★ จำนวนครั้งที่พูดซ้ำก่อนตัด (2-5) — ปรับได้จาก Settings โดยไม่ต้อง build ใหม่
-    #   เก็บไว้แค่ท่อนสุดท้าย 1 ใน N ส่วน (ยิ่งเยอะ โมเดลยิ่ง "warm up" นาน แต่ยิ่งช้า)
-    omnivoice_short_word_repeat: int = 3
     read_author: bool = True  # อ่านชื่อผู้แชทก่อน
     read_message: bool = True  # อ่านข้อความ
+    # ★ โหมดอ่านชื่อ: "{ชื่อ} [หยุด] พูดว่า [หยุด] {ข้อความ}" — ประกอบเป็นเสียงทีละท่อนแล้วคั่นด้วยความเงียบจริง
+    #   (ใช้ได้ทั้ง edge-tts ปกติ และ mixed-voice) ชื่อที่ใช้ = ชื่อที่ตั้งเองใน User Manager ถ้ามี
+    intro_word: str = "พูดว่า"
+    intro_gap: float = 0.5  # วินาที ที่หยุดคั่นระหว่าง ชื่อ / "พูดว่า" / ข้อความ
     rate: int = 0  # % (+10 = เร็วขึรึ้น 10%)
     volume: int = 100  # master volume 0-100 (ใช้ player.set_volume ตอนเล่น — รองรับทุก engine)
     # RVC f0 method: "rmvpe" (สมดุล) | "crepe" (GPU, สวย) | "harvest" | "pm" (เร็วสุด)
@@ -244,7 +234,10 @@ class PipelineConfig:
     viewer_cmd_enabled: bool = False
     viewer_cmd_cooldown: float = 5.0  # วินาที ต่อ user
     # queue throttle
-    max_queue: int = 20  # ถ้าเกิน → drop ข้อความเก่า
+    max_queue: int = 20  # ถ้าเกิน → drop ข้อความ "แชททั่วไป" ที่เก่าสุด (โดเนท/ซับ/event ไม่ถูกทิ้ง และไม่ลัดคิว)
+    # ★ ข้อความแชททั่วไปที่รอนานเกินนี้ (วินาที นับจากที่โปรแกรมได้รับ) → ข้าม ไม่อ่าน (0 = ไม่จำกัด)
+    #   กันผู้ชมได้ยินข้อความที่ล้าสมัยไปนานแล้วตอนแชทท่วม — event (โดเนท/ซับ ฯลฯ) ไม่ถูกข้ามด้วยข้อนี้
+    max_wait_seconds: float = 45.0
     dedupe_window: float = 0.0  # ปิด dedupe — อ่านข้อความซ้ำได้
     author_cooldown: float = 0.0  # ปิด author cooldown
     # ---- spam protection (ปิดหมด — อ่านทุกข้อความ) ----
@@ -283,12 +276,10 @@ class ChatPipeline:
         tts_engine: TTSEngine,
         audio_player: AudioPlayer,
         config: Optional[PipelineConfig] = None,
-        omnivoice_engine=None,  # ★ OmniVoiceEngine instance (optional — None = ใช้ edge-tts อย่างเดียว)
     ) -> None:
         self.tts = tts_engine
         self.player = audio_player
         self.config = config or PipelineConfig()
-        self.omnivoice = omnivoice_engine  # ★ None ถ้า Lite build หรือยังไม่ได้โหลด
 
         # dependencies (injected ภายหลัง)
         self._filter = None  # TextFilter instance หรือ None
@@ -315,6 +306,19 @@ class ChatPipeline:
         self._compute_thread: Optional[threading.Thread] = None
         self._play_thread: Optional[threading.Thread] = None
         self._current_playing_author: str = ""  # ★ track ว่ากำลังเล่นเสียงของใคร (สำหรับ purge)
+        self._current_playing_platform: str = ""  # ★ ...และของแพลตฟอร์มไหน (สำหรับ purge_platform)
+
+        # ★ "รุ่นของคิว" — เพิ่มทุกครั้งที่ล้างคิว (ปิดเสียง TTS): ข้อความ/เสียงที่ติดรุ่นเก่า (ที่ค้างอยู่ระหว่างสร้างเสียง)
+        #   จะถูกทิ้งแทนที่จะหลุดไปออกเสียงหลังกดปิด. _play_lock ทำให้ "เช็ครุ่น + เริ่มเล่น" กับ "ล้างคิว + หยุดเสียง"
+        #   ไม่แทรกกัน
+        self._epoch = 0
+        self._play_lock = threading.Lock()
+        self._enq_count = 0
+        # ★ ขั้นแปลภาษา (เธรดแยก): แถวรอแปล + จำนวนข้อความที่ค้างอยู่ในขั้นนี้ (ใช้คงลำดับ FIFO)
+        self._xlate_q: "queue.Queue[Optional[tuple]]" = queue.Queue()
+        self._xlate_thread: Optional[threading.Thread] = None
+        self._xlate_lock = threading.Lock()
+        self._xlate_inflight = 0
 
         # dedupe tracking
         self._recent_hashes: deque[tuple[str, float]] = deque(maxlen=50)
@@ -339,11 +343,20 @@ class ChatPipeline:
         self.skipped_author = 0
         self.skipped_spam = 0  # รวมทุก spam filter (rate/cross/url/code/length/throttle)
 
+        # ★ ชื่อที่จะอ่านแทนชื่อเดิม (ชื่อที่ตั้งเองใน User Manager) — app ผูก callable ไว้ อ่านสดทุกข้อความ
+        #   เลยไม่ต้อง rebuild config ทุกครั้งที่แก้ชื่อ. คืน "" / None = ใช้ชื่อเดิม
+        self.name_resolver: Optional[Callable[[str], Optional[str]]] = None
+        # ★ cache เสียงท่อนสั้น (ชื่อ + "พูดว่า") — คำเดิมไม่ต้อง synth ซ้ำทุกข้อความ (ลด latency)
+        self._intro_cache: "OrderedDict[tuple, np.ndarray]" = OrderedDict()
+        self._intro_lock = threading.Lock()
+
         # callbacks (UI hook)
         self.on_status: Optional[Callable[[str], None]] = None
         self.on_dropped: Optional[Callable[[ChatMessage], None]] = None
         # เรียกเมื่อข้อความถูกแปล (หลัง _maybe_translate สำเร็จ) — UI hook เพื่อ re-render row
         self.on_translated: Optional[Callable[[ChatMessage], None]] = None
+        # เรียกเมื่อ "ข้อความที่ต้องแปลจริง" ผ่านขั้นแปลเสร็จแล้ว (สำเร็จ/ไม่สำเร็จ/ถูกทิ้ง ก็เรียก) — app ใช้ส่งต่อ overlay
+        self.on_translate_settled: Optional[Callable[[ChatMessage], None]] = None
         # ★ Avatar widget — สัญญาณ TTS เริ่ม/จบเล่น (สำหรับ Composer avatar widget)
         self.on_playback_start: Optional[Callable[[], None]] = None
         self.on_playback_end: Optional[Callable[[], None]] = None
@@ -415,13 +428,16 @@ class ChatPipeline:
         )
         self._compute_thread.start()
         self._play_thread.start()
+        self._xlate_thread = threading.Thread(target=self._xlate_loop, name="ChatTranslate", daemon=True)
+        self._xlate_thread.start()
 
     def stop(self) -> None:
         if not self._is_running:
             return
         self._is_running = False
         self._stop_event.set()
-        # wake both workers
+        # wake all workers
+        self._xlate_q.put(None)
         self._q.put(None)
         try:
             self._ready_q.put_nowait(None)
@@ -437,8 +453,11 @@ class ChatPipeline:
             self._compute_thread.join(timeout=5)
         if self._play_thread is not None and self._play_thread.is_alive():
             self._play_thread.join(timeout=5)
+        if self._xlate_thread is not None and self._xlate_thread.is_alive():
+            self._xlate_thread.join(timeout=2)
         self._compute_thread = None
         self._play_thread = None
+        self._xlate_thread = None
 
     @property
     def queue_size(self) -> int:
@@ -453,23 +472,26 @@ class ChatPipeline:
 
         ไม่ kill worker threads (mute แค่พัก ไม่ใช่ shutdown)
         """
-        # 1. drain input queue (ข้อความที่รอ synthesize)
-        while not self._q.empty():
+        with self._play_lock:
+            # 0. ขึ้นรุ่นใหม่ก่อน — อะไรที่ยังค้างอยู่ระหว่างสร้างเสียง/รอเข้าคิวเล่น จะถูกทิ้งเองเมื่อเสร็จ
+            self._epoch += 1
+            # 1. drain input queue (ข้อความที่รอ synthesize)
+            while not self._q.empty():
+                try:
+                    self._q.get_nowait()
+                except queue.Empty:
+                    break
+            # 2. drain ready queue (audio ที่ synthesize แล้ว รอเล่น)
+            while not self._ready_q.empty():
+                try:
+                    self._ready_q.get_nowait()
+                except queue.Empty:
+                    break
+            # 3. หยุด audio ที่กำลังเล่นอยู่ทันที
             try:
-                self._q.get_nowait()
-            except queue.Empty:
-                break
-        # 2. drain ready queue (audio ที่ synthesize แล้ว รอเล่น)
-        while not self._ready_q.empty():
-            try:
-                self._ready_q.get_nowait()
-            except queue.Empty:
-                break
-        # 3. หยุด audio ที่กำลังเล่นอยู่ทันที
-        try:
-            self.player.stop()
-        except Exception:  # noqa: BLE001
-            pass
+                self.player.stop()
+            except Exception:  # noqa: BLE001
+                pass
         if self.on_status is not None:
             self.on_status("🔇 ปิดการอ่าน — ล้างคิวเรียบร้อย")
 
@@ -536,57 +558,14 @@ class ChatPipeline:
 
     # ------------------------------------------------------------------ #
     def _maybe_translate(self, msg: ChatMessage) -> tuple:
-        """ตรวจ + แปลข้อความเป็นไทย — คืน (translated_text, source_lang, skip_reason)
-
-        skip_reason: None = ปกติ | "lang_not_configured" = ไม่ใช่ภาษาที่ตั้งค่าให้แปล
-
-        Logic:
-        1. force_translate_users → บังคับแปลทุกข้อความ (ข้าม history check)
-        2. detect language → ถ้าเป็นไทยอยู่แล้ว → skip (ยกเว่าน force)
-        3. History check — ถ้า user เคยแชทภาษาไทย ≥3 ครั้ง → คนไทย → skip
-        4. ถ้าภาษาอยู่ใน auto_translate_langs → translate
-        """
-        import logging
-        _log = logging.getLogger(__name__)
-        try:
-            from language_detect import detect_language
-            src_lang = detect_language(msg.text)
-            config = self.config
-            # 1. force_translate_users → บังคับแปล (ข้ามทุก check)
-            force_users = getattr(config, "force_translate_users", [])
-            is_forced = msg.author.lower() in [u.lower() for u in force_users]
-            if not is_forced:
-                # ถ้าเป็นไทยอยู่แล้ว → skip
-                if src_lang == "th":
-                    return (None, None, None)
-                # ถ้าไม่ใช่ภาษาที่ต้องการแปล → skip (บอกเหตุผลให้ tooltip — แยกจาก "เป็นไทยอยู่แล้ว"
-                #   ด้วย skip_reason; ถ้า detect ไม่ออก (None) → ปล่อยเข้า TTS ตามเดิม)
-                target_langs = getattr(config, "auto_translate_langs", [])
-                if src_lang is not None and src_lang not in target_langs:
-                    return (None, src_lang, "lang_not_configured")
-                if src_lang is None:
-                    return (None, None, None)
-                # History check — ถ้า user เคยแชทภาษาไทย ≥3 ครั้ง → คนไทย → skip
-                if self._is_thai_speaker(msg.author):
-                    return (None, None, None)
-            # Translate
-            from translator import Translator
-            provider = getattr(config, "auto_translate_provider", "google")
-            api_key = getattr(config, "auto_translate_api_key", "")
-            host = getattr(config, "auto_translate_host", "")
-            target = getattr(config, "auto_translate_target_lang", "th")
-            langs = getattr(config, "auto_translate_langs", [])
-            t = Translator(provider=provider, api_key=api_key, host=host,
-                           target_lang=target, supported_langs=langs)
-            # force users → source_lang = "auto" (ให้ translator detect เอง)
-            result = t.translate(msg.text, source_lang="auto" if is_forced else src_lang)
-            if result:
-                return (result, src_lang if not is_forced else "auto", None)
-            # แปล fail → คืน src_lang ด้วย เพื่อให้ enqueue ตัดสินใจ skip ได้
-            return (None, src_lang, None)
-        except Exception as exc:
-            _log.warning("auto_translate error: %s", exc)
-            return (None, None, None)
+        """(ยังเก็บไว้เพื่อความเข้ากันได้) ตรวจ + แปลข้อความเป็นไทย — คืน (translated_text, source_lang, skip_reason)
+        skip_reason: None = ปกติ | "lang_not_configured" = ไม่ใช่ภาษาที่ตั้งค่าให้แปล  — ห้ามเรียกจากเธรด UI (เรียกเน็ต)"""
+        plan = self._translation_plan(msg)
+        if plan[0] == "translate":
+            return self._do_translate(msg, plan)
+        if plan[0] == "skip":
+            return (None, plan[1], "lang_not_configured")
+        return (None, None, None)
 
     def _is_thai_speaker(self, author: str) -> bool:
         """ตรวจว่า user เคยแชทภาษาไทยบ่อยไหม — ถ้าใช่ → ไม่ต้องแปล"""
@@ -617,6 +596,10 @@ class ChatPipeline:
             self._emit_tts_status(msg, "skipped", reason="pipeline หยุดอยู่")
             return
         logger.info(f"TTS enqueue: {msg.author}: {msg.text[:60] if msg.text else '(empty)'}")
+        # ★ ตีตรา "รุ่นของคิว" ตั้งแต่ตอนรับข้อความ (ก่อนรอแปล/รอคิว) — กดปิดเสียงหลังจากนี้ ข้อความนี้จะถูกทิ้ง
+        if msg.extra is None:
+            msg.extra = {}
+        msg.extra.setdefault("_tts_epoch", self._epoch)
 
         # -1) Playroom trigger check — ถ้ามี trigger (!fortune) ในข้อความ:
         #     - เช็ค daily limit ต่อ user (กัน spam)
@@ -792,55 +775,177 @@ class ChatPipeline:
 
         # 2.5) Auto Translate (ถ้าเปิด) — แปลเป็นไทยก่อน TTS + ผ่าน replace หลังแปล
         # ★ ข้ามถ้าเป็น Preview (จากหน้า Replace/Settings — ห้ามแปล)
+        # ★ การแปลต้องเรียกเน็ต (ช้า) → ทำในเธรดแยก (_xlate_loop) ไม่ให้หน้าโปรแกรมค้าง:
+        #   ข้อความแสดงในแชทเป็นต้นฉบับทันที → แปลเสร็จค่อยแก้ข้อความในแชทเป็นไทย (on_translated) → แล้วจึงเข้าคิวอ่าน
+        #   ทุกข้อความต่อแถวเดียวกัน (FIFO) ตราบที่ยังมีข้อความรอแปลอยู่ → ลำดับการอ่านตรงกับลำดับที่เข้ามาเสมอ
         _is_preview = (msg.extra or {}).get("_preview", False)
         if getattr(self.config, "auto_translate_enabled", False) and msg.text and not _is_preview:
-            translated, src_lang, tl_skip = self._maybe_translate(msg)
-            if translated is not None and translated != msg.text:
-                original_text = msg.text
-                msg.extra["translated"] = True
-                msg.extra["original_text"] = original_text
-                msg.extra["source_lang"] = src_lang
-                msg.extra["translated_text"] = translated
-                # ใช้ข้อความแปลสำหรับ TTS
-                msg.text = translated
-                # ★ apply Replace หลังแปล — เพราะ translator อาจแปลคำทับศัพท์ผิด
-                #   เช่น "Apex Legends" → translator แปลเป็น "เอเพ็ก" → Replace แทนเป็น "เอเป็ก เลเจนด์"
-                if self._filter is not None and msg.text:
-                    try:
-                        msg.text = self._filter.apply_pronunciation(msg.text)
-                    except Exception:
-                        pass
-                # notify UI เพื่อ re-render row (แสดงคำแปลทันทีหลังแปลเสร็จ)
-                if self.on_translated is not None:
-                    try:
-                        self.on_translated(msg)
-                    except Exception:
-                        pass
-            elif tl_skip == "lang_not_configured":
-                # ★ ไม่ใช่ภาษาที่ตั้งค่าให้แปล → เงียบ + tooltip บอก (เดิมหลุดไปให้ Premwadee
-                #   อ่านต่างภาษา = เสียงแปลก ๆ) — detect ไม่ออก (src=None) ไม่โดนดักจุดนี้
-                self._emit_tts_status(
-                    msg, "skipped",
-                    reason=f"ไม่ใช่ภาษาที่ตั้งค่าให้อ่านหรือแปล ({src_lang})",
+            plan = self._translation_plan(msg)
+            if plan[0] == "translate" or self._xlate_inflight > 0:
+                self._xlate_submit(msg, plan)
+                return
+            if not self._apply_translation(msg, plan):
+                return
+        self._enqueue_rest(msg)
+
+    # ------------------------------------------------------------------ #
+    # แปลภาษา: ตัดสินใจ (เบา ไม่เรียกเน็ต) → แปลจริง (เรียกเน็ต) → ทำต่อ (คิว)
+    # ------------------------------------------------------------------ #
+    def _translation_plan(self, msg: ChatMessage) -> tuple:
+        """ตัดสินใจแบบเบา ไม่เรียกเน็ต: ("none",) | ("skip", src_lang) | ("translate", src_lang, is_forced)"""
+        try:
+            from language_detect import detect_language
+            src_lang = detect_language(msg.text)
+            config = self.config
+            force_users = getattr(config, "force_translate_users", [])
+            is_forced = msg.author.lower() in [u.lower() for u in force_users]
+            if not is_forced:
+                if src_lang == "th":
+                    return ("none",)
+                target_langs = getattr(config, "auto_translate_langs", [])
+                if src_lang is not None and src_lang not in target_langs:
+                    return ("skip", src_lang)
+                if src_lang is None:
+                    return ("none",)
+                if self._is_thai_speaker(msg.author):
+                    return ("none",)
+            return ("translate", src_lang, is_forced)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("translation plan error: %s", exc)
+            return ("none",)
+
+    def _do_translate(self, msg: ChatMessage, plan: tuple) -> tuple:
+        """แปลจริง (เรียกเน็ต — ห้ามเรียกจากเธรด UI) → (translated_text, source_lang, skip_reason)"""
+        try:
+            from translator import Translator
+            _, src_lang, is_forced = plan
+            config = self.config
+            t = Translator(provider=getattr(config, "auto_translate_provider", "google"),
+                           api_key=getattr(config, "auto_translate_api_key", ""),
+                           host=getattr(config, "auto_translate_host", ""),
+                           target_lang=getattr(config, "auto_translate_target_lang", "th"),
+                           supported_langs=getattr(config, "auto_translate_langs", []))
+            result = t.translate(msg.text, source_lang="auto" if is_forced else src_lang)
+            if result:
+                return (result, src_lang if not is_forced else "auto", None)
+            # แปล fail → คืน src_lang ด้วย เพื่อให้ผู้เรียกตัดสินใจ skip ได้
+            return (None, src_lang, None)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("auto_translate error: %s", exc)
+            return (None, None, None)
+
+    def _apply_translation(self, msg: ChatMessage, plan: tuple) -> bool:
+        """ทำตามแผน (แปล/ข้าม) + อัปเดตข้อความ/UI — คืน False = ข้อความนี้ไม่ต้องอ่าน (แจ้งสถานะแล้ว)"""
+        if plan[0] == "translate":
+            translated, src_lang, tl_skip = self._do_translate(msg, plan)
+        elif plan[0] == "skip":
+            translated, src_lang, tl_skip = None, plan[1], "lang_not_configured"
+        else:
+            return True
+        if msg.extra is None:
+            msg.extra = {}
+        if translated is not None and translated != msg.text:
+            original_text = msg.text
+            msg.extra["translated"] = True
+            msg.extra["original_text"] = original_text
+            msg.extra["source_lang"] = src_lang
+            msg.extra["translated_text"] = translated
+            # ใช้ข้อความแปลสำหรับ TTS
+            msg.text = translated
+            # ★ apply Replace หลังแปล — เพราะ translator อาจแปลคำทับศัพท์ผิด
+            #   เช่น "Apex Legends" → translator แปลเป็น "เอเพ็ก" → Replace แทนเป็น "เอเป็ก เลเจนด์"
+            if self._filter is not None and msg.text:
+                try:
+                    msg.text = self._filter.apply_pronunciation(msg.text)
+                except Exception:
+                    pass
+            # notify UI เพื่อ re-render row (แสดงคำแปลทันทีหลังแปลเสร็จ)
+            if self.on_translated is not None:
+                try:
+                    self.on_translated(msg)
+                except Exception:
+                    pass
+        elif tl_skip == "lang_not_configured":
+            # ★ ไม่ใช่ภาษาที่ตั้งค่าให้แปล → เงียบ + tooltip บอก (เดิมหลุดไปให้ Premwadee
+            #   อ่านต่างภาษา = เสียงแปลก ๆ) — detect ไม่ออก (src=None) ไม่โดนดักจุดนี้
+            self._emit_tts_status(
+                msg, "skipped",
+                reason=f"ไม่ใช่ภาษาที่ตั้งค่าให้อ่านหรือแปล ({src_lang})",
+            )
+            self.skipped_spam += 1
+            return False
+        elif (translated is None and src_lang is not None) or (translated == msg.text and src_lang not in ("th", None)):
+            # กรณี A: แปล fail (rate limit / network) → src_lang ไม่ใช่ None
+            # กรณี B: translator คืนข้อความเดิม (translated == msg.text) แต่ไม่ใช่ไทย
+            #         → ถ้าปล่อยไป TTS → ใช้ Premwadee อ่านต่างภาษา → error "No audio"
+            # ทั้งสองกรณี: ถ้าไม่ใช่ภาษาไทย → skip (ไม่อ่าน TTS)
+            from language_detect import detect_language
+            if detect_language(msg.text) != "th":
+                import logging
+                logging.getLogger(__name__).info(
+                    "Auto translate: skip TTS (translate fail/same) for %s src=%s: %s",
+                    msg.author, src_lang, msg.text[:50]
                 )
                 self.skipped_spam += 1
-                return
-            elif (translated is None and src_lang is not None) or (translated == msg.text and src_lang not in ("th", None)):
-                # กรณี A: แปล fail (rate limit / network) → src_lang ไม่ใช่ None
-                # กรณี B: translator คืนข้อความเดิม (translated == msg.text) แต่ไม่ใช่ไทย
-                #         → ถ้าปล่อยไป TTS → ใช้ Premwadee อ่านต่างภาษา → error "No audio"
-                # ทั้งสองกรณี: ถ้าไม่ใช่ภาษาไทย → skip (ไม่อ่าน TTS)
-                from language_detect import detect_language
-                if detect_language(msg.text) != "th":
-                    import logging
-                    logging.getLogger(__name__).info(
-                        "Auto translate: skip TTS (translate fail/same) for %s src=%s: %s",
-                        msg.author, src_lang, msg.text[:50]
-                    )
-                    self.skipped_spam += 1
-                    self._emit_tts_status(msg, "skipped", reason="แปลไม่สำเร็จ (ไม่ใช่ไทย)")
-                    return  # ไม่ enqueue → ไม่อ่าน
+                self._emit_tts_status(msg, "skipped", reason="แปลไม่สำเร็จ (ไม่ใช่ไทย)")
+                return False  # ไม่ enqueue → ไม่อ่าน
+        return True
 
+    def _xlate_submit(self, msg: ChatMessage, plan: tuple) -> None:
+        """ส่งเข้าแถวรอแปล (เธรดแยก) — คืนทันที ไม่บล็อกผู้เรียก (เธรด UI)"""
+        if msg.extra is None:
+            msg.extra = {}
+        with self._xlate_lock:
+            self._xlate_inflight += 1
+        # pending = ต้องแปลจริง (ผู้เรียกเลื่อนการส่งไป overlay ไว้จนกว่าจะแปลเสร็จ); False = แค่ต่อแถวรักษาลำดับ
+        msg.extra["_translate_pending"] = (plan[0] == "translate")
+        self._emit_tts_status(msg, "queued")
+        self._xlate_q.put((msg, plan))
+
+    def _xlate_loop(self) -> None:
+        while not self._stop_event.is_set():
+            item = self._xlate_q.get()
+            if item is None:
+                break
+            msg, plan = item
+            try:
+                self._xlate_process(msg, plan)
+            except Exception as exc:  # noqa: BLE001
+                logger.error(f"translate stage error: {exc}", exc_info=True)
+                self._emit_tts_status(msg, "error", reason=str(exc))
+            finally:
+                was_pending = (msg.extra or {}).pop("_translate_pending", None)
+                with self._xlate_lock:
+                    self._xlate_inflight = max(0, self._xlate_inflight - 1)
+                if was_pending and self.on_translate_settled is not None:
+                    try:
+                        self.on_translate_settled(msg)
+                    except Exception:  # noqa: BLE001
+                        pass
+
+    def _xlate_process(self, msg: ChatMessage, plan: tuple) -> None:
+        # ล้างคิว/ปิดเสียงไปแล้วระหว่างรอ → ทิ้ง
+        if (msg.extra or {}).get("_tts_epoch", self._epoch) != self._epoch:
+            self._emit_tts_status(msg, "skipped", reason="ปิดเสียง TTS อยู่")
+            return
+        # ถูกบล็อกระหว่างรอแปล → ทิ้ง
+        if self._filter is not None and self._filter.is_user_blocked(msg.author):
+            self._emit_tts_status(msg, "skipped", reason="ผู้ใช้ถูกบล็อก")
+            return
+        # รอนานเกินกำหนดแล้ว (เช่นเน็ตช้า แถวแปลยาว) → ไม่ต้องเสียเวลาแปล
+        if plan[0] == "translate" and self._too_old(msg):
+            self._emit_tts_status(msg, "skipped", reason=f"รอนานเกิน {int(self.config.max_wait_seconds)} วินาที — ข้าม")
+            return
+        if self._apply_translation(msg, plan):
+            self._enqueue_rest(msg)
+
+    def _enqueue_rest(self, msg: ChatMessage) -> None:
+        """ขั้นที่เหลือของ enqueue (หลังตัวกรอง+แปล): rate limit → ตัวกรองเนื้อหา → dedupe → เข้าคิวสร้างเสียง"""
+        # ล้างคิว/ปิดเสียงไปแล้วหลังข้อความนี้เข้ามา → ทิ้ง (สำคัญสำหรับข้อความที่รอแปลอยู่)
+        if (msg.extra or {}).get("_tts_epoch", self._epoch) != self._epoch:
+            self._emit_tts_status(msg, "skipped", reason="ปิดเสียง TTS อยู่")
+            return
+        now = time.time()
         # 3) per-author temp-ban check (rate limit penalty)
         author_lower = msg.author.lower()
         unban_at = self._user_temp_banned.get(author_lower, 0)
@@ -859,9 +964,11 @@ class ChatPipeline:
                 self.skipped_spam += 1
                 self._emit_tts_status(msg, "skipped", reason="เป็น code block")
                 return
-            if len(msg.text) > self.config.max_msg_length:
+            limit = self.config.max_msg_length
+            # ยาวเกินกำหนด = ข้ามทั้งข้อความ (ไม่อ่านครึ่งๆ) · 0 = ไม่จำกัด · โดเนท/ซับ/อีเวนต์ไม่ถูกข้าม
+            if limit and limit > 0 and len(msg.text) > limit and not self._is_protected(msg):
                 self.skipped_spam += 1
-                self._emit_tts_status(msg, "skipped", reason=f"ยาวเกิน {self.config.max_msg_length} ตัวอักษร")
+                self._emit_tts_status(msg, "skipped", reason=f"ยาวเกิน {limit} ตัวอักษร")
                 return
 
         # 5) auto-throttle — ตอน chat ระเบิด (global rate)
@@ -916,18 +1023,6 @@ class ChatPipeline:
 
         # ───── END SPAM PROTECTION ─────
 
-        # 8) throttle — ถ้า queue เต็ม → drop เก่า
-        if self._q.qsize() >= self.config.max_queue:
-            try:
-                _dropped_old = self._q.get_nowait()
-                self.dropped += 1
-                if _dropped_old is not None:
-                    self._emit_tts_status(_dropped_old, "skipped", reason="คิวเต็ม — ทิ้งข้อความเก่า")
-                if self.on_dropped is not None:
-                    self.on_dropped(msg)
-            except queue.Empty:
-                pass
-
         # 9) dedupe — ข้ามข้อความซ้ำภายใน window (author + text + event)
         h = self._hash(msg)
         cutoff = now - self.config.dedupe_window
@@ -960,8 +1055,72 @@ class ChatPipeline:
             else:
                 self._viewer_cmd_last_time[author_lower] = now
 
+        # 12) queue เต็ม → ทิ้งข้อความแชททั่วไปที่เก่าสุด (event ไม่ถูกทิ้ง; ลำดับของที่เหลือไม่เปลี่ยน)
+        #     ★ ทำตรงนี้ (หลังผ่านทุกตัวกรอง) — เดิมทิ้งของเก่าก่อน แล้วข้อความใหม่ค่อยโดนตัวกรองตัดทิ้ง = เสียสองข้อความ
+        self._make_room()
+        if msg.extra is None:
+            msg.extra = {}
+        msg.extra.setdefault("_tts_enq_ts", now)       # เวลาเข้าคิว (ใช้คิดอายุ ถ้าแอปไม่ได้ตั้ง _tts_recv_ts)
+        self._enq_count += 1
+        if self._enq_count % 500 == 0:
+            self._prune_tables(now)
         self._q.put(msg)
         self._emit_tts_status(msg, "queued")
+
+    @staticmethod
+    def _is_protected(msg) -> bool:
+        """event (โดเนท/ซับ/บิท/raid ฯลฯ) = ไม่ถูกทิ้งตอนคิวเต็ม และไม่ถูกข้ามเพราะรอนาน"""
+        return getattr(msg, "event", "message") not in ("message", "system")
+
+    def _make_room(self) -> None:
+        """คิวเต็ม (>= max_queue) → เอาข้อความแชททั่วไปที่ "เก่าสุด" ออก 1 ข้อความ (ไม่แตะ event ไม่สลับลำดับ)
+        ถ้าที่รออยู่เป็น event ล้วน → ปล่อยให้คิวยาวเกินได้ (event มีน้อยกว่าแชทมาก)"""
+        limit = int(self.config.max_queue or 0)
+        if limit <= 0:
+            return
+        while self._q.qsize() >= limit:
+            victim = None
+            with self._q.mutex:
+                dq = self._q.queue
+                for idx, item in enumerate(dq):
+                    if item is not None and not self._is_protected(item):
+                        victim = item
+                        del dq[idx]
+                        break
+            if victim is None:
+                return
+            self.dropped += 1
+            self._emit_tts_status(victim, "skipped", reason="คิวเต็ม — ทิ้งข้อความเก่า")
+            if self.on_dropped is not None:
+                try:
+                    self.on_dropped(victim)
+                except Exception:  # noqa: BLE001
+                    pass
+
+    def _prune_tables(self, now: float) -> None:
+        """ล้างตารางนับ/กันสแปมที่โตตามจำนวนคน/ข้อความตลอดสตรีม (เรียกทุก ~500 ข้อความ) — กัน RAM โตไม่หยุด"""
+        try:
+            window = max(float(self.config.user_rate_window or 0), 60.0)
+            for k in [k for k, v in self._user_msg_times.items() if not v or v[-1] < now - window]:
+                del self._user_msg_times[k]
+            for k in [k for k, t in self._user_temp_banned.items() if t < now]:
+                del self._user_temp_banned[k]
+            for k in [k for k, t in self._author_last_time.items() if t < now - 3600]:
+                del self._author_last_time[k]
+            for k in [k for k, t in self._viewer_cmd_last_time.items() if t < now - 3600]:
+                del self._viewer_cmd_last_time[k]
+            while len(self._text_hash_authors) > 2000:           # เก็บ hash ข้อความล่าสุดแค่ 2,000 ตัว
+                self._text_hash_authors.pop(next(iter(self._text_hash_authors)))
+            today = time.strftime("%Y-%m-%d")
+            for usage in (self._playroom_usage, self._secret_usage):   # โควตารายวัน: ของวันก่อนไม่ต้องเก็บ
+                for user in list(usage.keys()):
+                    per = usage[user]
+                    for code in [c for c, v in per.items() if v.get("date") != today]:
+                        del per[code]
+                    if not per:
+                        del usage[user]
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(f"prune tables failed: {exc}")
 
     def _hash(self, msg: ChatMessage) -> str:
         """hash content สำหรับ dedupe (author + text)"""
@@ -971,20 +1130,6 @@ class ChatPipeline:
     # ------------------------------------------------------------------ #
     # Notification sound playback
     # ------------------------------------------------------------------ #
-    def _play_skip_notification(self) -> None:
-        """เล่นเสียงแจ้งเตือนสั้นๆ ตอนข้ามข้อความ (เสียง OmniVoice ผิดปกติ)
-
-        ★ ใช้ warn_sound_path ที่ user ตั้งไว้ (browse เปลี่ยนได้ใน Settings)
-        ถ้ายังไม่ได้ตั้ง → ใช้เสียง "ติ๊ง" สั้นๆ ที่ generate เองไว้เป็น default
-        (ไม่ต้อง bundle ไฟล์เสียงเพิ่ม — สร้างครั้งแรกแล้ว cache ไว้ใน data dir)
-        """
-        try:
-            path = getattr(self.config, "warn_sound_path", "") or get_default_notify_sound_path()
-            volume = float(getattr(self.config, "warn_sound_volume", 0.6))
-            self._play_notification_sound(path, volume)
-        except Exception:
-            pass
-
     def _play_notification_sound(self, mp3_path: str, volume: float) -> None:
         """เล่นไฟล์เสียงแจ้งเตือน — ทำใน worker thread เพื่อไม่บล็อก chat"""
         if not os.path.exists(mp3_path):
@@ -1057,40 +1202,58 @@ class ChatPipeline:
             if msg is None:
                 break  # shutdown signal
 
-            # ───── MUTE: ถ้าปิดเสียง → ทิ้งข้อความ ไม่ synthesize (ประหยัด CPU/GPU) ─────
-            if self.config.tts_muted:
-                logger.info("TTS muted → skip message")
+            # ───── ล้างคิวไปแล้วหลังข้อความนี้เข้าคิว (เช่นกดปิดเสียง) → ทิ้ง ─────
+            msg_epoch = (msg.extra or {}).get("_tts_epoch", self._epoch)
+            if msg_epoch != self._epoch:
                 self._emit_tts_status(msg, "skipped", reason="ปิดเสียง TTS อยู่")
                 continue
 
-            # ───── PLATFORM MUTE: ปุ่มลำโพงในการ์ด หรือ volume slider ลาก 0 ─────
-            #   ★ เดิม volume=0 ถูกตีความว่า "ยังไม่ได้ตั้งค่า" แล้ว reset กลับ 100
-            #     (ดู _compute_one) → ลาก slider ไป 0 ไม่เงียบจริง — แก้ให้ 0 = เงียบจริง
-            _pm = getattr(self.config, 'platform_muted', None) or {}
-            _pv = getattr(self.config, 'platform_volumes', None) or {}
-            if _pm.get(msg.platform) or _pv.get(msg.platform, 100) <= 0:
-                logger.info(f"Platform {msg.platform} muted → skip message")
-                self._emit_tts_status(msg, "skipped", reason=f"ปิดเสียง TTS ของแพลตฟอร์ม {msg.platform}")
+            # ───── MUTE / PLATFORM MUTE ─────
+            _why = self._mute_reason(msg)
+            if _why:
+                logger.info(f"TTS muted ({_why}) → skip message")
+                self._emit_tts_status(msg, "skipped", reason=_why)
+                continue
+
+            # ───── รอนานเกินกำหนด → ข้าม (เฉพาะแชททั่วไป) ─────
+            if self._too_old(msg):
+                logger.info(f"TTS skip: waited too long ({msg.author})")
+                self._emit_tts_status(msg, "skipped",
+                                      reason=f"รอนานเกิน {int(self.config.max_wait_seconds)} วินาที — ข้าม")
                 continue
 
             try:
                 self._emit_tts_status(msg, "computing")
                 result = self._compute_one(msg)
                 logger.info(f"TTS compute result: {'OK' if result is not None else 'None'}")
+                # ───── กดปิดเสียง/ล้างคิว "ระหว่างที่กำลังสร้างเสียง" → ทิ้งผลลัพธ์ ไม่ให้หลุดไปออกเสียง ─────
+                _late = None
+                if msg_epoch != self._epoch:
+                    _late = "ปิดเสียง TTS อยู่"
+                else:
+                    _late = self._mute_reason(msg)
+                if _late:
+                    self._emit_tts_status(msg, "skipped", reason=_late)
+                    continue
                 if result is not None:
                     # แนบ per-platform volume offset (ถ้ามี)
                     vol_offset = 0
                     if msg.extra:
                         vol_offset = msg.extra.get("_tts_vol_offset", 0)
-                    # ★ push (audio_np, sr, vol_offset, author, tts_id, recv_ts) เข้า ready queue
+                    # ★ push (audio_np, sr, vol_offset, author, tts_id, recv_ts, epoch, protected) เข้า ready queue
                     #   author ใช้ตอน purge_blocked_user (ล้างคิวของ user ที่บล็อก)
                     #   tts_id + recv_ts ใช้แจ้งสถานะ "playing"/"done" + นับเวลารวม
+                    #   epoch ใช้ทิ้งเสียงรุ่นเก่าหลังล้างคิว, protected = event (ไม่ถูกข้ามเพราะรอนาน)
                     _ex = msg.extra or {}
-                    self._ready_q.put((
+                    if self._put_ready((
                         result[0], result[1], vol_offset, msg.author,
-                        _ex.get("_tts_id", ""), _ex.get("_tts_recv_ts", 0.0),
-                    ))
-                    self._emit_tts_status(msg, "ready")
+                        _ex.get("_tts_id", ""), _ex.get("_tts_recv_ts", 0.0) or _ex.get("_tts_enq_ts", 0.0),
+                        msg_epoch, self._is_protected(msg), msg.platform,
+                    ), msg_epoch):
+                        self._emit_tts_status(msg, "ready")
+                    else:
+                        self._emit_tts_status(msg, "skipped", reason="ปิดเสียง TTS อยู่")
+                        continue
                 else:
                     _skip_r = (msg.extra or {}).pop("_tts_skip_reason", None) or "สังเคราะห์เสียงไม่ได้"
                     self._emit_tts_status(msg, "skipped", reason=_skip_r)
@@ -1101,7 +1264,7 @@ class ChatPipeline:
                     # synthesize code sound → push ต่อจาก TTS (★ ส่ง volume ไปด้วย)
                     code_audio = self._load_sound_to_array(mp3_path, volume=vol)
                     if code_audio is not None:
-                        self._ready_q.put(code_audio)
+                        self._put_ready((code_audio[0], code_audio[1], 0, "", "", 0.0, msg_epoch, True, msg.platform), msg_epoch)
             except Exception as exc:  # noqa: BLE001
                 logger.error(f"TTS error in compute_loop: {exc}", exc_info=True)
                 # ★ แจ้งไอคอน — สร้างเสียงพัง (ไม่งั้น ⏳ ค้างเรื่อย ๆ โดยไม่รู้ว่า error)
@@ -1118,6 +1281,84 @@ class ChatPipeline:
         except queue.Full:
             pass
 
+    def _mute_reason(self, msg) -> Optional[str]:
+        """ข้อความนี้ถูกปิดเสียงอยู่ไหม (ปิดทั้งหมด / ปิดทั้งแพลตฟอร์ม / slider แพลตฟอร์ม = 0) → เหตุผล หรือ None"""
+        if self.config.tts_muted:
+            return "ปิดเสียง TTS อยู่"
+        _pm = getattr(self.config, 'platform_muted', None) or {}
+        _pv = getattr(self.config, 'platform_volumes', None) or {}
+        if _pm.get(msg.platform) or _pv.get(msg.platform, 100) <= 0:
+            return f"ปิดเสียง TTS ของแพลตฟอร์ม {msg.platform}"
+        return None
+
+    def _platform_muted_now(self, platform: str) -> bool:
+        _pm = getattr(self.config, 'platform_muted', None) or {}
+        _pv = getattr(self.config, 'platform_volumes', None) or {}
+        return bool(_pm.get(platform)) or _pv.get(platform, 100) <= 0
+
+    def _cancelled(self, msg) -> bool:
+        """ข้อความนี้ถูกยกเลิกไปแล้วหรือยัง (ล้างคิว/ปิดเสียงหลังเข้าคิว) — ใช้หยุดงานหนักที่เหลือ (RVC) ทันที"""
+        return (msg.extra or {}).get("_tts_epoch", self._epoch) != self._epoch
+
+    def purge_platform(self, platform: str) -> int:
+        """ปิดเสียงแพลตฟอร์มทันที (ปุ่มลำโพงในการ์ดแพลตฟอร์ม): ทิ้งข้อความของแพลตฟอร์มนี้ที่รอคิว/สร้างเสียงเสร็จรอเล่น
+        + หยุดเสียงที่กำลังอ่านอยู่ถ้าเป็นของแพลตฟอร์มนี้ — แพลตฟอร์มอื่นไม่กระทบ. คืนจำนวนที่ทิ้ง"""
+        purged = 0
+        victims = []
+        with self._q.mutex:                 # แก้ทั้งคิวในครั้งเดียว ไม่แทรกกับเธรดที่ put/get พร้อมกัน ลำดับของที่เหลือไม่เปลี่ยน
+            keep = []
+            for m in self._q.queue:
+                if m is not None and getattr(m, "platform", None) == platform:
+                    victims.append(m)
+                else:
+                    keep.append(m)
+            self._q.queue.clear()
+            self._q.queue.extend(keep)
+        with self._ready_q.mutex:
+            keep = []
+            for it in self._ready_q.queue:
+                if isinstance(it, tuple) and len(it) >= 9 and it[8] == platform:
+                    purged += 1
+                    if it[4]:
+                        victims.append(it[4])
+                else:
+                    keep.append(it)
+            self._ready_q.queue.clear()
+            self._ready_q.queue.extend(keep)
+        for v in victims:
+            self._emit_tts_status(v, "skipped", reason=f"ปิดเสียง TTS ของแพลตฟอร์ม {platform}")
+        purged += sum(1 for v in victims if not isinstance(v, str))
+        with self._play_lock:
+            if self._current_playing_platform == platform:
+                try:
+                    self.player.stop()
+                except Exception:  # noqa: BLE001
+                    pass
+        if purged and self.on_status is not None:
+            self.on_status(f"🔇 ปิดเสียง {platform} — ล้างคิว {purged} ข้อความ")
+        return purged
+
+    def _too_old(self, msg) -> bool:
+        """แชททั่วไปที่รอนานเกิน max_wait_seconds (นับจากที่รับข้อความ) — event ไม่ถูกข้าม"""
+        limit = float(getattr(self.config, "max_wait_seconds", 0) or 0)
+        if limit <= 0 or self._is_protected(msg):
+            return False
+        ex = msg.extra or {}
+        ref = ex.get("_tts_recv_ts") or ex.get("_tts_enq_ts")
+        return bool(ref) and (time.time() - float(ref)) > limit
+
+    def _put_ready(self, item: tuple, epoch: int) -> bool:
+        """ใส่เสียงที่สร้างเสร็จลงคิวเล่น — ถ้าระหว่างรอที่ว่าง (คิวเต็ม) มีการล้างคิว → ทิ้ง (คืน False)"""
+        while not self._stop_event.is_set():
+            if epoch != self._epoch:
+                return False
+            try:
+                self._ready_q.put(item, timeout=0.2)
+                return True
+            except queue.Full:
+                continue
+        return False
+
     def _play_loop(self) -> None:
         """pop จาก ready queue → load + play + wait until done"""
         while not self._stop_event.is_set():
@@ -1130,8 +1371,16 @@ class ChatPipeline:
             play_author = ''
             play_tts_id = ''
             play_recv_ts = 0.0
+            play_epoch = None
+            play_protected = True
+            play_platform = ''
             if isinstance(item, tuple):
-                if len(item) >= 6:
+                if len(item) >= 9:
+                    (audio_np, sr, vol_offset, play_author, play_tts_id, play_recv_ts,
+                     play_epoch, play_protected, play_platform) = item[:9]
+                elif len(item) >= 8:
+                    audio_np, sr, vol_offset, play_author, play_tts_id, play_recv_ts, play_epoch, play_protected = item[:8]
+                elif len(item) >= 6:
                     audio_np, sr, vol_offset, play_author, play_tts_id, play_recv_ts = item[:6]
                 elif len(item) >= 4:
                     audio_np, sr, vol_offset, play_author = item[:4]
@@ -1140,24 +1389,49 @@ class ChatPipeline:
                 elif len(item) == 2:
                     audio_np, sr = item
 
+            # ★ รอนานเกินระหว่างรอคิวเล่น (แชททั่วไป) → ข้ามก่อนเล่น
+            _limit = float(getattr(self.config, "max_wait_seconds", 0) or 0)
+            if (_limit > 0 and not play_protected and play_recv_ts
+                    and (time.time() - float(play_recv_ts)) > _limit):
+                if play_tts_id:
+                    self._emit_tts_status(play_tts_id, "skipped", reason=f"รอนานเกิน {int(_limit)} วินาที — ข้าม")
+                continue
+
+            # ★ แพลตฟอร์มของข้อความนี้ถูกปิดเสียงระหว่างรอคิวเล่น → ไม่เล่น
+            if play_platform and self._platform_muted_now(play_platform):
+                if play_tts_id:
+                    self._emit_tts_status(play_tts_id, "skipped", reason=f"ปิดเสียง TTS ของแพลตฟอร์ม {play_platform}")
+                continue
+
             # ★ track current playing author (สำหรับ purge_blocked_user)
             self._current_playing_author = play_author
+            self._current_playing_platform = play_platform
             # ★ แจ้ง UI — ข้อความนี้กำลังถูกอ่านอยู่
-            if play_tts_id:
-                self._emit_tts_status(play_tts_id, "playing")
-
+            _stale = False
             try:
                 # per-platform volume: vol_offset = -50..+50 (% change)
                 # ใช้ numpy multiply ที่ audio data เพื่อรองรับทั้งลดและเพิ่ม (เกิน 1.0 ได้)
                 if vol_offset:
                     gain = max(0.0, 1.0 + vol_offset / 100.0)
                     audio_np = np.clip(audio_np * gain, -1.0, 1.0)
-                self.player.load_audio(audio_np.astype(np.float32), sr)
-                # ★ master volume (0-100%) — รองรับทุก engine (edge-tts/OmniVoice/RVC)
-                #   config.volume = 0..100 → player volume 0.0..1.0
-                master_vol = max(0.0, min(1.0, getattr(self.config, 'volume', 100) / 100.0))
-                self.player.set_volume(master_vol)
-                self.player.play()
+                # ★ เช็ค "รุ่นของคิว" + เริ่มเล่น ภายใต้ล็อกเดียวกับ clear_queues → ไม่มีช่องให้เสียงรุ่นเก่าหลุดหลังกดปิด
+                with self._play_lock:
+                    if play_epoch is not None and play_epoch != self._epoch:
+                        _stale = True
+                    else:
+                        self.player.load_audio(audio_np.astype(np.float32), sr)
+                        # ★ master volume (0-100%) — รองรับทั้ง edge-tts และ RVC
+                        #   config.volume = 0..100 → player volume 0.0..1.0
+                        master_vol = max(0.0, min(1.0, getattr(self.config, 'volume', 100) / 100.0))
+                        self.player.set_volume(master_vol)
+                        self.player.play()
+                if _stale:
+                    if play_tts_id:
+                        self._emit_tts_status(play_tts_id, "skipped", reason="ปิดเสียง TTS อยู่")
+                    self._current_playing_author = ''
+                    continue
+                if play_tts_id:
+                    self._emit_tts_status(play_tts_id, "playing")
                 # ★ Avatar widget — สัญญาณ TTS เริ่มเล่น (สำหรับ Composer avatar widget)
                 #   ใช้ _avatar_started flag เพื่อ ensure ว่า end จะถูกเรียกเสมอ (แม้ exception)
                 _avatar_started = False
@@ -1265,43 +1539,6 @@ class ChatPipeline:
 
         Returns None ถ้าข้ามข้อความนี้
         """
-        # ── OmniVoice short word policy ──
-        # ★ คำเดียวสั้นกว่า min_length → ไม่อ่านด้วย OmniVoice เสมอ ไม่มีข้อยกเว้น
-        #   (เดิมมี whitelist คำที่ "เชื่อว่าปลอดภัย" แต่ทดสอบแล้วพบว่าโมเดลสุ่ม noise
-        #   เริ่มต้นทุกครั้งที่ generate → ไม่มีคำไหนปลอดภัย 100% จริง จึงตัด whitelist ออก)
-        #   "อ๋อ" (คำเดียว สั้น) → skip / "อ๋อ แบบนี้" (มี space) → อ่านปกติ
-        #
-        # ★★ สำคัญ: ตรวจ Replace ก่อน skip!
-        #   ถ้า user ตั้ง Replace "อ๋อ" → "อ๋อเข้าใจแล้ว" ต้องอ่าน (เพราะเปลี่ยนคำใหม่แล้ว)
-        #   จึง apply_pronunciation ก่อน แล้วค่อยเช็ค skip กับข้อความที่แปลงแล้ว
-        engine_choice = getattr(self.config, "tts_engine", "edge")
-        _omni_short_retry = False  # ★ ดู _synth_omnivoice_short_word_sync (generate_best_of_n)
-        if engine_choice == "omnivoice" and getattr(self.config, "omnivoice_skip_enabled", True):
-            # ★ INFO (ไม่ใช่ debug) — log level ของแอปตั้งเป็น INFO เฉยๆ debug ไม่เคยโผล่ในไฟล์
-            #   log จริง ทำให้ตรวจย้อนหลังไม่ได้ว่า min_len ที่ใช้จริงคือค่าไหน (เช่น settings.json
-            #   เก่าที่ migrate มาจากเครื่องเดิม อาจยังค้างค่า min_len=3 ไม่ใช่ 5 ตัวใหม่)
-            logger.info(f"omni skip check: enabled={getattr(self.config, 'omnivoice_skip_enabled', True)}, min_len={getattr(self.config, 'omnivoice_skip_min_length', 0)}, retry={getattr(self.config, 'omnivoice_short_word_retry', False)}")
-            # ★ apply Replace (pronunciation) ก่อน — ถ้าเปลี่ยนคำแล้ว ใช้ข้อความใหม่
-            check_text = (msg.text or "").strip()
-            if self._filter is not None and check_text:
-                try:
-                    check_text = self._filter.apply_pronunciation(check_text).strip()
-                except Exception:
-                    pass
-            if check_text and " " not in check_text:
-                min_len = getattr(self.config, "omnivoice_skip_min_length", 0)
-                if min_len > 0 and len(check_text) < min_len:
-                    if getattr(self.config, "omnivoice_short_word_retry", False):
-                        # ★ EXPERIMENTAL: ลองให้ OmniVoice อ่านเอง (เจนซ้ำหลายครั้งเลือกอันยาว
-                        #   ที่สุด — ดู generate_best_of_n) ก่อนยอมสลับไป edge-tts — ปิดเป็น
-                        #   default แล้ว (ดู comment ที่ settings.py) เพราะแก้ได้แค่เคส "สั้น
-                        #   ผิดปกติ" ไม่ใช่เคส "ออกเสียงผิดสม่ำเสมอ" ที่เจอภายหลังกับคำอุทาน
-                        _omni_short_retry = True
-                        logger.info(f"OmniVoice short word → retry (best-of-n): {check_text!r} (len={len(check_text)} < {min_len})")
-                    else:
-                        # ★ คำสั้น → สลับไป Azure (edge-tts) แทน OmniVoice เสมอ
-                        logger.info(f"OmniVoice short word → Azure fallback: {check_text!r} (len={len(check_text)} < {min_len})")
-                        engine_choice = "edge"  # fallback ไป edge-tts
         # ประกอบข้อความสำหรับอ่าน
         text = self._build_speak_text(msg)
         if not text.strip():
@@ -1380,8 +1617,15 @@ class ChatPipeline:
                       and not _is_preview)  # ★ Preview ไม่ใช้ mixed voice
         if _use_mixed:
             # ── Mixed Voice: แยก segment ตามภาษา → TTS แต่ละ segment → concat ──
+            _intro_th = self._start_intro_prefetch(msg, effective_rate, viewer_volume, viewer_pitch)
             audio_np = self._synth_mixed_voice(text, effective_rate, viewer_volume, viewer_pitch)
             if audio_np is not None:
+                # ★ โหมดอ่านชื่อ: ต่อ [ชื่อ][หยุด][พูดว่า][หยุด] ก่อน RVC (RVC แปลงทั้งก้อนครั้งเดียว)
+                audio_np = self._prepend_intro(audio_np, msg, effective_rate, viewer_volume, viewer_pitch,
+                                               prefetch=_intro_th)
+                # ★ ถูกยกเลิก (กดปิดเสียง/ล้างคิว) ระหว่างสร้างเสียง → ไม่ต้องเริ่ม RVC (ทำแล้วขัดจังหวะไม่ได้ กิน GPU นาน)
+                if self._cancelled(msg):
+                    return None
                 # RVC convert ถ้ามี (ถ้า fail → ใช้ audio ต้นฉบับ)
                 if rvc_on:
                     try:
@@ -1398,22 +1642,17 @@ class ChatPipeline:
             # fallback → ใช้ Premwadee ปกติ
             voice = "th-TH-PremwadeeNeural"
         elif rvc_on and not self.config.multilang_enabled:
-            # RVC + ไม่เปิด multilang → base voice ตาม tts_engine
-            # ★ OmniVoice อ่านได้ทุกภาษา → ไม่ต้อง skip ต่างภาษา
-            if getattr(self.config, "tts_engine", "edge") == "omnivoice":
-                voice = ""  # ★ OmniVoice path ไม่ใช้ voice variable (ใช้ instruct แทน)
-            else:
-                # edge-tts base → ใช้ Premwadee เป็น base + skip ต่างภาษา (Premwadee อ่านไม่ได้)
-                voice = "th-TH-PremwadeeNeural"
-                # ★★ ถ้าเปิด auto_translate → ข้ามการตรวจภาษา (เพราะแปลเป็นไทยแล้ว)
-                if not getattr(self.config, "auto_translate_enabled", False):
-                    from language_detect import detect_language
-                    _text_lang = detect_language(text)
-                    if _text_lang not in ("th", "en"):
-                        msg.extra["_tts_skip_reason"] = (
-                            f"ไม่ใช่ภาษาที่ตั้งค่าให้อ่าน ({_text_lang}) — Premwadee อ่านไม่ได้"
-                        )
-                        return None  # Premwadee อ่านต่างภาษาไม่ได้ → skip
+            # RVC + ไม่เปิด multilang → ใช้ Premwadee เป็น base + skip ต่างภาษา (Premwadee อ่านไม่ได้)
+            voice = "th-TH-PremwadeeNeural"
+            # ★★ ถ้าเปิด auto_translate → ข้ามการตรวจภาษา (เพราะแปลเป็นไทยแล้ว)
+            if not getattr(self.config, "auto_translate_enabled", False):
+                from language_detect import detect_language
+                _text_lang = detect_language(text)
+                if _text_lang not in ("th", "en"):
+                    msg.extra["_tts_skip_reason"] = (
+                        f"ไม่ใช่ภาษาที่ตั้งค่าให้อ่าน ({_text_lang}) — Premwadee อ่านไม่ได้"
+                    )
+                    return None  # Premwadee อ่านต่างภาษาไม่ได้ → skip
         elif self.config.multilang_enabled and not _is_preview:
             # เปิด multilang → detect ภาษาแล้วเลือก voice (RVC จะทับทับทีหลังถ้ามี)
             from language_detect import VOICE_BY_LANG, detect_language
@@ -1444,62 +1683,59 @@ class ChatPipeline:
             _ev = getattr(self.config, "edge_voice", "premwadee")
             voice = {"premwadee": "th-TH-PremwadeeNeural", "niwat": "th-TH-NiwatNeural"}.get(_ev, "th-TH-PremwadeeNeural")
 
-        # TTS synth — ★ เลือก engine ตาม engine_choice (อาจถูกเปลี่ยนโดย skip logic ข้างบน)
-        #   OmniVoice → RVC overlay ได้ (เหมือน edge-tts → RVC)
-        #   ★ ไม่อ่านใหม่จาก config — ใช้ค่า engine_choice ที่ skip logic อาจเปลี่ยนไว้
+        # TTS synth — edge-tts (online) แล้วส่งต่อ RVC overlay ด้านล่าง (ถ้าเปิด)
         audio_np = None  # ★ init กัน UnboundLocalError ตอน fallback
-        if engine_choice == "omnivoice" and self.omnivoice is not None and self.omnivoice.is_loaded:
-            # ── OmniVoice path (offline, zero-shot) ──
-            if _omni_short_retry:
-                # ★ EXPERIMENTAL: คำสั้นเดี่ยว → พูดซ้ำ 2 ครั้ง+ตัด แทน synth ตรงๆ
-                audio_bytes = self._synth_omnivoice_short_word_sync(text)
-            else:
-                audio_bytes = self._synth_omnivoice_sync(text)
-            if not audio_bytes:
-                # ★ OmniVoice fail (รวมถึง retry ตัดพัง) → fallback edge-tts (กันเงียบ)
-                engine_choice = "edge"
-            else:
-                # decode WAV → numpy (OmniVoice ส่งคืน WAV ไม่ใช่ MP3)
-                audio_np = self._decode_wav(audio_bytes)
-                if audio_np is None or len(audio_np) == 0:
-                    engine_choice = "edge"  # fallback
-                elif self._is_abnormal_silence(audio_np):
-                    # ★ safety net: OmniVoice สุ่ม generate เสียงเงียบสนิทแทนคำที่ขอได้
-                    #   (ทดสอบจริง 124 คำ พบว่าเกิดได้แม้คำยาวผ่านเกณฑ์ length filter แล้ว)
-                    #   ไม่ fallback ไป Azure (ช้า/เสียงสลับกลางคัน) → ข้ามเลย +
-                    #   เล่นเสียงแจ้งเตือนสั้นๆ แทน (browse เปลี่ยนเองได้ใน Settings)
-                    logger.info(f"OmniVoice output abnormal (near-silent) → skip: {text[:50]!r}")
-                    self._play_skip_notification()
-                    msg.extra["_tts_skip_reason"] = "OmniVoice สร้างเสียงผิดปกติ (เงียบ) — ข้าม"
-                    return None
-                # ★ audio_np พร้อมแล้ว → ไป RVC overlay section (เหมือน edge-tts path)
-        if engine_choice != "omnivoice":
-            # ── edge-tts path (online) — ใช้ตอนปกติ + fallback ตอน OmniVoice fail ──
-            # ★ เลือก edge voice จาก config.edge_voice (premwadee/niwat)
-            edge_voice_name = self._resolve_edge_voice_name(voice)
-            tts_params = TTSParams(
-                text=text,
+        # ★ เลือก edge voice จาก config.edge_voice (premwadee/niwat)
+        edge_voice_name = self._resolve_edge_voice_name(voice)
+        # ★ โหมดอ่านชื่อ: edge-tts ส่ง "ชื่อ⏎พูดว่า⏎ข้อความ" เป็น request เดียวได้ → ไม่ต้อง prefetch ท่อนนำขนาน
+        _sp_text = self._single_pass_text(msg, text, edge_voice_name)
+        _intro_th = [] if _sp_text else self._start_intro_prefetch(
+            msg, effective_rate, viewer_volume, viewer_pitch)
+
+        def _edge_audio(txt: str):
+            mp3 = self._synth_sync(TTSParams(
+                text=txt,
                 voice=edge_voice_name,
                 rate=f"{effective_rate:+d}%",
                 volume=f"{viewer_volume:+d}%",
                 pitch=f"{viewer_pitch:+d}Hz",
-            )
+            ))
+            return mp3, (self._decode_mp3(mp3) if mp3 else None)
 
-            # sync wrapper รอ TTS เสร็จ
-            mp3_bytes = self._synth_sync(tts_params)
-            if not mp3_bytes:
-                # ★ ทั้ง OmniVoice และ edge-tts fail → skip (กันคิวกระจุก)
-                logger.warning(f"TTS fail ทั้งคู่ — skip message: {text[:50]!r}")
-                msg.extra["_tts_skip_reason"] = "สร้างเสียงไม่สำเร็จ (TTS engine fail)"
-                return None
+        mp3_bytes, audio_np = _edge_audio(_sp_text or text)
+        if not mp3_bytes:
+            # ★ edge-tts fail → skip (กันคิวกระจุก)
+            logger.warning(f"TTS fail — skip message: {text[:50]!r}")
+            msg.extra["_tts_skip_reason"] = "สร้างเสียงไม่สำเร็จ (TTS engine fail)"
+            return None
+        if _sp_text and audio_np is not None and len(audio_np) > 0:
+            n_pauses = len(self._intro_parts(msg))
+            fixed = self._normalize_intro_pauses(
+                audio_np, n_pauses, float(getattr(self.config, "intro_gap", 0.5)))
+            if fixed is not None:
+                audio_np = fixed
+                msg.extra["_intro_done"] = True      # ชื่อ+พูดว่า อยู่ในเสียงนี้แล้ว
+            else:
+                # ตรวจช่วงหยุดไม่เจอ (edge เปลี่ยนพฤติกรรม/ข้อความแปลก) → ถอยไปทำแบบทีละท่อน
+                logger.info("intro single-pass: ไม่พบช่วงหยุดที่คาด → ทำทีละท่อน")
+                mp3_bytes, audio_np = _edge_audio(text)
+                if not mp3_bytes:
+                    msg.extra["_tts_skip_reason"] = "สร้างเสียงไม่สำเร็จ (TTS engine fail)"
+                    return None
 
-            # decode MP3 → numpy (แยก silence/stretch markers)
-            audio_np = self._decode_mp3(mp3_bytes)
-            if audio_np is None or len(audio_np) == 0:
-                logger.warning(f"MP3 decode fail — skip message: {text[:50]!r}")
-                msg.extra["_tts_skip_reason"] = "ถอดรหัสไฟล์เสียงไม่สำเร็จ"
-                return None
+        # decode MP3 → numpy (แยก silence/stretch markers)
+        if audio_np is None or len(audio_np) == 0:
+            logger.warning(f"MP3 decode fail — skip message: {text[:50]!r}")
+            msg.extra["_tts_skip_reason"] = "ถอดรหัสไฟล์เสียงไม่สำเร็จ"
+            return None
 
+        # ★ โหมดอ่านชื่อ: ต่อ [ชื่อ][หยุด][พูดว่า][หยุด] หน้าเสียงข้อความ (engine เดียวกับที่ใช้จริง) ก่อน RVC
+        audio_np = self._prepend_intro(audio_np, msg, effective_rate, viewer_volume, viewer_pitch,
+                                       prefetch=_intro_th)
+
+        # ★ ถูกยกเลิกไปแล้ว → ไม่เริ่ม RVC (ดูเหตุผลด้านบน)
+        if self._cancelled(msg):
+            return None
         # RVC convert (ถ้ามี) — ใช้ convert_array เร็วกว่า (bypass file I/O)
         if self._rvc is not None and self._rvc_current_id:
             try:
@@ -1548,133 +1784,24 @@ class ChatPipeline:
             result["error"] = err
             done_event.set()
 
+        epoch0 = self._epoch
         self.tts.generate(params, on_done, on_error)
-        if not done_event.wait(timeout):
-            logger.warning(f"edge-tts timeout ({timeout}s) — ข้ามข้อความนี้")
-            msg.extra["_tts_skip_reason"] = f"edge-tts ค้างเกิน {timeout} วิ (timeout)"
-            if self.on_status is not None:
-                self.on_status(f"⚠️ edge-tts ค้าง {timeout}s → ข้ามข้อความ")
-            return None
+        # ★ รอแบบสั้นๆ ทีละ 50 ms — ถ้ากดปิดเสียง/ล้างคิวระหว่างรอ (เช่น สแปมประโยคยาวๆ ที่ใช้เวลาสร้างเสียงนาน)
+        #   เลิกรอทันที ไม่ต้องรอจนเสร็จ/หมดเวลา — คำขอที่ค้างอยู่ทางเน็ตปล่อยให้จบเอง ผลลัพธ์ถูกทิ้ง
+        deadline = time.monotonic() + timeout
+        while not done_event.wait(0.05):
+            if self._epoch != epoch0 or self._stop_event.is_set():
+                return None
+            if time.monotonic() >= deadline:
+                logger.warning(f"edge-tts timeout ({timeout}s) — ข้ามข้อความนี้")
+                if self.on_status is not None:
+                    self.on_status(f"⚠️ edge-tts ค้าง {timeout}s → ข้ามข้อความ")
+                return None
         if "error" in result:
             if self.on_status is not None:
                 self.on_status(f"❌ TTS: {result['error']}")
             return None
         return result.get("data")
-
-    # ═══ OmniVoice helpers ═══
-    def _is_abnormal_silence(self, audio_np) -> bool:
-        """เช็คว่าเสียงที่ OmniVoice generate ออกมาเงียบผิดปกติไหม (safety net)
-
-        ★ ทดสอบจริง 124 คำ + ตรวจด้วย Thai ASR อัตโนมัติ พบว่า OmniVoice บางครั้ง
-        generate เสียงเงียบสนิทแทนคำที่ขอ (สุ่มจาก diffusion model — เกิดได้แม้คำ
-        ผ่านเกณฑ์ length filter แล้ว) เช็คด้วย RMS/peak ธรรมดา เร็วมาก ไม่ต้องมี ASR
-        ★ เกณฑ์เดียวกับที่ใช้ตอนทดสอบ (peak<0.02 หรือ rms<0.01) — ยืนยันแล้วว่ายัง
-        ใช้ได้หลัง resample+postprocess เพราะ _postprocess_audio ข้าม normalize
-        ตอน peak<=0.01 อยู่แล้ว (กัน silence ถูกขยายเสียงจนเข้าใจผิดว่าปกติ)
-        """
-        try:
-            if audio_np is None or len(audio_np) == 0:
-                return True
-            a = audio_np.astype(np.float64)
-            rms = float(np.sqrt(np.mean(a ** 2)))
-            peak = float(np.max(np.abs(a)))
-            return rms < 0.01 or peak < 0.02
-        except Exception:
-            return False
-
-    def _synth_omnivoice_sync(self, text: str, timeout: float = 15.0) -> Optional[bytes]:
-        """เรียก OmniVoice engine แบบ synchronous — ส่งคืน WAV bytes (44100Hz)
-
-        ★ timeout 15s (ปกติใช้ 1-2s) — ถ้าเกินแสดงว่าค้าง → return None → fallback edge-tts
-        """
-        if not self.omnivoice or not self.omnivoice.is_loaded:
-            return None
-        done_event = threading.Event()
-        result: dict = {}
-
-        def on_done(data: bytes) -> None:
-            result["data"] = data
-            done_event.set()
-
-        def on_error(err: str) -> None:
-            result["error"] = err
-            done_event.set()
-
-        # ★ sync instruct + speed จาก config
-        #   OmniVoice speed เป็น multiplier (1.0=ปกติ) ส่วน settings.rate เป็น percent (-50..+50)
-        #   แปลง: omnivoice_speed = 1.0 + (rate / 100)  →  +50 → 1.5x, 0 → 1.0x, -50 → 0.5x
-        self.omnivoice.set_instruct(getattr(self.config, "omnivoice_voice", "female"))
-        _cfg_rate = getattr(self.config, "rate", 0)
-        if _cfg_rate:
-            self.omnivoice.set_speed(1.0 + (_cfg_rate / 100.0))
-        else:
-            self.omnivoice.set_speed(1.0)
-        self.omnivoice.generate(text, on_done, on_error)
-        # ★ รอพร้อม timeout — ถ้าเกิน → return None (caller จะ fallback edge-tts)
-        if not done_event.wait(timeout):
-            logger.warning(f"OmniVoice timeout ({timeout}s) — will fallback to edge-tts")
-            if self.on_status is not None:
-                self.on_status(f"⚠️ OmniVoice ค้าง {timeout}s → ใช้ edge-tts ชั่วคราว")
-            return None
-        if "error" in result:
-            if self.on_status is not None:
-                self.on_status(f"❌ OmniVoice: {result['error']}")
-            return None
-        return result.get("data")
-
-    def _synth_omnivoice_short_word_sync(self, text: str, timeout: float = 20.0) -> Optional[bytes]:
-        """เหมือน _synth_omnivoice_sync แต่เรียก generate_best_of_n()
-
-        คำสั้นเดี่ยว → OmniVoiceEngine เจนซ้ำหลายครั้งแล้วเลือกไฟล์ที่ยาวที่สุด (ดู
-        docstring ของ generate_best_of_n) — ถ้าพังหมดทุกครั้ง engine จะ on_error กลับมา
-        → return None → caller (dispatch section) fallback ไป edge-tts ต่อเหมือน OmniVoice fail ปกติ
-        ★ timeout ยาวกว่า _synth_omnivoice_sync ปกติ (20s ไม่ใช่ 15s) เพราะเจนหลายรอบ
-        """
-        if not self.omnivoice or not self.omnivoice.is_loaded:
-            return None
-        done_event = threading.Event()
-        result: dict = {}
-
-        def on_done(data: bytes) -> None:
-            result["data"] = data
-            done_event.set()
-
-        def on_error(err: str) -> None:
-            result["error"] = err
-            done_event.set()
-
-        self.omnivoice.set_instruct(getattr(self.config, "omnivoice_voice", "female"))
-        _cfg_rate = getattr(self.config, "rate", 0)
-        if _cfg_rate:
-            self.omnivoice.set_speed(1.0 + (_cfg_rate / 100.0))
-        else:
-            self.omnivoice.set_speed(1.0)
-        attempts = int(getattr(self.config, "omnivoice_short_word_repeat", 3))
-        self.omnivoice.generate_best_of_n(text, on_done, on_error, attempts=attempts)
-        if not done_event.wait(timeout):
-            logger.warning(f"OmniVoice best-of-n timeout ({timeout}s) — will fallback to edge-tts")
-            return None
-        if "error" in result:
-            logger.info(f"OmniVoice best-of-n failed ({result['error']}) — fallback to edge-tts")
-            return None
-        return result.get("data")
-
-    def _decode_wav(self, wav_bytes: bytes) -> Optional[np.ndarray]:
-        """decode WAV bytes → numpy float32 mono (44100Hz)
-
-        OmniVoice ส่งคืน WAV 16-bit PCM → แปลงเป็น float32
-        """
-        try:
-            import io as _io
-            import soundfile as sf
-            data, sr = sf.read(_io.BytesIO(wav_bytes), dtype="float32")
-            # ★ แปลงเป็น mono ถ้า stereo
-            if data.ndim > 1:
-                data = data.mean(axis=1)
-            return data
-        except Exception as e:
-            logger.warning(f"WAV decode failed: {e}")
-            return None
 
     def _resolve_edge_voice_name(self, fallback_voice: str) -> str:
         """แปลง edge_voice config ("premwadee"/"niwat") → edge-tts voice id
@@ -1694,8 +1821,30 @@ class ChatPipeline:
         # ★ default → ใช้ edge_voice จาก config (user เลือกชาย/หญิง)
         return voice_map.get(edge_voice, fallback_voice)
 
+    def _speak_name(self, author: str) -> str:
+        """ชื่อที่จะอ่านออกเสียง — ชื่อที่ตั้งเองใน User Manager ถ้ามี ไม่งั้นชื่อเดิม"""
+        fn = self.name_resolver
+        if fn is not None:
+            try:
+                name = fn(author)
+                if name and str(name).strip():
+                    return str(name).strip()
+            except Exception as exc:  # noqa: BLE001
+                logger.debug(f"name_resolver failed: {exc}")
+        return author
+
     def _build_speak_text(self, msg: ChatMessage) -> str:
-        """ประกอบข้อความสำหรับ TTS + Overlay"""
+        """ประกอบข้อความสำหรับ TTS (ตัวที่ส่งเข้า engine + ใช้ตรวจภาษา/ความยาว)
+
+        โหมดอ่านชื่อ (read_author) + มีข้อความ:
+          คืนเฉพาะ "ข้อความ" แล้วเก็บชื่อไว้ใน msg.extra["_intro_name"] — เสียง "ชื่อ [หยุด 0.5s] พูดว่า
+          [หยุด 0.5s]" ถูกประกอบแยกใน _prepend_intro (ให้หยุดคั่นได้จริง + ตรวจภาษา/emote จากข้อความจริง
+          ไม่ปนกับชื่อ)
+        """
+        if msg.extra is None:
+            msg.extra = {}
+        msg.extra.pop("_intro_name", None)
+        msg.extra.pop("_intro_done", None)
         # events พิเศษ — msg.text ถูก normalize แล้ว (มี author อยู่ใน text)
         # ไม่ต้องเพิ่ม author ซ้ำ
         if msg.event != "message" and msg.event != "system" and msg.text.strip():
@@ -1704,23 +1853,202 @@ class ChatPipeline:
             if self._filter is not None:
                 text = self._filter.apply_pronunciation(text)
             return text
-        author = msg.author
-        # message ปกติ — ประกอบ author + text
-        parts = []
-        if self.config.read_author:
-            parts.append(author)
-        if self.config.read_message:
-            parts.append(msg.text)
-        if not parts:
-            return ""
-        if len(parts) == 2:
-            text = f"{parts[0]}… {parts[1]}"
-        else:
-            text = parts[0]
-        # ★ apply pronunciation (แก้การออกเสียง) — ส่ง TTS เท่านั้น ไม่กระทบแชท
-        if self._filter is not None:
-            text = self._filter.apply_pronunciation(text)
-        return text
+
+        def _pron(t: str) -> str:
+            # ★ apply pronunciation (แก้การออกเสียง) — ส่ง TTS เท่านั้น ไม่กระทบแชท
+            if self._filter is not None and t:
+                try:
+                    return self._filter.apply_pronunciation(t)
+                except Exception:  # noqa: BLE001
+                    return t
+            return t
+
+        name = _pron(self._speak_name(msg.author)) if self.config.read_author else ""
+        comment = _pron(msg.text) if self.config.read_message else ""
+        if name.strip() and comment.strip():
+            msg.extra["_intro_name"] = name.strip()
+            return comment
+        return name if name.strip() else comment
+
+    # ------------------------------------------------------------------ #
+    # Intro: "{ชื่อ} [หยุด] พูดว่า [หยุด] {ข้อความ}" — ประกอบระดับเสียง (ทุก engine ใช้ร่วมกัน)
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _trim_silence(audio: np.ndarray, lead: bool = True, tail: bool = True,
+                      threshold: float = 0.01, pad_sec: float = 0.005, sr: int = 44100) -> np.ndarray:
+        """ตัดความเงียบหัว/ท้าย (เหลือ pad นิดเดียว) — ให้ช่วงหยุด 0.5 วินาทีที่ใส่เอง เป็น 0.5 วินาทีจริง
+        ไม่ถูกบวกด้วยความเงียบตามธรรมชาติของ engine"""
+        if audio is None or len(audio) == 0:
+            return audio
+        idx = np.flatnonzero(np.abs(audio) >= threshold)
+        if idx.size == 0:
+            return audio
+        pad = int(pad_sec * sr)
+        start = max(0, int(idx[0]) - pad) if lead else 0
+        end = min(len(audio), int(idx[-1]) + 1 + pad) if tail else len(audio)
+        return audio[start:end]
+
+    def _intro_edge_voice(self, text: str, kind: str) -> str:
+        """edge voice ของท่อนนำ — "พูดว่า" = เสียงไทยเสมอ / ชื่อ = ตามภาษาของชื่อเมื่อเปิด multilang"""
+        from language_detect import VOICE_BY_LANG, detect_language
+        thai = VOICE_BY_LANG.get("th", "th-TH-PremwadeeNeural")
+        voice = self._resolve_edge_voice_name(thai)   # multilang → ตาม thai ที่ส่งไป / ปกติ → edge_voice ที่ผู้ใช้เลือก
+        if kind == "name" and getattr(self.config, "multilang_enabled", False):
+            lang = detect_language(text)
+            if lang in VOICE_BY_LANG and lang != "th":
+                voice = VOICE_BY_LANG[lang]
+        return voice
+
+    def _intro_parts(self, msg: ChatMessage) -> list:
+        """[(ข้อความ, kind)] ของท่อนนำที่ต้องมี — [] = ไม่ใช่โหมดอ่านชื่อ"""
+        name = (msg.extra or {}).get("_intro_name")
+        if not name:
+            return []
+        parts = [(name, "name")]
+        word = str(getattr(self.config, "intro_word", "พูดว่า") or "").strip()
+        if word:
+            parts.append((word, "word"))
+        return parts
+
+    def _intro_key(self, text: str, kind: str, rate: int, volume: int, pitch: int) -> tuple:
+        try:
+            voice = self._intro_edge_voice(text, kind)
+        except Exception:  # noqa: BLE001
+            voice = "th-TH-PremwadeeNeural"
+        return (voice, int(rate), int(pitch), int(volume), text)
+
+    def _intro_cache_get(self, key: tuple) -> Optional[np.ndarray]:
+        with self._intro_lock:
+            cached = self._intro_cache.get(key)
+            if cached is not None:
+                self._intro_cache.move_to_end(key)
+            return cached
+
+    def _intro_cache_put(self, key: tuple, audio: np.ndarray) -> None:
+        with self._intro_lock:
+            self._intro_cache[key] = audio
+            while len(self._intro_cache) > 64:
+                self._intro_cache.popitem(last=False)
+
+    def _synth_intro_part(self, text: str, kind: str,
+                          rate: int, volume: int, pitch: int) -> Optional[np.ndarray]:
+        """synth ท่อนสั้น 1 ท่อน (ชื่อ / "พูดว่า") → float32 mono 44100Hz ที่ตัดเงียบหัวท้ายแล้ว (None = ทำไม่ได้)
+        มี cache — ชื่อ/คำเดิมไม่ต้อง synth ซ้ำทุกข้อความ"""
+        key = self._intro_key(text, kind, rate, volume, pitch)
+        cached = self._intro_cache_get(key)
+        if cached is not None:
+            return cached
+
+        try:
+            edge_voice = self._intro_edge_voice(text, kind)
+        except Exception:  # noqa: BLE001
+            edge_voice = "th-TH-PremwadeeNeural"
+        mp3 = self._synth_sync(TTSParams(
+            text=text, voice=edge_voice, rate=f"{rate:+d}%",
+            volume=f"{volume:+d}%", pitch=f"{pitch:+d}Hz"))
+        audio = self._decode_mp3(mp3) if mp3 else None
+        if audio is None or len(audio) == 0:
+            return None
+        audio = np.asarray(self._trim_silence(audio), dtype=np.float32)
+        self._intro_cache_put(key, audio)
+        return audio
+
+    def _start_intro_prefetch(self, msg: ChatMessage, rate: int, volume: int, pitch: int) -> list:
+        """เริ่ม synth ท่อนนำที่ยังไม่มีใน cache ขนานกับการ synth ข้อความหลัก (คืน threads)
+        — ใช้ตอนทำแบบทีละท่อน (multilang ต่างภาษา ฯลฯ) ที่ส่งเป็น request เดียวไม่ได้"""
+        threads = []
+        for text, kind in self._intro_parts(msg):
+            if self._intro_cache_get(self._intro_key(text, kind, rate, volume, pitch)) is not None:
+                continue
+
+            def _job(t=text, k=kind):
+                try:
+                    self._synth_intro_part(t, k, rate, volume, pitch)
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug(f"intro prefetch failed ({k}): {exc}")
+            th = threading.Thread(target=_job, name="IntroPrefetch", daemon=True)
+            th.start()
+            threads.append(th)
+        return threads
+
+    # ── edge-tts: ประโยคเดียว "ชื่อ⏎พูดว่า⏎ข้อความ" ใน request เดียว แล้วปรับช่วงหยุดเป็น 0.5s เป๊ะ ──
+    def _single_pass_text(self, msg: ChatMessage, comment: str, edge_voice_name: str) -> Optional[str]:
+        """ข้อความสำหรับ edge-tts แบบ request เดียว (None = ทำแบบนี้ไม่ได้ ให้ต่อทีละท่อน)
+
+        edge-tts ตีความ "\n" เป็นรอยต่อประโยค แล้วเว้นช่วงหยุด ~1.0s สม่ำเสมอ (ทดสอบจริง 3/3) — เราไม่ต้องพึ่งค่านั้น:
+        ตรวจหาช่วงเงียบแล้วปรับให้เป็น intro_gap เป๊ะใน _normalize_intro_pauses
+        ★ ใช้ได้เมื่อทุกท่อนใช้ voice เดียวกัน (ปกติ = เสียงไทยที่ผู้ใช้เลือก) — multilang ที่ข้อความเป็นภาษาอื่น
+          ต้องแยก voice → ทำทีละท่อน"""
+        parts = self._intro_parts(msg)
+        if not parts or not comment.strip():
+            return None
+        try:
+            if any(self._intro_edge_voice(t, k) != edge_voice_name for t, k in parts):
+                return None
+        except Exception:  # noqa: BLE001
+            return None
+
+        def _one_line(t: str) -> str:
+            return re.sub(r"\s*[\r\n]+\s*", " ", t).strip()
+        return "\n".join([_one_line(t) for t, _k in parts] + [_one_line(comment)])
+
+    @staticmethod
+    def _normalize_intro_pauses(audio: np.ndarray, expected: int, gap_sec: float,
+                                sr: int = 44100) -> Optional[np.ndarray]:
+        """หาช่วงเงียบยาว (≥0.55s) "ภายใน" เสียงพูด ตัวแรกๆ จำนวน expected ช่วง แล้วแทนด้วยความเงียบ gap_sec เป๊ะ
+        (ตัดความเงียบหน้าสุดทิ้งด้วย) — ไม่เจอครบ/ผิดปกติ → None (caller ถอยไปทำทีละท่อน)"""
+        if audio is None or len(audio) == 0 or expected <= 0:
+            return None
+        quiet = (np.abs(audio) < 0.012)
+        loud = np.flatnonzero(~quiet)
+        if loud.size == 0:
+            return None
+        first_speech, last_speech = int(loud[0]), int(loud[-1])
+        edges = np.diff(np.concatenate(([0], quiet.astype(np.int8), [0])))
+        starts, ends = np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)
+        runs = [(int(s), int(e)) for s, e in zip(starts, ends)
+                if s > first_speech and e <= last_speech and (e - s) >= int(0.55 * sr)]
+        if len(runs) < expected:
+            return None
+        runs = runs[:expected]
+        if any((e - s) > int(2.5 * sr) for s, e in runs):
+            return None
+        gap = np.zeros(int(sr * max(0.0, gap_sec)), dtype=np.float32)
+        pieces, pos = [], first_speech
+        for s, e in runs:
+            pieces.append(audio[pos:s])
+            pieces.append(gap)
+            pos = e
+        pieces.append(audio[pos:])
+        return np.concatenate(pieces).astype(np.float32, copy=False)
+
+    def _prepend_intro(self, audio_np: np.ndarray, msg: ChatMessage,
+                       rate: int, volume: int, pitch: int, prefetch: Optional[list] = None) -> np.ndarray:
+        """ต่อ [ชื่อ][หยุด][พูดว่า][หยุด] หน้าเสียงข้อความ — ไม่มี _intro_name / ทำไปแล้ว(single-pass) = คืนเดิม
+        ชื่อสังเคราะห์ไม่ได้ → ไม่ใส่ intro เลย (อ่านแต่ข้อความ ดีกว่าได้ "พูดว่า…" ลอยๆ)"""
+        parts = self._intro_parts(msg)
+        if not parts or (msg.extra or {}).get("_intro_done") or audio_np is None or len(audio_np) == 0:
+            return audio_np
+        for th in (prefetch or []):   # รอท่อนที่ synth ขนานไว้ให้เสร็จ (ส่วนใหญ่เสร็จไปแล้วตอนข้อความหลักเสร็จ)
+            th.join(timeout=35)
+        try:
+            sr = 44100
+            gap = np.zeros(int(sr * max(0.0, float(getattr(self.config, "intro_gap", 0.5)))), dtype=np.float32)
+            name, _k = parts[0]
+            name_np = self._synth_intro_part(name, "name", rate, volume, pitch)
+            if name_np is None:
+                logger.info(f"intro: synth ชื่อไม่ได้ ({name!r}) → อ่านแต่ข้อความ")
+                return audio_np
+            pieces = [name_np, gap]
+            if len(parts) > 1:
+                word_np = self._synth_intro_part(parts[1][0], "word", rate, volume, pitch)
+                if word_np is not None:
+                    pieces += [word_np, gap]
+            pieces.append(self._trim_silence(audio_np, tail=False))
+            return np.concatenate(pieces).astype(np.float32, copy=False)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"intro failed ({exc}) → อ่านแต่ข้อความ")
+            return audio_np
 
     def _synth_mixed_voice(self, text: str, rate: int, volume: int, pitch: int) -> Optional[np.ndarray]:
         """Mixed Voice — แยกข้อความตามภาษา → TTS แต่ละ segment → concat

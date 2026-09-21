@@ -735,25 +735,90 @@ class YouTubeChat:
         if msg_type == "textMessageEvent":
             text = snippet.get("textMessageDetails", {}).get("messageText", "")
         elif msg_type == "superChatEvent":
-            amount = snippet.get("superChatDetails", {}).get("amountDisplayString", "")
-            text = snippet.get("superChatDetails", {}).get("userComment", "")
+            sc = snippet.get("superChatDetails", {})
+            amount = sc.get("amountDisplayString", "")
+            text = sc.get("userComment", "")
+            amt_int, cur = self._parse_purchase_amount(amount)
             msg = ChatMessage(
                 platform="youtube", author=author_name, text=text,
-                event="superchat", extra={"amount": amount},
+                event="superchat", amount=amt_int,
+                system_text=f"{amt_int} {cur}".strip() if amt_int else None,
+                extra={"amount": amount, "currency": sc.get("currency") or cur,
+                       "detail": {"amount_display": amount, "currency": sc.get("currency") or cur,
+                                  "super_chat_tier": sc.get("tier")}},
             )
             self.messages_read += 1
             self.on_message(msg)
             return
         elif msg_type == "newSponsorEvent":
+            nd = snippet.get("newSponsorDetails", {}) or {}
             msg = ChatMessage(
                 platform="youtube", author=author_name, text="",
                 event="member", system_text="New member",
+                extra={"detail": {"plan_name": nd.get("memberLevelName", ""),
+                                  "header": "อัปเกรดระดับสมาชิก" if nd.get("isUpgrade") else "สมาชิกใหม่"}},
             )
             self.messages_read += 1
             self.on_message(msg)
             return
+        elif msg_type == "memberMilestoneChatEvent":
+            # ★ ข้อความ "สมาชิกครบ N เดือน" — สมาชิกแนบคอมเมนต์ได้ (userComment) + บอกจำนวนเดือน (memberMonth)
+            mm = snippet.get("memberMilestoneChatDetails", {}) or {}
+            months = mm.get("memberMonth")
+            months_i = int(months) if str(months or "").isdigit() else None
+            self.messages_read += 1
+            self.on_message(ChatMessage(
+                platform="youtube", author=author_name, text=mm.get("userComment", "") or "",
+                event="member", system_text=f"สมาชิกครบ {months_i} เดือน" if months_i else "สมาชิกครบเดือน",
+                extra={"detail": {"months": months_i, "plan_name": mm.get("memberLevelName", ""),
+                                  "header": "Member milestone"}},
+            ))
+            return
+        elif msg_type == "membershipGiftingEvent":
+            # ★ ฝั่งผู้มอบ: ซื้อสมาชิกให้คนอื่น N รายการ (YouTube ไม่มีช่องข้อความ)
+            gd = snippet.get("membershipGiftingDetails", {}) or {}
+            cnt = gd.get("giftMembershipsCount")
+            cnt = int(cnt) if str(cnt or "").isdigit() else None
+            self.messages_read += 1
+            self.on_message(ChatMessage(
+                platform="youtube", author=author_name, text="", event="subgift", amount=cnt,
+                system_text=f"มอบสมาชิก ×{cnt}" if cnt else "มอบสมาชิกให้",
+                extra={"detail": {"is_gifter": True, "count": cnt,
+                                  "plan_name": gd.get("giftMembershipsLevelName", "")}},
+            ))
+            return
+        elif msg_type == "giftMembershipReceivedEvent":
+            # ★ ฝั่งผู้รับ: ได้รับสมาชิกจากคนอื่น
+            rd = snippet.get("giftMembershipReceivedDetails", {}) or {}
+            self.messages_read += 1
+            self.on_message(ChatMessage(
+                platform="youtube", author=author_name, text="", event="subgift",
+                system_text="ได้รับสมาชิกเป็นของขวัญ",
+                extra={"detail": {"is_gifter": False, "recipient": author_name,
+                                  "plan_name": rd.get("memberLevelName", ""),
+                                  "gifter_id": rd.get("gifterChannelId", "")}},
+            ))
+            return
+        elif msg_type == "superStickerEvent":
+            # ★ Super Sticker: มีมูลค่า แต่ไม่มีข้อความจากผู้ชม (altText เป็นข้อความระบบ)
+            sd = snippet.get("superStickerDetails", {}) or {}
+            disp = sd.get("amountDisplayString", "")
+            amt_int, cur = self._parse_purchase_amount(disp)
+            alt = ((sd.get("superStickerMetadata") or {}).get("altText")) or ""
+            self.messages_read += 1
+            self.on_message(ChatMessage(
+                platform="youtube", author=author_name, text="", event="superchat", amount=amt_int,
+                system_text=f"Super Sticker {disp}".strip(),
+                extra={"amount": disp, "currency": sd.get("currency") or cur,
+                       "detail": {"amount_display": disp, "currency": sd.get("currency") or cur,
+                                  "sticker": alt, "header": "Super Sticker"}},
+            ))
+            return
+        elif msg_type != "textMessageEvent":
+            # ชนิดอื่นที่ไม่ใช่ข้อความ (ลบข้อความ/แบน/จบไลฟ์ ฯลฯ) — เดิมโชว์ snippet ดิบเป็นแชท → ข้ามแทน
+            return
         else:
-            text = snippet.get("textMessageDetails", {}).get("messageText", str(snippet)[:100])
+            text = snippet.get("textMessageDetails", {}).get("messageText", "")
 
         if text:
             msg = ChatMessage(
@@ -892,6 +957,8 @@ class YouTubeChat:
             ("liveChatTextMessageRenderer", self._handle_text_message),
             ("liveChatPaidMessageRenderer", self._handle_paid_message),
             ("liveChatMembershipItemRenderer", self._handle_membership),
+            ("liveChatSponsorshipsGiftPurchaseAnnouncementRenderer",
+             self._handle_gift_purchase),
             ("liveChatSponsorshipsGiftRedemptionNotification",
              self._handle_gift),
             ("liveChatSponsorshipsGiftReceivedNotification",
@@ -951,6 +1018,7 @@ class YouTubeChat:
                     "currency": currency,
                     "purchase_amount": r.get("purchaseAmount"),
                     "author_id": r.get("authorExternalChannelId"),
+                    "detail": {"amount_display": r.get("purchaseAmount") or "", "currency": currency},
                 },
             )
         )
@@ -961,6 +1029,13 @@ class YouTubeChat:
         text = self._extract_runs(r.get("message", {}))
         # header subtext (เช่น "Welcome to members!")
         header = self._extract_runs(r.get("headerSubtext", {}))
+        # milestone ("Member for 6 months") อยู่ใน headerPrimaryText — สมาชิกใหม่จะไม่มี
+        primary = self._extract_runs(r.get("headerPrimaryText", {}))
+        months = None
+        m = re.search(r"(\d+)\s+month", primary or "", re.I)
+        if m:
+            months = int(m.group(1))
+        detail = {"header": " — ".join(x for x in (primary, header) if x), "months": months}
         self.messages_read += 1
         self.on_message(
             ChatMessage(
@@ -971,12 +1046,13 @@ class YouTubeChat:
                 system_text=header or "สมัครสมาชิก",
                 extra={
                     "author_id": r.get("authorExternalChannelId"),
+                    "detail": detail,
                 },
             )
         )
 
     def _handle_gift(self, r: dict) -> None:
-        """liveChatSponsorshipsGift*Notification → subgift"""
+        """liveChatSponsorshipsGift*Notification → subgift (ฝั่งผู้ได้รับ: "ถูกมอบสมาชิกโดย ...")"""
         author = (r.get("authorName") or {}).get("simpleText", "?")
         text = self._extract_runs(r.get("message", {}))
         self.messages_read += 1
@@ -989,6 +1065,30 @@ class YouTubeChat:
                 system_text=text or "มอบสมาชิกให้",
                 extra={
                     "author_id": r.get("authorExternalChannelId"),
+                    "detail": {"is_gifter": False, "recipient": author, "header": text},
+                },
+            )
+        )
+
+    def _handle_gift_purchase(self, r: dict) -> None:
+        """liveChatSponsorshipsGiftPurchaseAnnouncementRenderer → ฝั่งผู้มอบ ("Sent 5 gift memberships")"""
+        hdr = ((r.get("header") or {}).get("liveChatSponsorshipsHeaderRenderer")) or {}
+        author = (hdr.get("authorName") or r.get("authorName") or {}).get("simpleText", "?")
+        header_text = self._extract_runs(hdr.get("primaryText", {}))
+        m = re.search(r"(\d+)", header_text or "")
+        count = int(m.group(1)) if m else None
+        self.messages_read += 1
+        self.on_message(
+            ChatMessage(
+                platform="youtube",
+                author=author,
+                text="",
+                event="subgift",
+                amount=count,
+                system_text=header_text or "มอบสมาชิกให้",
+                extra={
+                    "author_id": r.get("authorExternalChannelId"),
+                    "detail": {"is_gifter": True, "count": count, "header": header_text},
                 },
             )
         )

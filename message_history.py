@@ -10,17 +10,25 @@ retention modes:
   - "today": เก็บเฉพาะวันนี้ (prune ตอนโหลด — ลบของเก่าออก)
 
 persist: ~/.tts-for-livestream/message_history.json
+
+★ สถิติรายคน (_stats) แยกจากตัวข้อความ: แพลตฟอร์มที่เคยแชท + จำนวนข้อความต่อแพลตฟอร์ม + เห็นครั้งแรก/ล่าสุด + วันที่เคยมา
+  อัปเดตทุกข้อความ และ "ไม่หายตอนล้างประวัติข้อความ" (clear_chat_text) — ล้างแล้วยังรู้ว่าใครมาจากไหน คุยกี่ครั้ง
+  (ยอดโดเนท/ซับเก็บที่ donate_tracker / event_log แยกอยู่แล้ว)
 """
 from __future__ import annotations
 
+import gzip
 import json
 import os
 import threading
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 from data_dir import get_data_dir
 CACHE_DIR = get_data_dir()
 HISTORY_FILE = os.path.join(CACHE_DIR, "message_history.json")
+
+# ไฟล์ประวัติใหญ่เกินนี้ → โปรแกรมเตือนตอนเปิด (ให้สำรอง/ล้างข้อความ) — 1 GB
+WARN_BYTES = 1024 ** 3
 
 
 class MessageHistory:
@@ -36,6 +44,10 @@ class MessageHistory:
         self._data: dict[str, list[dict]] = {}
         # author_lower → total message count (ตลอดกาล — ไม่หายตอน cap)
         self._total_counts: dict[str, int] = {}
+        # author_lower → ชื่อจริงตัวพิมพ์เดิมล่าสุด (key เก็บแค่ตัวเล็ก → หน้า User Manager ต้องใช้โชว์ชื่อสวย)
+        self._names: dict[str, str] = {}
+        # author_lower → {"p": {platform: n}, "first": ts, "last": ts, "d": [วันที่ที่เคยมา]} — ไม่หายตอนล้างข้อความ
+        self._stats: dict[str, dict] = {}
         self._lock = threading.Lock()
         os.makedirs(CACHE_DIR, exist_ok=True)
         self._load()
@@ -85,6 +97,18 @@ class MessageHistory:
                 user_list[:] = user_list[-500:]
             # ★ total_count — นับรวมตลอดกาล (ไม่หายตอน cap)
             self._total_counts[key] = self._total_counts.get(key, 0) + 1
+            # ★ จำชื่อตัวพิมพ์เดิมไว้ (เก็บต่อคนแค่ 1 ค่า ไม่ซ้ำทุกข้อความ)
+            if author != key or key in self._names:
+                self._names[key] = author
+            # ★ สถิติรายคน — คงอยู่แม้ล้างตัวข้อความ
+            st = self._stats.setdefault(key, {"p": {}, "first": entry["timestamp"], "last": entry["timestamp"], "d": []})
+            if platform:
+                st["p"][platform] = st["p"].get(platform, 0) + 1
+            st["last"] = entry["timestamp"]
+            day = entry["timestamp"][:10]
+            if not st["d"] or st["d"][-1] != day:
+                if day not in st["d"]:
+                    st["d"].append(day)
         self._save_async()
 
     # ------------------------------------------------------------------ #
@@ -129,7 +153,7 @@ class MessageHistory:
         """
         with self._lock:
             entries = self._data.get(author.lower(), [])
-            dates = set()
+            dates = set((self._stats.get(author.lower()) or {}).get("d", []))
             for e in entries:
                 ts = e.get("timestamp", "")
                 # timestamp format: "2026-07-24T12:30:00" → date = "2026-07-24"
@@ -141,7 +165,139 @@ class MessageHistory:
     def platforms(self, author: str) -> set[str]:
         """แพลตฟอร์มที่ author คุยด้วย"""
         with self._lock:
-            return {e.get("platform", "") for e in self._data.get(author.lower(), [])}
+            key = author.lower()
+            plats = {e.get("platform", "") for e in self._data.get(key, [])}
+            plats |= {p for p in (self._stats.get(key) or {}).get("p", {}) if p}
+            return plats
+
+    def display_name(self, author: str) -> str:
+        """ชื่อตัวพิมพ์เดิมล่าสุดของ author (ไม่เคยเก็บไว้ → คืน '' ให้ caller ใช้ key เอง)"""
+        with self._lock:
+            return self._names.get(author.lower(), "")
+
+    def remove_author(self, author: str) -> None:
+        """ลบประวัติทั้งหมดของ author (ข้อความ + ยอดนับ + ชื่อ)"""
+        key = author.lower()
+        with self._lock:
+            self._data.pop(key, None)
+            self._total_counts.pop(key, None)
+            self._names.pop(key, None)
+            self._stats.pop(key, None)
+        self._save_async()
+
+    # ------------------------------------------------------------------ #
+    # สรุปรายคน (User Manager) + ดูแลขนาดไฟล์
+    # ------------------------------------------------------------------ #
+    def roster_stats(self, only: str | None = None) -> dict:
+        """สรุปรายคนสำหรับหน้า User Manager — ไม่ต้อง copy ข้อความทั้งหมด (เบา แม้ประวัติใหญ่)
+        {key: {"n": ยอดข้อความตลอดกาล, "plats": {แพลตฟอร์ม: จำนวน}, "first", "last", "days": [วันที่], "retained": ข้อความที่ยังเก็บอยู่}}
+        """
+        with self._lock:
+            if only:
+                keys = [only.lower()] if (only.lower() in self._data or only.lower() in self._total_counts
+                                          or only.lower() in self._stats) else []
+            else:
+                keys = set(self._data) | set(self._total_counts) | set(self._stats)
+            out = {}
+            for k in keys:
+                st = self._stats.get(k) or {}
+                entries = self._data.get(k, [])
+                plats = dict(st.get("p", {}))
+                if not plats and entries:                     # ไม่มีสถิติ (ไม่ควรเกิด) → นับจากข้อความที่มี
+                    for e in entries:
+                        p = e.get("platform", "")
+                        if p:
+                            plats[p] = plats.get(p, 0) + 1
+                out[k] = {
+                    "n": self._total_counts.get(k, len(entries)),
+                    "plats": plats,
+                    "first": st.get("first") or (entries[0].get("timestamp", "") if entries else ""),
+                    "last": st.get("last") or (entries[-1].get("timestamp", "") if entries else ""),
+                    "days": list(st.get("d", [])),
+                    "retained": len(entries),
+                }
+            return out
+
+    @staticmethod
+    def file_size() -> int:
+        """ขนาดไฟล์ประวัติบนดิสก์ (ไบต์) — 0 ถ้ายังไม่มี"""
+        try:
+            return os.path.getsize(HISTORY_FILE)
+        except OSError:
+            return 0
+
+    def chat_text_summary(self) -> tuple[int, int]:
+        """(จำนวนข้อความที่เก็บตัวข้อความไว้, จำนวนคนที่มีข้อความเก็บอยู่)"""
+        with self._lock:
+            return sum(len(v) for v in self._data.values()), sum(1 for v in self._data.values() if v)
+
+    def archive_chat_text(self, path: str) -> int:
+        """สำรองตัวข้อความแชททั้งหมดเป็นไฟล์บีบอัด (.json.gz) — เขียนแบบสตรีม ไม่สร้างสตริงก้อนใหญ่ในหน่วยความจำ
+        คืนขนาดไฟล์ที่ได้ (ไบต์); พลาดตรงไหน → โยน exception (ผู้เรียกต้องไม่ล้างข้อความ) และลบไฟล์ที่เขียนค้าง"""
+        with self._lock:
+            snap = {k: list(v) for k, v in self._data.items()}          # ตื้นๆ: list ใหม่ แต่ entry เดิม
+            counts = dict(self._total_counts)
+            names = dict(self._names)
+        payload = {"format": "broadcast-playroom-chat-archive", "version": 1,
+                   "created": datetime.now().isoformat(timespec="seconds"),
+                   "data": snap, "_total_counts": counts, "_names": names}
+        tmp = path + ".part"
+        try:
+            with gzip.open(tmp, "wt", encoding="utf-8", compresslevel=6) as f:
+                json.dump(payload, f, ensure_ascii=False)
+            # ตรวจว่าอ่านกลับได้จริง (แค่หัวไฟล์ + ท้ายไฟล์ผ่าน gzip CRC เมื่ออ่านจนจบ)
+            with gzip.open(tmp, "rt", encoding="utf-8") as f:
+                while f.read(1 << 20):
+                    pass
+            os.replace(tmp, path)
+        except Exception:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            raise
+        return os.path.getsize(path)
+
+    def purge_older_than(self, days: int) -> int:
+        """ลบ "ตัวข้อความแชท" ที่เก่ากว่า `days` วัน (นับย้อนจากตอนนี้) — คืนจำนวนที่ลบ; days <= 0 = ไม่ทำอะไร
+
+        ไม่ลบ: ยอดข้อความรวม/ชื่อ/สถิติรายคน (แพลตฟอร์ม, วันที่มา, เห็นครั้งแรก-ล่าสุด) — สร้างสถิติให้ครบก่อนลบเสมอ
+        """
+        if not days or days <= 0:
+            return 0
+        cutoff = (datetime.now() - timedelta(days=int(days))).isoformat(timespec="seconds")
+        removed = 0
+        with self._lock:
+            self._ensure_stats_locked()
+            for author in list(self._data.keys()):
+                entries = self._data[author]
+                # ข้อความที่ไม่มี timestamp (ไม่ควรมี) ตัดสินอายุไม่ได้ → เก็บไว้
+                keep = [e for e in entries if not e.get("timestamp") or e["timestamp"] >= cutoff]
+                if len(keep) != len(entries):
+                    removed += len(entries) - len(keep)
+                    if keep:
+                        self._data[author] = keep
+                    else:
+                        del self._data[author]
+        if removed:
+            self._dirty = False
+            self._save()
+        return removed
+
+    def clear_chat_text(self) -> int:
+        """ล้าง "ตัวข้อความแชท" ของทุกคน — คืนจำนวนข้อความที่ล้าง
+
+        เก็บไว้ครบ: ยอดข้อความรวมต่อคน (_total_counts), ชื่อ (_names), สถิติรายคน (_stats: แพลตฟอร์ม/วันที่มา/เห็นครั้งแรก-ล่าสุด)
+        ไม่แตะ donate_tracker / event_log / settings (ชื่อที่ตั้งเอง, บล็อก) เลย
+        """
+        with self._lock:
+            removed = sum(len(v) for v in self._data.values())
+            # ก่อนล้าง: ให้แน่ใจว่าทุกคนมีสถิติ (กรณีข้อมูลเก่าที่ยังไม่เคยสร้าง) — จะได้ไม่เสียแพลตฟอร์ม/วันที่
+            self._ensure_stats_locked()
+            self._data = {}
+        self._dirty = False
+        self._save()                       # เขียนทันที → ไฟล์หดลงเลย (ไม่รอ writer)
+        return removed
 
     # ------------------------------------------------------------------ #
     # Persist
@@ -159,6 +315,10 @@ class MessageHistory:
             if isinstance(raw, dict) and "_total_counts" in raw:
                 self._data = raw.get("data", {})
                 self._total_counts = raw.get("_total_counts", {})
+                names = raw.get("_names", {})
+                self._names = dict(names) if isinstance(names, dict) else {}
+                stats = raw.get("_stats", {})
+                self._stats = dict(stats) if isinstance(stats, dict) else {}
             elif isinstance(raw, dict):
                 # เดิม — สร้าง total_counts จากจำนวน entries ปัจจุบัน
                 self._data = raw
@@ -171,9 +331,28 @@ class MessageHistory:
             for author, entries in self._data.items():
                 if self._total_counts.get(author, 0) < len(entries):
                     self._total_counts[author] = len(entries)
+            # ★ ไฟล์จากรุ่นก่อน (ยังไม่มีสถิติรายคน) → สร้างจากข้อความที่เก็บอยู่ตอนนี้ (ครั้งเดียว)
+            self._ensure_stats_locked()
 
         if self.retention == "today":
             self._prune_today()
+
+    def _ensure_stats_locked(self) -> None:
+        """สร้างสถิติให้คนที่ยังไม่มี จากข้อความที่เก็บอยู่ (เรียกภายใต้ self._lock)"""
+        for author, entries in self._data.items():
+            if author in self._stats or not entries:
+                continue
+            plats: dict[str, int] = {}
+            days: list[str] = []
+            for e in entries:
+                p = e.get("platform", "")
+                if p:
+                    plats[p] = plats.get(p, 0) + 1
+                d = (e.get("timestamp", "") or "")[:10]
+                if d and d not in days:
+                    days.append(d)
+            self._stats[author] = {"p": plats, "first": entries[0].get("timestamp", ""),
+                                   "last": entries[-1].get("timestamp", ""), "d": days}
 
     def _prune_today(self) -> None:
         """ลบ entries ที่ไม่ใช่วันนี้ (เรียกตอนโหลด)"""
@@ -186,9 +365,11 @@ class MessageHistory:
                 ]
                 if not self._data[author]:
                     del self._data[author]
-        # ★ reset total_counts ในโหมด today (นับใหม่เฉพาะวันนี้)
+        # ★ reset total_counts ในโหมด today (นับใหม่เฉพาะวันนี้) — สถิติรายคนก็เริ่มใหม่ให้สอดคล้องกัน
         with self._lock:
             self._total_counts = {k: len(v) for k, v in self._data.items()}
+            self._stats = {}
+            self._ensure_stats_locked()
         self._save()
 
     def _save(self) -> None:
@@ -198,6 +379,10 @@ class MessageHistory:
                 save_obj = {
                     "data": {k: list(v) for k, v in self._data.items()},
                     "_total_counts": dict(self._total_counts),
+                    "_names": dict(self._names),
+                    "_stats": {k: {"p": dict(v.get("p", {})), "first": v.get("first", ""),
+                                   "last": v.get("last", ""), "d": list(v.get("d", []))}
+                               for k, v in self._stats.items()},
                 }
             with open(HISTORY_FILE, "w", encoding="utf-8") as f:
                 json.dump(save_obj, f, ensure_ascii=False)

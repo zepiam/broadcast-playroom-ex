@@ -52,14 +52,151 @@ THEMES = {
         "TEXT": "#dbe7ea", "TEXT_DIM": "#8fb0b6", "TEXT_FAINT": "#4d6469",
         "BORDER": "#16292e", "BORDER_LIGHT": "#1c383f",
     },
+    # ── ธีมเพิ่มเติม (2026-09) — ทั้งหมดเป็นโทนมืด เหมือนธีมเดิม ──
+    "sakura_night": {   # ชมพูซากุระบนพื้นบอร์โดว์เข้ม
+        "BG": "#150b14", "BG_DARK": "#0e070d", "CARD": "#211220",
+        "CARD_HI": "#2c1a2b", "CARD_HOVER": "#35213a",
+        "ACCENT": "#ec4899", "ACCENT_HOVER": "#be185d", "ACCENT_2": "#a78bfa",
+        "HEADING": "#f9a8d4",
+        "DANGER": "#f87171", "DANGER_HOVER": "#ef4444",
+        "SUCCESS": "#34d399", "SUCCESS_HOVER": "#10b981",
+        "TEXT": "#f6e9f1", "TEXT_DIM": "#cbb0c2", "TEXT_FAINT": "#8c7085",
+        "BORDER": "#40243c", "BORDER_LIGHT": "#56324f",
+    },
+    "forest_moss": {    # เขียวมะนาวบนพื้นเขียวป่าเข้ม
+        "BG": "#0b130e", "BG_DARK": "#070d09", "CARD": "#111d15",
+        "CARD_HI": "#17271d", "CARD_HOVER": "#1c3024",
+        "ACCENT": "#84cc16", "ACCENT_HOVER": "#a3e635", "ACCENT_2": "#2dd4bf",
+        "HEADING": "#bef264",
+        "DANGER": "#f87171", "DANGER_HOVER": "#ef4444",
+        "SUCCESS": "#34d399", "SUCCESS_HOVER": "#10b981",
+        "TEXT": "#e6f0e8", "TEXT_DIM": "#a9c2af", "TEXT_FAINT": "#66806e",
+        "BORDER": "#1f3627", "BORDER_LIGHT": "#2b4a36",
+    },
+    "ocean_royal": {    # น้ำเงินรอยัลบนพื้นกรมท่าเข้ม
+        "BG": "#0a1020", "BG_DARK": "#060a15", "CARD": "#111a30",
+        "CARD_HI": "#182442", "CARD_HOVER": "#1d2b4f",
+        "ACCENT": "#3b82f6", "ACCENT_HOVER": "#2563eb", "ACCENT_2": "#38bdf8",
+        "HEADING": "#93c5fd",
+        "DANGER": "#f87171", "DANGER_HOVER": "#ef4444",
+        "SUCCESS": "#34d399", "SUCCESS_HOVER": "#10b981",
+        "TEXT": "#e6edf9", "TEXT_DIM": "#a6b6d2", "TEXT_FAINT": "#66779a",
+        "BORDER": "#22305a", "BORDER_LIGHT": "#2f4177",
+    },
+    "golden_hour": {    # ทองบนพื้นดำอมน้ำตาลเทา (ไม่ซ้ำกับ Ember ที่เป็นส้ม-น้ำตาล)
+        "BG": "#0f0e0b", "BG_DARK": "#080706", "CARD": "#1a1813",
+        "CARD_HI": "#252219", "CARD_HOVER": "#2e2a1e",
+        "ACCENT": "#eab308", "ACCENT_HOVER": "#facc15", "ACCENT_2": "#38bdf8",
+        "HEADING": "#fde68a",
+        "DANGER": "#f87171", "DANGER_HOVER": "#ef4444",
+        "SUCCESS": "#4ade80", "SUCCESS_HOVER": "#22c55e",
+        "TEXT": "#f3efe4", "TEXT_DIM": "#c2b99f", "TEXT_FAINT": "#877f69",
+        "BORDER": "#352f20", "BORDER_LIGHT": "#4a4230",
+    },
+    "graphite_mist": {  # โทนเทากราไฟต์เรียบๆ สบายตา — เน้นตัวอักษร ไม่มีสีฉูดฉาด
+        "BG": "#0f1114", "BG_DARK": "#090a0c", "CARD": "#181b20",
+        "CARD_HI": "#20242b", "CARD_HOVER": "#282d35",
+        "ACCENT": "#94a3b8", "ACCENT_HOVER": "#cbd5e1", "ACCENT_2": "#7dd3fc",
+        "HEADING": "#e2e8f0",
+        "DANGER": "#f87171", "DANGER_HOVER": "#ef4444",
+        "SUCCESS": "#4ade80", "SUCCESS_HOVER": "#22c55e",
+        "TEXT": "#e8ebf0", "TEXT_DIM": "#a3acb9", "TEXT_FAINT": "#6b7482",
+        "BORDER": "#2b313a", "BORDER_LIGHT": "#3a424e",
+    },
+    # ── ธีมเพิ่มเติมชุดที่ 2 (2026-09) ──
+    "teal_lagoon": {    # เขียวน้ำทะเลสีเทอร์คอยส์บนพื้นเขียวอมฟ้าเข้ม
+        "BG": "#071211", "BG_DARK": "#040b0a", "CARD": "#0d1f1d",
+        "CARD_HI": "#132a27", "CARD_HOVER": "#18342f",
+        "ACCENT": "#14b8a6", "ACCENT_HOVER": "#2dd4bf", "ACCENT_2": "#818cf8",
+        "HEADING": "#5eead4",
+        "DANGER": "#f87171", "DANGER_HOVER": "#ef4444",
+        "SUCCESS": "#4ade80", "SUCCESS_HOVER": "#22c55e",
+        "TEXT": "#e2f2f0", "TEXT_DIM": "#9fc4bf", "TEXT_FAINT": "#5f807b",
+        "BORDER": "#17403b", "BORDER_LIGHT": "#21574f",
+    },
+    "midnight_indigo": {  # อินดิโกเข้มแบบท้องฟ้ายามค่ำ
+        "BG": "#0c0b22", "BG_DARK": "#07061a", "CARD": "#16153a",
+        "CARD_HI": "#1e1d4a", "CARD_HOVER": "#25235a",
+        "ACCENT": "#5f62ee", "ACCENT_HOVER": "#4f46e5", "ACCENT_2": "#2dd4bf",
+        "HEADING": "#a5b4fc",
+        "DANGER": "#f87171", "DANGER_HOVER": "#ef4444",
+        "SUCCESS": "#34d399", "SUCCESS_HOVER": "#10b981",
+        "TEXT": "#e8e9fb", "TEXT_DIM": "#aeb0d8", "TEXT_FAINT": "#7274a3",
+        "BORDER": "#2b2a63", "BORDER_LIGHT": "#3a3985",
+    },
+    "neon_fuchsia": {   # ม่วงบานเย็นนีออนบนพื้นม่วงดำ
+        "BG": "#14081a", "BG_DARK": "#0d0511", "CARD": "#221030",
+        "CARD_HI": "#2e1741", "CARD_HOVER": "#391d50",
+        "ACCENT": "#d946ef", "ACCENT_HOVER": "#a21caf", "ACCENT_2": "#22d3ee",
+        "HEADING": "#f0abfc",
+        "DANGER": "#f87171", "DANGER_HOVER": "#ef4444",
+        "SUCCESS": "#4ade80", "SUCCESS_HOVER": "#22c55e",
+        "TEXT": "#f7e9fb", "TEXT_DIM": "#cfaed8", "TEXT_FAINT": "#8f6f9b",
+        "BORDER": "#43205c", "BORDER_LIGHT": "#5a2d7b",
+    },
+    "crimson_noir": {   # แดงเข้มบนพื้นดำอมแดง
+        "BG": "#140a0c", "BG_DARK": "#0c0607", "CARD": "#1f1013",
+        "CARD_HI": "#2b171b", "CARD_HOVER": "#351d22",
+        "ACCENT": "#e11d48", "ACCENT_HOVER": "#be123c", "ACCENT_2": "#38bdf8",
+        "HEADING": "#fda4af",
+        "DANGER": "#f87171", "DANGER_HOVER": "#ef4444",
+        "SUCCESS": "#34d399", "SUCCESS_HOVER": "#10b981",
+        "TEXT": "#f8e8ea", "TEXT_DIM": "#cfaeb3", "TEXT_FAINT": "#8f6f75",
+        "BORDER": "#40202a", "BORDER_LIGHT": "#57303c",
+    },
+    "lavender_mist": {  # ลาเวนเดอร์พาสเทลบนพื้นม่วงเทาเข้ม — นุ่มตา
+        "BG": "#100e1a", "BG_DARK": "#0a0912", "CARD": "#1a1727",
+        "CARD_HI": "#231f34", "CARD_HOVER": "#2b2640",
+        "ACCENT": "#c4b5fd", "ACCENT_HOVER": "#ddd6fe", "ACCENT_2": "#67e8f9",
+        "HEADING": "#ddd6fe",
+        "DANGER": "#f87171", "DANGER_HOVER": "#ef4444",
+        "SUCCESS": "#4ade80", "SUCCESS_HOVER": "#22c55e",
+        "TEXT": "#ece9f6", "TEXT_DIM": "#b3adc8", "TEXT_FAINT": "#7d7794",
+        "BORDER": "#2f2a45", "BORDER_LIGHT": "#40395c",
+    },
+    "mocha_latte": {    # น้ำตาลกาแฟ + ครีมลาเต้ อบอุ่น
+        "BG": "#14100d", "BG_DARK": "#0c0907", "CARD": "#1f1915",
+        "CARD_HI": "#2a221c", "CARD_HOVER": "#342b23",
+        "ACCENT": "#d6a77a", "ACCENT_HOVER": "#e7c29d", "ACCENT_2": "#7dd3fc",
+        "HEADING": "#ecd3b6",
+        "DANGER": "#f87171", "DANGER_HOVER": "#ef4444",
+        "SUCCESS": "#4ade80", "SUCCESS_HOVER": "#22c55e",
+        "TEXT": "#f1e9e0", "TEXT_DIM": "#c4b4a3", "TEXT_FAINT": "#86776a",
+        "BORDER": "#3a2f26", "BORDER_LIGHT": "#4e4034",
+    },
+    "oled_black": {     # ดำสนิท (ประหยัดไฟจอ OLED) + ฟ้าสว่าง
+        "BG": "#000000", "BG_DARK": "#000000", "CARD": "#0c0c0f",
+        "CARD_HI": "#141418", "CARD_HOVER": "#1b1b21",
+        "ACCENT": "#38bdf8", "ACCENT_HOVER": "#7dd3fc", "ACCENT_2": "#a78bfa",
+        "HEADING": "#7dd3fc",
+        "DANGER": "#f87171", "DANGER_HOVER": "#ef4444",
+        "SUCCESS": "#4ade80", "SUCCESS_HOVER": "#22c55e",
+        "TEXT": "#ececf1", "TEXT_DIM": "#a0a0ad", "TEXT_FAINT": "#6a6a78",
+        "BORDER": "#1f1f27", "BORDER_LIGHT": "#2c2c36",
+    },
 }
 
-THEME_ORDER = ["default", "aurora_violet", "ember_dusk", "nightwave_cyan"]
+THEME_ORDER = ["default", "aurora_violet", "ember_dusk", "nightwave_cyan",
+               "sakura_night", "forest_moss", "ocean_royal", "golden_hour", "graphite_mist",
+               "teal_lagoon", "midnight_indigo", "neon_fuchsia", "crimson_noir",
+               "lavender_mist", "mocha_latte", "oled_black"]
 THEME_LABELS = {
     "default": "ค่าเริ่มต้น (ม่วง-กรมท่า)",
     "aurora_violet": "Aurora Violet",
     "ember_dusk": "Ember Dusk",
     "nightwave_cyan": "Nightwave Cyan",
+    "sakura_night": "Sakura Night (ชมพู)",
+    "forest_moss": "Forest Moss (เขียว)",
+    "ocean_royal": "Ocean Royal (น้ำเงิน)",
+    "golden_hour": "Golden Hour (ทอง)",
+    "graphite_mist": "Graphite Mist (เทา)",
+    "teal_lagoon": "Teal Lagoon (เขียวน้ำทะเล)",
+    "midnight_indigo": "Midnight Indigo (อินดิโก)",
+    "neon_fuchsia": "Neon Fuchsia (บานเย็น)",
+    "crimson_noir": "Crimson Noir (แดงเข้ม)",
+    "lavender_mist": "Lavender Mist (ลาเวนเดอร์)",
+    "mocha_latte": "Mocha Latte (น้ำตาลกาแฟ)",
+    "oled_black": "Pure Black (ดำสนิท)",
 }
 # ★ swatch สีเด่นของแต่ละธีม (ใช้โชว์ preview ใน Settings)
 THEME_SWATCH = {k: v["ACCENT"] for k, v in THEMES.items()}
@@ -81,13 +218,39 @@ def _readable_on(hex_color: str, dark: str = "#0b0e14", light: str = "#ffffff") 
     return dark if _luma(hex_color) > 150 else light
 
 
+def _rel_lum(hex_color: str) -> float:
+    h = hex_color.lstrip("#")
+    def ch(v):
+        v = int(v, 16) / 255
+        return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+    return 0.2126 * ch(h[0:2]) + 0.7152 * ch(h[2:4]) + 0.0722 * ch(h[4:6])
+
+
+def _best_text_on(hex_color: str, dark: str = "#0b0e14", light: str = "#ffffff") -> str:
+    """เลือกขาว/เกือบดำตาม contrast จริง (WCAG) — แม่นกว่า _readable_on ที่เทียบแค่ความสว่างหยาบๆ"""
+    lb = _rel_lum(hex_color)
+    def c(fg):
+        lf = _rel_lum(fg)
+        return (max(lf, lb) + 0.05) / (min(lf, lb) + 0.05)
+    return dark if c(dark) >= c(light) else light
+
+
+# ★ ธีมเดิม 4 ธีม: คงกติกาเดิม (_readable_on) เพื่อไม่ให้หน้าตาที่ผู้ใช้เคยเห็นเปลี่ยน
+#   ธีมที่เพิ่มทีหลัง: ใช้ contrast จริง
+_LEGACY_THEMES = {"default", "aurora_violet", "ember_dusk", "nightwave_cyan"}
+
 # ★ เติมสีตัวอักษรที่อ่านออกให้ทุกธีม (คำนวณจาก ACCENT/DANGER/SUCCESS/HEADING ของธีมนั้นๆ)
-#   ใช้กับปุ่ม state="on"/"danger"/"warning" (topbar split-button) + ปุ่ม TTS เขียว/แดง
+#   ใช้กับปุ่ม state="on"/"danger"/"warning" (topbar split-button) + ปุ่ม TTS เขียว/แดง + ปุ่ม Primary/Danger/Success
 for _key, _pal in THEMES.items():
-    _pal["ON_ACCENT_TEXT"] = _readable_on(_pal["ACCENT"])
-    _pal["ON_DANGER_TEXT"] = _readable_on(_pal["DANGER"])
-    _pal["ON_SUCCESS_TEXT"] = _readable_on(_pal["SUCCESS"])
-    _pal["ON_WARNING_TEXT"] = _readable_on(_pal["HEADING"])
+    _on = _readable_on if _key in _LEGACY_THEMES else _best_text_on
+    _pal["ON_ACCENT_TEXT"] = _on(_pal["ACCENT"])
+    _pal["ON_DANGER_TEXT"] = _on(_pal["DANGER"])
+    _pal["ON_SUCCESS_TEXT"] = _on(_pal["SUCCESS"])
+    _pal["ON_WARNING_TEXT"] = _on(_pal["HEADING"])
+    # ★ ตัวอักษรบนปุ่มตอน hover (พื้นเปลี่ยนเป็นสี *_HOVER — บางธีมสว่างขึ้น บางธีมเข้มลง เลยต้องคำนวณแยก)
+    _pal["ON_ACCENT_HOVER_TEXT"] = _on(_pal["ACCENT_HOVER"])
+    _pal["ON_DANGER_HOVER_TEXT"] = _on(_pal["DANGER_HOVER"])
+    _pal["ON_SUCCESS_HOVER_TEXT"] = _on(_pal["SUCCESS_HOVER"])
 
 # ═══════════════════════════════════════════════════════════════
 # Color constants (module-level) — apply_theme() จะเขียนทับตัวแปรพวกนี้
@@ -235,22 +398,24 @@ QPushButton:disabled {
 QPushButton#Primary {
     background-color: __ACCENT__;
     border: 2px solid __ACCENT_HOVER__;
-    color: white;
+    color: __ON_ACCENT_TEXT__;
     font-weight: 600;
 }
 QPushButton#Primary:hover {
     background-color: __ACCENT_HOVER__;
+    color: __ON_ACCENT_HOVER_TEXT__;
 }
 
 /* Danger button */
 QPushButton#Danger {
     background-color: __DANGER__;
     border: 2px solid __DANGER_HOVER__;
-    color: white;
+    color: __ON_DANGER_TEXT__;
     font-weight: 600;
 }
 QPushButton#Danger:hover {
     background-color: __DANGER_HOVER__;
+    color: __ON_DANGER_HOVER_TEXT__;
     border-color: #fca5a5;
 }
 
@@ -258,10 +423,11 @@ QPushButton#Danger:hover {
 QPushButton#Success {
     background-color: __SUCCESS__;
     border: none;
-    color: white;
+    color: __ON_SUCCESS_TEXT__;
 }
 QPushButton#Success:hover {
     background-color: __SUCCESS_HOVER__;
+    color: __ON_SUCCESS_HOVER_TEXT__;
 }
 
 /* Icon button (topbar/chat panel — flat, no border) */
@@ -658,6 +824,10 @@ def apply_theme(app: QApplication, theme_name: str = "default") -> None:
         '__ON_ACCENT_TEXT__': COLOR_ON_ACCENT_TEXT,
         '__ON_DANGER_TEXT__': COLOR_ON_DANGER_TEXT,
         '__ON_WARNING_TEXT__': COLOR_ON_WARNING_TEXT,
+        '__ON_SUCCESS_TEXT__': COLOR_ON_SUCCESS_TEXT,
+        '__ON_ACCENT_HOVER_TEXT__': palette["ON_ACCENT_HOVER_TEXT"],
+        '__ON_DANGER_HOVER_TEXT__': palette["ON_DANGER_HOVER_TEXT"],
+        '__ON_SUCCESS_HOVER_TEXT__': palette["ON_SUCCESS_HOVER_TEXT"],
     }
     for placeholder, color in replacements.items():
         qss = qss.replace(placeholder, color)

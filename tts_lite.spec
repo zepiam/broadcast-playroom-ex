@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 # ════════════════════════════════════════════════════════════════════
 # tts_lite.spec — PyInstaller spec สำหรับ Broadcast Playroom v2 (Lite)
-# ฟีเจอร์ครบทุกอย่าง + Edge-TTS (ไม่มี OmniVoice/RVC)
+# ฟีเจอร์ครบทุกอย่าง + Edge-TTS (ไม่มี RVC)
 # ════════════════════════════════════════════════════════════════════
 import os
 import sys
@@ -38,7 +38,7 @@ for _clip in ['bad.mp4', 'good.mp4', 'normal.mp4']:
 pyside_datas = collect_data_files('PySide6')
 datas += pyside_datas
 
-# ── exclude RVC + OmniVoice stack (Lite) ──
+# ── exclude RVC stack (Lite) ──
 excludes = [
     'torch', 'torchaudio', 'torchvision', 'fairseq', 'rvc_python',
     'torchcrepe', 'praatparselmouth', 'parselmouth', 'pyworld',
@@ -46,12 +46,12 @@ excludes = [
     'matplotlib', 'scipy', 'pandas', 'notebook', 'jupyter', 'IPython',
     'pytest', 'sphinx', 'tornado', 'zmq',
     'customtkinter', 'tkinter', 'darkdetect',
-    'omnivoice', 'transformers', 'accelerate', 'datasets',
+    'transformers', 'accelerate', 'datasets',
     'safetensors', 'tokenizers', 'huggingface_hub',
     'cached_path', 'vocos', 'ema_pytorch', 'torchdiffeq',
     'bitsandbytes', 'wandb', 'gradio',
     # engine modules — ไม่ bundle (Lite ไม่ใช้)
-    'omnivoice_engine', 'rvc_engine',
+    'rvc_engine',
 ]
 
 a = Analysis(

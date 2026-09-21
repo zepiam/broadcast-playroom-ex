@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import os
 import threading
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, field, asdict
 from datetime import datetime
 
 from data_dir import get_data_dir
@@ -43,6 +43,8 @@ class EventEntry:
     amount: int             # bits/diamonds/baht/viewers/0
     display_text: str       # "ส่ง 100 บิท" (ข้อความสั้นสำหรับแสดง)
     system_text: str        # "500 THB" / "subbed 12 months" (รายละเอียดเพิ่ม)
+    message: str = ""       # ข้อความที่ผู้ให้แนบมากับ donate/sub (ถ้ามี)
+    detail: dict = field(default_factory=dict)   # info จาก event_details.build_info (เดือน/ผู้รับ/มูลค่า ...)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -78,6 +80,8 @@ class EventLog:
         amount: int = 0,
         display_text: str = "",
         system_text: str = "",
+        message: str = "",
+        detail: dict | None = None,
     ) -> EventEntry:
         """บันทึก event 1 รายการ — เก็บทุก event เสมอ
 
@@ -91,6 +95,8 @@ class EventLog:
             amount=int(amount or 0),
             display_text=display_text or "",
             system_text=system_text or "",
+            message=message or "",
+            detail=dict(detail) if isinstance(detail, dict) else {},
         )
         with self._lock:
             self._entries.append(entry)
@@ -144,6 +150,17 @@ class EventLog:
             self._entries = []
         self._save_async()
 
+    def remove_author(self, author: str) -> int:
+        """ลบ event ทั้งหมดของ author — คืนจำนวนที่ลบ"""
+        author_lower = (author or "").lower()
+        with self._lock:
+            before = len(self._entries)
+            self._entries = [e for e in self._entries if e.author.lower() != author_lower]
+            removed = before - len(self._entries)
+        if removed:
+            self._save_async()
+        return removed
+
     def set_max(self, max_entries: int) -> None:
         """เปลี่ยนขนาด cap — prune ทันทีถ้าเกิน"""
         self.max_entries = max(100, int(max_entries or DEFAULT_MAX))
@@ -176,6 +193,8 @@ class EventLog:
                     amount=int(d.get("amount", 0) or 0),
                     display_text=d.get("display_text", ""),
                     system_text=d.get("system_text", ""),
+                    message=d.get("message", "") or "",
+                    detail=d.get("detail") if isinstance(d.get("detail"), dict) else {},
                 ))
             except Exception:  # noqa: BLE001
                 continue

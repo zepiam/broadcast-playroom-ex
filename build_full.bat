@@ -8,7 +8,7 @@ setlocal
 
 echo ============================================
 echo  Building Broadcast Playroom (Full)
-echo  with OmniVoice + RVC + PyTorch/CUDA
+echo  with RVC + PyTorch/CUDA
 echo ============================================
 echo.
 

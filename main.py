@@ -15,11 +15,14 @@ def setup_logging():
     log_dir = os.path.join(os.path.expanduser("~"), ".tts-for-livestream")
     os.makedirs(log_dir, exist_ok=True)
     log_path = os.path.join(log_dir, "app_v2.log")
+    # ★ หมุนไฟล์ log: ไฟล์ละไม่เกิน 10 MB เก็บย้อนหลัง 3 ไฟล์ (รวมไม่เกิน ~40 MB) — เดิม FileHandler เขียนต่อไม่จำกัด
+    #   จนไฟล์โตเป็นร้อย MB (ทุกข้อความแชทลง log ที่ระดับ INFO)
+    from logging.handlers import RotatingFileHandler
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         handlers=[
-            logging.FileHandler(log_path, encoding="utf-8"),
+            RotatingFileHandler(log_path, maxBytes=10 * 1024 * 1024, backupCount=3, encoding="utf-8"),
             logging.StreamHandler(),
         ],
     )
@@ -70,19 +73,18 @@ def _stub_importlib_metadata():
         logger.debug(f"metadata stub (skipped): {_e}")
 
 
-# ═══ PyInstaller warm-up: register HiggsAudioV2TokenizerModel into transformers registry ═══
-# transformers LazyModule พังใน PyInstaller → register class ตรงๆ แทน
+# ═══ PyInstaller warm-up: patch transformers _LazyModule ═══
+# transformers LazyModule พังใน PyInstaller → override เป็น absolute import
+# (ระบบ OmniVoice ถูกถอดออกแล้ว — เหลือ patch นี้ไว้กันพังถ้ามีไลบรารีอื่นใช้ transformers)
 # ★ ย้ายออกจาก module-level → เรียกหลัง splash.show() (ประหยัดเวลา startup 5-6 วิ)
 def _warmup_transformers():
-    """register HiggsAudioV2 + patch _LazyModule — จำเป็นเฉพาะตอน OmniVoice โหลด
+    """patch transformers _LazyModule ให้ใช้ได้ใน PyInstaller
 
     ★ ย้ายมาเรียกหลัง splash.show() เพื่อให้ splash ขึ้นเร็ว (ไม่รอ import transformers/torch)
-    ★ OmniVoice จะถูกโหลดที่ app.py QTimer.singleShot(2000, ...) — warmup นี้ต้องเสร็จก่อน
     """
     # ═══ PyInstaller patch: monkey-patch _LazyModule._get_module ═══
     # ปัญหา: _LazyModule._get_module ใช้ relative import ที่ fail ใน PyInstaller
     # แก้: override เป็น absolute import (full path) เป็น fallback
-    # ★ ต้อง patch ก่อน import HiggsAudioV2 (เพื่อให้ patch มีผลกับ instance ใหม่)
     try:
         import importlib
         from transformers.utils.import_utils import _LazyModule
@@ -96,35 +98,6 @@ def _warmup_transformers():
         _boot_log("_LazyModule._get_module patched for PyInstaller")
     except Exception as _e:
         logger.debug(f"_LazyModule patch (skipped): {_e}")
-
-    # ═══ register HiggsAudioV2TokenizerModel into transformers registry ═══
-    try:
-        # ★ import module แบบ full path (ทำงานใน PyInstaller)
-        from transformers.models.higgs_audio_v2_tokenizer.modeling_higgs_audio_v2_tokenizer import (
-            HiggsAudioV2TokenizerModel as _HiggsModel,
-        )
-        from transformers.models.higgs_audio_v2_tokenizer.configuration_higgs_audio_v2_tokenizer import (
-            HiggsAudioV2TokenizerConfig as _HiggsConfig,
-        )
-        # ★ register เข้า transformers AUTO mapping (กัน "Could not import module" error)
-        from transformers import AutoConfig, AutoModel
-        try:
-            AutoConfig.register("higgs_audio_v2_tokenizer", _HiggsConfig)
-        except Exception:
-            pass  # อาจ register ซ้ำ
-        try:
-            AutoModel.register(_HiggsConfig, _HiggsModel)
-        except Exception:
-            pass
-        # ★ inject เข้า sys.modules ด้วยชื่อสั้น (transformers AutoMap ใช้ชื่อสั้น)
-        import sys as _sys
-        import transformers.models.higgs_audio_v2_tokenizer.modeling_higgs_audio_v2_tokenizer as _mod_module
-        _sys.modules["modeling_higgs_audio_v2_tokenizer"] = _mod_module
-        import transformers.models.higgs_audio_v2_tokenizer.configuration_higgs_audio_v2_tokenizer as _cfg_module
-        _sys.modules["configuration_higgs_audio_v2_tokenizer"] = _cfg_module
-        _boot_log("HiggsAudioV2 registered into transformers registry")
-    except Exception as _e:
-        logger.debug(f"warm-up transformers (skipped): {_e}")
 
 
 def main():
@@ -340,7 +313,6 @@ def main():
 
     # ★ warmup transformers หลัง splash ขึ้นแล้ว (หนัก — import torch/transformers)
     #   ★ ย้ายมาจาก module-level → user เห็น splash ระหว่างรอ (ไม่ใช่จอดำ 5-6 วิ)
-    #   ★ OmniVoice จะถูกโหลดที่ app.py QTimer.singleShot(2000, ...) — warmup นี้ต้องเสร็จก่อน
     _warmup_transformers()
 
     # ★ Import + apply theme (อ่านค่าธีมจาก settings ก่อนสร้าง widget ใดๆ)

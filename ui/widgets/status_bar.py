@@ -26,7 +26,7 @@ def _read_version() -> str:
 
 
 class StatusBar(QFrame):
-    """Bottom status bar — shows status text + progress bar (for OmniVoice loading)
+    """Bottom status bar — shows status text + progress bar
 
     ★ Progress bar:
       - hidden by default (setVisible(False))

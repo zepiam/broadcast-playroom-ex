@@ -799,7 +799,7 @@ class TwitchChat:
                     text=text,
                     event="bits",
                     amount=int(bits_str),
-                    extra=extra_base,
+                    extra={**extra_base, "detail": {"bits": int(bits_str)}},
                 )
             )
             return
@@ -866,25 +866,55 @@ class TwitchChat:
         event = "message"
         amount = None
         tier = None
+        # ★ ข้อมูลเชิงโครงสร้างสำหรับหน้า "รายละเอียด event" (event_details.py) — เก็บเฉพาะที่ Twitch ส่งมาจริง
+        detail: dict = {"msg_id": msg_id}
+
+        def _num(key: str):
+            v = tags.get(key, "")
+            return int(v) if v.isdigit() else None
+
+        def _tier_of(plan_tag: str):
+            return {"prime": 0, "1000": 1, "2000": 2, "3000": 3}.get(plan_tag.lower(), None)
 
         if msg_id in ("sub", "resub"):
             event = "resub" if msg_id == "resub" else "sub"
             # plan: Prime=1, 1000=tier1, 2000=tier2, 3000=tier3
             plan = tags.get("msg-param-sub-plan", "")
-            tier = {"prime": 0, "1000": 1, "2000": 2, "3000": 3}.get(plan, 1)
+            # ★ Twitch ส่ง "Prime" ตัว P ใหญ่ — เดิมเทียบตัวพิมพ์เล็กล้วน ทำให้ Prime ถูกนับเป็น Tier 1 เสมอ
+            tier = {"prime": 0, "1000": 1, "2000": 2, "3000": 3}.get(plan.lower(), 1)
             # resub มีจำนวนเดือน
             months = tags.get("msg-param-cumulative-months")
             if months and months.isdigit():
                 system_text = system_text or f"subbed {months} months"
+            detail["tier"] = tier
+            detail["plan_name"] = tags.get("msg-param-sub-plan-name", "")
+            detail["months"] = _num("msg-param-cumulative-months")
+            # streak: Twitch ใส่ค่ามาเสมอ แต่ผู้ซับเลือกได้ว่าจะแชร์ไหม (should-share-streak=1)
+            if tags.get("msg-param-should-share-streak") == "1":
+                detail["streak_months"] = _num("msg-param-streak-months")
+            gm = _num("msg-param-gift-months")   # ซื้อล่วงหน้าหลายเดือนในครั้งเดียว
+            if gm:
+                detail["gift_months"] = gm
         elif msg_id == "subgift" or msg_id == "anonsubgift":
             event = "subgift"
             recipient = tags.get("msg-param-recipient-display-name", "?")
             system_text = system_text or f"gifted a sub to {recipient}"
+            plan = tags.get("msg-param-sub-plan", "")
+            detail["recipient"] = recipient
+            detail["recipient_login"] = tags.get("msg-param-recipient-user-name", "")
+            detail["tier"] = _tier_of(plan)
+            detail["plan_name"] = tags.get("msg-param-sub-plan-name", "")
+            detail["months"] = _num("msg-param-months")           # เดือนสะสมของผู้รับ
+            detail["gift_months"] = _num("msg-param-gift-months")  # จำนวนเดือนที่มอบ
+            detail["sender_total"] = _num("msg-param-sender-count")
+            detail["anonymous"] = (msg_id == "anonsubgift")
+            detail["count"] = 1
         elif msg_id == "raid" or msg_id == "unraid":
             event = "raid"
             viewers = tags.get("msg-param-viewerCount")
             if viewers and viewers.isdigit():
                 amount = int(viewers)
+                detail["viewers"] = amount
             raider = tags.get("msg-param-displayName") or tags.get(
                 "msg-param-login", author
             )
@@ -904,7 +934,7 @@ class TwitchChat:
                 amount=amount,
                 tier=tier,
                 system_text=system_text,
-                extra={"msg-id": msg_id},
+                extra={"msg-id": msg_id, "detail": detail},
             )
         )
 

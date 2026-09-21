@@ -1,6 +1,6 @@
 """rthook_site_packages.py — Runtime hook for plugin system
 
-★ Force-load torch + numpy + omnivoice จาก site-packages/ ข้าง exe
+★ Force-load torch + numpy จาก site-packages/ ข้าง exe
   โดยใช้ importlib ข้าม PyInstaller's module stub
 """
 import os
@@ -24,12 +24,12 @@ if os.path.isdir(site_packages):
         'numpy', 'torch', 'torchaudio', 'torchvision',
         'scipy', 'sympy', 'mpmath', 'networkx', 'filelock', 'fsspec',
         'jinja2', 'markupsafe',
-        'omnivoice', 'transformers', 'huggingface_hub', 'tokenizers',
+        'transformers', 'huggingface_hub', 'tokenizers',
         'safetensors', 'accelerate', 'cached_path', 'vocos',
         'ema_pytorch', 'torchdiffeq', 'torch_einops_utils',
         'fairseq', 'rvc_python', 'faiss', 'torchcrepe', 'pyworld',
         'regex', 'tqdm', 'yaml', 'packaging', 'PIL',
-        'pydub', 'librosa', 'omnivoice_engine', 'rvc_engine',
+        'pydub', 'librosa', 'rvc_engine',
         'soundfile', '_soundfile',
     ]
     for mod_name in _force_reload:
@@ -53,8 +53,8 @@ if os.path.isdir(site_packages):
         import logging
         logging.getLogger("rthook").warning(f"torch import failed: {e}")
 
-    # ★ force import omnivoice + transformers (ลบ stub ออกจาก sys.modules ก่อน)
-    _omni_deps = ['omnivoice', 'transformers', 'huggingface_hub', 'tokenizers',
+    # ★ transformers + deps (ลบ stub ออกจาก sys.modules ก่อน)
+    _omni_deps = ['transformers', 'huggingface_hub', 'tokenizers',
                   'safetensors', 'accelerate', 'cached_path', 'vocos',
                   'ema_pytorch', 'torchdiffeq', 'torch_einops_utils']
     for mod_name in _omni_deps:
@@ -64,11 +64,3 @@ if os.path.isdir(site_packages):
 
     # ★ invalidate import cache → บังคับ import ใหม่จาก site-packages
     importlib.invalidate_caches()
-
-    try:
-        importlib.import_module('omnivoice')
-        import logging
-        logging.getLogger("rthook").info("omnivoice loaded from site-packages")
-    except Exception as e:
-        import logging
-        logging.getLogger("rthook").warning(f"omnivoice import failed: {e}")

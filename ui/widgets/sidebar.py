@@ -424,41 +424,10 @@ class Sidebar(QFrame):
         clayout.addWidget(voice_header)
 
         # ════════════════════════════════════════════════════════════════
-        # ★ Voice panel ใหม่ — แยก 3 ส่วน: engine toggle / base voice / RVC
+        # ★ Voice panel — แยก 2 ส่วน: base voice (หญิง/ชาย) / RVC
         # ════════════════════════════════════════════════════════════════
 
-        # ─── (1) Engine toggle: Azure / Omni (text labels คลิกได้) ───
-        self.engine_toggle_container = QWidget()
-        et_layout = QVBoxLayout(self.engine_toggle_container)
-        et_layout.setContentsMargins(0, 2, 0, 2)
-        et_layout.setSpacing(2)
-        et_title = QLabel("เครื่องมืออ่าน")
-        # ★ ฉากหลังยาวเต็มซ้าย-ขวา (เหมือน zebra row) + padding บนล่าง
-        et_title.setStyleSheet(
-            "color: #d1d5db; font-size: 11px; font-weight: 600;"
-            "background-color: rgba(255, 255, 255, 0.04);"
-            "padding: 4px 8px; border-radius: 4px;"
-        )
-        et_title.setAlignment(Qt.AlignCenter)
-        et_layout.addWidget(et_title)
-        et_row = QHBoxLayout()
-        et_row.setContentsMargins(0, 0, 0, 0)
-        et_row.setSpacing(0)
-        et_row.addStretch()  # ★ center: stretch ทั้ง 2 ข้าง
-        self.engine_btn_azure = self._make_text_toggle("Azure")
-        self.engine_btn_azure.setToolTip("Microsoft Azure (edge-tts) — เสียงอ่านออนไลน์")
-        et_row.addWidget(self.engine_btn_azure)
-        sep = QLabel("|")
-        sep.setStyleSheet("color: #4b5563; font-size: 13px; padding: 0 6px;")
-        et_row.addWidget(sep)
-        self.engine_btn_omni = self._make_text_toggle("Omni")
-        self.engine_btn_omni.setToolTip("OmniVoice — เสียง AI ออฟไลน์ (ต้องโหลดโมเดล)")
-        et_row.addWidget(self.engine_btn_omni)
-        et_row.addStretch()
-        et_layout.addLayout(et_row)
-        clayout.addWidget(self.engine_toggle_container)
-
-        # ─── (2) Base voice: หญิง/ชาย (text labels คลิกได้) ───
+        # ─── (1) Base voice: หญิง/ชาย (text labels คลิกได้) ───
         self.base_voice_container = QWidget()
         bv_layout = QVBoxLayout(self.base_voice_container)
         bv_layout.setContentsMargins(0, 2, 0, 2)
@@ -490,7 +459,7 @@ class Sidebar(QFrame):
         bv_layout.addWidget(self.base_voice_combo)
         clayout.addWidget(self.base_voice_container)
 
-        # ─── (3) RVC model selector (Full build เท่านั้น) ───
+        # ─── (2) RVC model selector (Full build เท่านั้น) ───
         self.rvc_container = QWidget()
         rvc_layout = QVBoxLayout(self.rvc_container)
         rvc_layout.setContentsMargins(0, 4, 0, 4)
@@ -638,7 +607,7 @@ class Sidebar(QFrame):
                 w.deleteLater()
 
     def _make_text_toggle(self, text: str) -> QPushButton:
-        """สร้าง text label ที่คลิกได้ (flat, no border) — ใช้แบบ Azure/Omni และ หญิง/ชาย
+        """สร้าง text label ที่คลิกได้ (flat, no border) — ใช้กับ หญิง/ชาย
 
         ★ active = สีเขียว (#10b981), inactive = สีเทา (#9ca3af)
         ★ ใช้ QPushButton แบบ flat (ไม่ใช่ QLabel เพราะต้องคลิกได้ + cursor pointing)
@@ -666,12 +635,6 @@ class Sidebar(QFrame):
     def _set_text_toggle_active(self, btn: QPushButton, active: bool):
         """ตั้ง active/inactive style ให้ text toggle"""
         btn.setStyleSheet(self._text_toggle_style(active))
-
-    def set_engine_active(self, engine: str):
-        """highlight engine toggle ที่ active — engine = "edge" | "omnivoice" """
-        is_edge = (engine == "edge")
-        self._set_text_toggle_active(self.engine_btn_azure, is_edge)
-        self._set_text_toggle_active(self.engine_btn_omni, not is_edge)
 
     def set_base_voice_active(self, voice: str):
         """highlight base voice toggle — voice = "female" | "male" | "premwadee" | "niwat"

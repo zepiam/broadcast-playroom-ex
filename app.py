@@ -74,6 +74,7 @@ class TTSForLivestreamApp(QMainWindow):
     # ★ OBS status — tasklist/EnumWindows หนัก ห้ามรันบน UI thread (ค้าง UI ทุก 3 วิ) → bg + Signal marshal
     _obs_status_sig = Signal(bool)
     _msg_translated = Signal(object)  # ChatMessage (translated)
+    _translate_settled = Signal(object)  # ChatMessage ผ่านขั้นแปลเสร็จแล้ว (จากเธรดแปล → เธรด UI)
     _overlay_started_sig = Signal(bool, int)  # ok, ov_id
     _rvc_loaded_sig = Signal(object, str, str)  # engine, voice_id, index_path
     _rvc_failed_sig = Signal(str)  # error
@@ -81,9 +82,6 @@ class TTSForLivestreamApp(QMainWindow):
     # ★ Now Playing — watcher callback มาจาก background thread → ต้องใช้ Qt Signal marshal ไป main thread
     #   (QTimer.singleShot จาก non-Qt thread ไม่ทำงาน → widget เงียบไปเลย)
     _np_data_sig = Signal(object)  # now playing data dict (full or position update)
-    # ★ OmniVoice load progress — background thread → main thread (update progress bar)
-    _omnivoice_progress_sig = Signal(int, str)  # percent, stage_text
-    _omnivoice_ready_sig = Signal()  # emit เมื่อ OmniVoice โหลดเสร็จ + inject แล้ว
     # ★ Twitch OAuth result — background thread → main thread (เก็บ token)
     _twitch_oauth_result_sig = Signal(object)  # result dict or None
     # ★ Chat echo — background thread (IRC reader) → main thread (add_message)
@@ -113,13 +111,13 @@ class TTSForLivestreamApp(QMainWindow):
         self._open_playroom_sig.connect(self._open_playroom_settings_tab)
         self._obs_status_sig.connect(self._on_obs_status_result)
         self._msg_translated.connect(self._on_msg_translated)
+        self._translate_settled.connect(self._on_translate_settled)
+        self._pending_overlay = {}   # id(tts_msg) → (msg, tts_msg, is_bot) รอแปลเสร็จค่อยส่งไป overlay
         self._overlay_started_sig.connect(self._on_overlay_started_sig)
         self._rvc_loaded_sig.connect(self._on_rvc_loaded)
         self._rvc_failed_sig.connect(self._on_rvc_load_failed)
         self._game_overlay_cmd_sig.connect(self._on_game_overlay_cmd)
         self._np_data_sig.connect(self._on_np_data_sig)
-        self._omnivoice_progress_sig.connect(self._on_omnivoice_progress)
-        self._omnivoice_ready_sig.connect(self._on_omnivoice_ready)
         self._twitch_oauth_result_sig.connect(self._on_twitch_oauth_result)
         self._bot_response_sig.connect(self._on_bot_response)
         self._youtube_oauth_result_sig.connect(self._on_youtube_oauth_result)
@@ -233,15 +231,8 @@ class TTSForLivestreamApp(QMainWindow):
                 except Exception:
                     pass
 
-        # ★ Lite build fallback: ถ้า tts_engine=omnivoice แต่ import torch ไม่ได้ → force edge
-        #   + ล้าง voice_id ที่เป็น RVC model (Lite ไม่มี RVC → status แสดงผิด + ค้าง)
+        # ★ Lite build fallback: ล้าง voice_id ที่เป็น RVC model (Lite ไม่มี RVC → status แสดงผิด + ค้าง)
         #   ★★ ต้องทำก่อน _init_engines เพื่อให้ pipeline config ถูกต้อง
-        if getattr(self.settings, 'tts_engine', 'edge') == "omnivoice":
-            try:
-                import torch  # noqa: F401
-            except ImportError:
-                self.settings.tts_engine = "edge"
-                logger.info("Lite build: torch not available → force edge-tts")
         # ★ ล้าง voice_id ที่เป็น RVC model ถ้าเป็น Lite build (ไม่มี RVC)
         _voice_id = getattr(self.settings, 'voice_id', '')
         if _voice_id and _voice_id not in ('premwadee', 'niwat', ''):
@@ -316,13 +307,17 @@ class TTSForLivestreamApp(QMainWindow):
 
         logger.info("Main window initialized")
 
-        # ★ Auto-load OmniVoice ถ้า settings เป็น omnivoice (เบื้องหลัง + progress bar)
-        if getattr(self.settings, 'tts_engine', 'edge') == 'omnivoice':
-            QTimer.singleShot(2000, self._auto_load_omnivoice)
-
         # ★ Auto-check อัพเดท 5 วินาทีหลังเปิดโปรแกรม
         logger.info("scheduling auto_check_update in 5s")
         QTimer.singleShot(5000, self._auto_check_update)
+
+        # ★ ประวัติแชท (message_history.json) ใหญ่เกิน 1 GB → เด้งถามว่าจะสำรองแล้วล้าง / ล้างเลย / ไว้ก่อน
+        QTimer.singleShot(3500, self._check_history_size)
+        # ★ เปิดโปรแกรมค้างข้ามวัน → ตรวจ/ลบข้อความเก่าเกินกำหนดซ้ำทุก 6 ชั่วโมง
+        self._history_purge_timer = QTimer(self)
+        self._history_purge_timer.setInterval(6 * 3600 * 1000)
+        self._history_purge_timer.timeout.connect(self._purge_old_history)
+        self._history_purge_timer.start()
 
         # ★ Auto-fetch รายชื่อผู้สนับสนุน 8 วินาทีหลังเปิดโปรแกรม (background)
         #   เก็บ cache ไว้ → แสดงตอน user เปิดหน้า สนับสนุน
@@ -364,6 +359,8 @@ class TTSForLivestreamApp(QMainWindow):
         try:
             from message_history import MessageHistory
             self.message_history = MessageHistory(enabled=getattr(self.settings, 'message_history_enabled', True))
+            # ★ ลบตัวข้อความแชทที่เก่ากว่าที่ตั้งไว้ (เก็บกี่วัน) ทันทีตอนเปิดโปรแกรม — ไม่ถาม (ยอดรายคนไม่ถูกลบ)
+            self._purge_old_history()
         except Exception as e:
             logger.warning(f"MessageHistory not available: {e}")
 
@@ -1000,22 +997,21 @@ class TTSForLivestreamApp(QMainWindow):
                 self.audio_player = None
 
         # ★ pipeline (TTS queue manager)
-        self._omnivoice_engine = None  # ★ OmniVoice (lazy load — None = ยังไม่โหลด)
         try:
             from chat_queue import ChatPipeline
             config = self._build_pipeline_config()
-            self.pipeline = ChatPipeline(
-                self.tts_engine, self.audio_player, config,
-                omnivoice_engine=None,  # ★ จะ inject ทีหลังเมื่อโหลดเสร็จ
-            )
+            self.pipeline = ChatPipeline(self.tts_engine, self.audio_player, config)
             if self.settings:
                 self.pipeline.set_filter(self.settings.to_text_filter())
+            # ★ ชื่อที่ TTS จะอ่าน = ชื่อที่ตั้งเองใน User Manager (อ่านสดทุกข้อความ → แก้ชื่อแล้วมีผลทันที)
+            self.pipeline.name_resolver = self._tts_display_name
             self.pipeline.on_status = lambda msg: self._safe_status(msg)
             # ★ TTS status tracking — ไอคอนสถานะริมข้อความ (รอคิว/กำลังอ่าน/อ่านแล้วกี่วิ)
             #   เรียกจาก compute/play thread → marshal ผ่าน signal (thread-safe)
             self.pipeline.on_tts_status = lambda tid, st, info: self._tts_status_sig.emit(tid, st, info)
             # ★ translation callback → re-render chat row (thread-safe via signal)
             self.pipeline.on_translated = lambda msg: self._msg_translated.emit(msg)
+            self.pipeline.on_translate_settled = lambda msg: self._translate_settled.emit(msg)
             # ★ Avatar widget — TTS speaking state (ส่งไป Composer avatar widget แบบ TTS mode)
             self.pipeline.on_playback_start = lambda: self._on_avatar_tts_speaking(True)
             self.pipeline.on_playback_end = lambda: self._on_avatar_tts_speaking(False)
@@ -1028,6 +1024,15 @@ class TTSForLivestreamApp(QMainWindow):
             logger.error(f"Failed to init pipeline: {e}")
             self.pipeline = None
 
+    def _tts_display_name(self, author: str) -> str:
+        """ชื่อที่ TTS ใช้อ่านแทน author — ชื่อที่ตั้งเองใน User Manager (settings.user_renames) ถ้ามี
+        ไม่มี → คืน author เดิม (pipeline เรียกจาก compute thread ทุกข้อความ จึงอ่านสดเสมอ)"""
+        try:
+            renames = getattr(self.settings, 'user_renames', None) or {}
+            return renames.get((author or '').strip().lower()) or author
+        except Exception:
+            return author
+
     def _build_pipeline_config(self):
         """สร้าง PipelineConfig จาก settings (full config — translation + mixed voice + events)"""
         try:
@@ -1037,15 +1042,9 @@ class TTSForLivestreamApp(QMainWindow):
                 return PipelineConfig()
             return PipelineConfig(
                 voice=getattr(s, 'voice_id', ''),
-                # ★ TTS engine choice
-                tts_engine=getattr(s, 'tts_engine', 'edge'),
-                omnivoice_voice=getattr(s, 'omnivoice_voice', 'female'),
                 edge_voice=getattr(s, 'edge_voice', 'premwadee'),
-                omnivoice_skip_enabled=bool(getattr(s, 'omnivoice_skip_enabled', True)),
-                omnivoice_skip_min_length=int(getattr(s, 'omnivoice_skip_min_length', 6)),
-                # ★ EXPERIMENTAL: คำสั้นเดี่ยว → ลองพูดซ้ำ+ตัดก่อน fallback edge-tts
-                omnivoice_short_word_retry=bool(getattr(s, 'omnivoice_short_word_retry', False)),
-                omnivoice_short_word_repeat=int(getattr(s, 'omnivoice_short_word_repeat', 3)),
+                max_wait_seconds=float(getattr(s, 'tts_max_wait_seconds', 45.0) or 0.0),
+                max_msg_length=int(getattr(s, 'max_msg_length', 0) or 0),
                 warn_sound_path=str(getattr(s, 'warn_sound_path', '') or ''),
                 warn_sound_volume=float(getattr(s, 'warn_sound_volume', 0.6)),
                 read_author=getattr(s, 'read_author', True),
@@ -1063,6 +1062,9 @@ class TTSForLivestreamApp(QMainWindow):
                 auto_translate_host=getattr(s, 'auto_translate_host', ''),
                 auto_translate_target_lang=getattr(s, 'auto_translate_target_lang', 'th'),
                 auto_translate_langs=getattr(s, 'auto_translate_langs', ['en', 'ja', 'ko', 'zh', 'vi', 'id']),
+                # ★ บังคับแปลรายคน (ตั้งจาก User Manager) — เดิมไม่ได้ใส่ตรงนี้ ค่าเลยหายทุกครั้งที่ config
+                #   ถูก rebuild (settings เปลี่ยน) และทุกครั้งที่เปิดโปรแกรมใหม่
+                force_translate_users=list(getattr(s, 'force_translate_users', []) or []),
                 # ★ mixed voice
                 mixed_voice_enabled=getattr(s, 'mixed_voice_enabled', False),
                 multilang_enabled=getattr(s, 'multilang_enabled', False),
@@ -1252,9 +1254,7 @@ class TTSForLivestreamApp(QMainWindow):
         self.sidebar.platform_toggle.clicked.connect(self.sidebar.toggle_platforms)
 
         # ═══ Connect sidebar voice controls ═══
-        # ★ voice panel ใหม่ — text toggles (engine + base voice) + RVC combo
-        self.sidebar.engine_btn_azure.clicked.connect(lambda: self._on_engine_toggle("edge"))
-        self.sidebar.engine_btn_omni.clicked.connect(lambda: self._on_engine_toggle("omnivoice"))
+        # ★ voice panel — text toggle (หญิง/ชาย) + RVC combo
         # ★ base voice = text toggle (หญิง/ชาย) — ส่ง voice key ตรงๆ
         self.sidebar.voice_btn_female.clicked.connect(lambda: self._on_base_voice_click("female"))
         self.sidebar.voice_btn_male.clicked.connect(lambda: self._on_base_voice_click("male"))
@@ -1290,6 +1290,14 @@ class TTSForLivestreamApp(QMainWindow):
         self.chat_panel.popout_requested.connect(self._open_popout)
         self.chat_panel.clear_requested.connect(self._clear_chat)
         self.chat_panel.block_user_requested.connect(self._block_user_from_chat)
+        self.chat_panel.event_detail_requested.connect(self._open_event_detail)
+        self.events_panel.event_clicked.connect(self._open_event_detail)
+        self.chat_panel.unblock_user_requested.connect(self._unblock_user)
+        try:
+            from ui.widgets.chat_row import set_block_status_provider
+            set_block_status_provider(self._get_block_status)   # ★ ไอคอน 🚫/🔇 ข้างชื่อคนที่ถูกบล็อก
+        except Exception:
+            pass
         self.chat_panel.author_clicked.connect(self._open_author_modal)
         # ★ font buttons (อยู่ใน chat panel header ไม่ใช่ topbar)
         self.chat_panel.font_dec_btn.clicked.connect(self._decrease_chat_font)
@@ -1449,6 +1457,12 @@ class TTSForLivestreamApp(QMainWindow):
                 pm = {}
                 self.pipeline.config.platform_muted = pm
             pm[platform] = muted
+            if muted:
+                # ★ ปิดเสียงแพลตฟอร์ม = หยุดเสียงที่กำลังอ่านของแพลตฟอร์มนั้นทันที + ล้างคิวของมัน (แพลตฟอร์มอื่นยังอ่านต่อ)
+                try:
+                    self.pipeline.purge_platform(platform)
+                except Exception as exc:
+                    logger.debug(f"purge_platform failed: {exc}")
         label = PLATFORM_LABELS.get(platform, platform)
         state = "ปิด" if muted else "เปิด"
         self.status_bar.set_status(f"🔊 {label}: {state}")
@@ -1471,6 +1485,11 @@ class TTSForLivestreamApp(QMainWindow):
                 pv = {}
                 self.pipeline.config.platform_volumes = pv
             pv[platform] = volume
+            if volume <= 0:      # slider ลากไป 0 = เงียบจริง → หยุดทันทีเหมือนกดปิดเสียง
+                try:
+                    self.pipeline.purge_platform(platform)
+                except Exception as exc:
+                    logger.debug(f"purge_platform failed: {exc}")
 
     # ════════════════════════════════════════════════════════════
     # Platform connect/disconnect
@@ -1928,6 +1947,7 @@ class TTSForLivestreamApp(QMainWindow):
                 self._on_tts_status_ui(_tid, "skipped", {"reason": "TTS ไม่พร้อม"})
 
         # ★ pipeline (TTS queue) — ข้ามบอท + ข้ามคำสั่ง !xxx
+        _defer_overlay = False
         if self.pipeline and getattr(msg, 'event', 'message') == 'message' and not skip_tts:
             try:
                 # ★ strip }color{ prefix สำหรับ TTS โดยใช้ COPY — ไม่แตะ msg ต้นฉบับ
@@ -1944,8 +1964,18 @@ class TTSForLivestreamApp(QMainWindow):
                         _extra['raw_text'] = _extra['raw_text'][_cm.end():]
                     _tts_msg.extra = _extra
                 self.pipeline.enqueue(_tts_msg)
+                # ★ ข้อความต่างภาษาที่กำลังแปลอยู่เบื้องหลัง: แชทในโปรแกรมแสดงต้นฉบับไปแล้ว (บรรทัดบน) และจะถูกแก้เป็นไทยเมื่อแปลเสร็จ
+                #   ส่วน overlay (OBS/Canvas/เกม) รอแปลเสร็จก่อนค่อยส่ง — overlay แสดง "คำแปล + ต้นฉบับ" ตอนส่งครั้งเดียว แก้ทีหลังไม่ได้
+                if (getattr(_tts_msg, 'extra', None) or {}).get('_translate_pending'):
+                    _defer_overlay = True
+                    self._pending_overlay[id(_tts_msg)] = (msg, _tts_msg, is_bot)
             except Exception:
                 pass
+        if not _defer_overlay:
+            self._forward_to_overlays(msg, is_bot)
+
+    def _forward_to_overlays(self, msg, is_bot):
+        """ส่งข้อความไป overlay ทั้งหมด (Canvas composer / OBS overlay / game overlay)"""
         # ★ system messages (สถานะเชื่อมต่อ ✅/⚪/⚠️) → ห้ามส่งไป composer + OBS overlay เด็ดขาด
         is_system = (getattr(msg, 'event', '') == 'system')
         if not is_system:
@@ -1966,6 +1996,22 @@ class TTSForLivestreamApp(QMainWindow):
                     self._game_overlay.add_row(msg)
                 except Exception:
                     pass
+
+    def _on_translate_settled(self, tts_msg):
+        """ขั้นแปลเสร็จแล้ว (สำเร็จหรือไม่ก็ตาม) → ส่งข้อความที่เลื่อนไว้ไป overlay"""
+        entry = self._pending_overlay.pop(id(tts_msg), None)
+        if entry is None:
+            return
+        msg, tts, is_bot = entry
+        if tts is not msg:   # ข้อความที่ถูกทำสำเนา (มี prefix }สี{) — คัดลอกผลแปลกลับไปที่ต้นฉบับที่ overlay ใช้
+            src = getattr(tts, 'extra', None) or {}
+            if src.get('translated'):
+                if msg.extra is None:
+                    msg.extra = {}
+                for key in ('translated', 'translated_text', 'original_text', 'source_lang'):
+                    if key in src:
+                        msg.extra[key] = src[key]
+        self._forward_to_overlays(msg, is_bot)
 
     def _composer_push_emotes(self, msg):
         """สกัด emote จาก message → push ไป Emote Party widget"""
@@ -3334,10 +3380,23 @@ class TTSForLivestreamApp(QMainWindow):
         event_type = getattr(msg, 'event', 'message')
         author = getattr(msg, 'author', '') or ''
         amount = getattr(msg, 'amount', None)
+        # ★ รายละเอียด event (เดือนที่ซับ / ผู้รับ / มูลค่า / ข้อความแนบ) — ใช้ทั้ง log, แผง Events, แถวใน Live Chat
+        try:
+            from event_details import build_info
+            info = build_info(msg)
+        except Exception as exc:
+            logger.warning(f"build_info failed: {exc}")
+            info = None
         # ★ event_log
         if self.event_log:
             try:
-                self.event_log.record(platform, author, event_type, amount)
+                self.event_log.record(
+                    platform, author, event_type, amount,
+                    display_text=(info or {}).get("headline", ""),
+                    system_text=getattr(msg, 'system_text', '') or "",
+                    message=(info or {}).get("message", ""),
+                    detail=info,
+                )
             except Exception:
                 pass
         # ★ donate tracker
@@ -3356,7 +3415,7 @@ class TTSForLivestreamApp(QMainWindow):
         text = author
         if amount:
             text += f" ({amount})"
-        QTimer.singleShot(0, lambda t=event_type, a=text: self.events_panel.add_event(t, a))
+        QTimer.singleShot(0, lambda t=event_type, a=text, i=info: self.events_panel.add_event(t, a, i))
 
         # ★ push to Live Chat + Popout as event row (เหมือน v1 — ไม่ใช่ system message)
         #   แต่ไม่ส่ง overlay/composer (event เป็นของ Live Chat เท่านั้น)
@@ -3380,6 +3439,10 @@ class TTSForLivestreamApp(QMainWindow):
                 event=event_type,
             )
             event_msg.amount = amount or 0
+            if info:
+                # ★ แถว event ใน Live Chat: ใช้สรุปจริง (แทนแค่ชื่อ event) + แนบ info ให้กดดูรายละเอียดได้
+                event_msg.system_text = info.get("headline") or None
+                event_msg.extra = {"event_info": info}
             # ★ แสดงใน Live Chat + Popout เท่านั้น (ไม่ enqueue TTS, ไม่ส่ง overlay)
             self.chat_panel.add_message(event_msg)
             if hasattr(self, '_popout_window') and self._popout_window:
@@ -3469,7 +3532,22 @@ class TTSForLivestreamApp(QMainWindow):
                     self.pipeline.purge_blocked_user(author)
                 except Exception:
                     pass
+        self._refresh_block_icons()
         self._post_system_message(msg)
+
+    def _refresh_block_icons(self):
+        """อัปเดตไอคอนบล็อกในแชท (ทั้งหน้าหลักและ popout)"""
+        try:
+            self.chat_panel.refresh_block_icons()
+        except Exception:
+            pass
+        popout = getattr(self, '_popout_window', None)
+        if popout:
+            for row in list(getattr(popout, '_rows', [])):
+                try:
+                    row.refresh_block_status()
+                except Exception:
+                    pass
 
     def _update_viewer_ui(self):
         """อัปเดตยอดคนดู — chat panel + popout + viewer overlay + composer + การ์ดแพลตฟอร์ม
@@ -3514,6 +3592,18 @@ class TTSForLivestreamApp(QMainWindow):
 
     def _on_msg_translated(self, msg):
         """re-render chat row เมื่อข้อความถูกแปลแล้ว (แสดงคำแปล + ต้นฉบับ)"""
+        # ★ ข้อความที่ pipeline ได้รับเป็น "สำเนา" (เช่นขึ้นต้นด้วย }สี{ ที่ตัด prefix ออกก่อนส่ง TTS) → หาแถวในแชทด้วยตัวต้นฉบับ
+        #   (เดิมหาไม่เจอด้วย identity แล้วเดาจากชื่อผู้ส่ง — พลาดได้ถ้าคนเดียวส่งหลายข้อความติดกัน)
+        entry = self._pending_overlay.get(id(msg))
+        if entry is not None and entry[0] is not msg:
+            orig = entry[0]
+            src = getattr(msg, 'extra', None) or {}
+            if orig.extra is None:
+                orig.extra = {}
+            for key in ('translated', 'translated_text', 'original_text', 'source_lang'):
+                if key in src:
+                    orig.extra[key] = src[key]
+            msg = orig
         # ★ main chat
         for row in self.chat_panel._rows:
             if getattr(row, 'msg', None) is msg:
@@ -3570,7 +3660,7 @@ class TTSForLivestreamApp(QMainWindow):
         """ตรวจว่าเป็น Full build (มี torch + RVC) ไหม
 
         ★ เกณฑ์: import torch + rvc_engine ได้ = Full build
-          ถ้า import ไม่ได้ = Lite build (ไม่มี RVC/OmniVoice)
+          ถ้า import ไม่ได้ = Lite build (ไม่มี RVC)
         """
         try:
             import torch  # noqa: F401
@@ -3580,22 +3670,14 @@ class TTSForLivestreamApp(QMainWindow):
             return False
 
     def _populate_base_voices(self):
-        """อัปเดต text labels ของ base voice ตาม engine toggle
+        """เติม combo ซ่อนของ base voice (edge-tts หญิง/ชาย)
 
-        ★ Azure (edge): "หญิง" / "ชาย" (label เดียวกัน — เปลี่ยนเฉพาะ data ใต้ดิน)
-        ★ Omni: "หญิง" / "ชาย"
-        ★ ไม่ต้อง repopulate combo แล้ว (ใช้ text toggle 2 ตัว)
+        ★ UI จริงเป็น text toggle "หญิง | ชาย" ใน sidebar — combo นี้เก็บ data ไว้ให้ settings dialog/compat
         """
-        # ★ เก็บ data ใน combo ซ่อนไว้ (compat — settings dialog sync ยังใช้ combo)
-        engine = getattr(self.settings, 'tts_engine', 'edge') if self.settings else 'edge'
         self.sidebar.base_voice_combo.blockSignals(True)
         self.sidebar.base_voice_combo.clear()
-        if engine == "omnivoice":
-            self.sidebar.base_voice_combo.addItem("หญิง", "female")
-            self.sidebar.base_voice_combo.addItem("ชาย", "male")
-        else:
-            self.sidebar.base_voice_combo.addItem("หญิง (Premwadee)", "premwadee")
-            self.sidebar.base_voice_combo.addItem("ชาย (Niwat)", "niwat")
+        self.sidebar.base_voice_combo.addItem("หญิง (Premwadee)", "premwadee")
+        self.sidebar.base_voice_combo.addItem("ชาย (Niwat)", "niwat")
         self.sidebar.base_voice_combo.blockSignals(False)
 
     def _populate_rvc_combo(self):
@@ -3611,15 +3693,7 @@ class TTSForLivestreamApp(QMainWindow):
         """เลือก base voice จาก settings → highlight text toggle + sync combo ซ่อน"""
         if not self.settings:
             return
-        engine = getattr(self.settings, 'tts_engine', 'edge')
-        if engine == "omnivoice":
-            target = getattr(self.settings, 'omnivoice_voice', 'female')
-        else:
-            target = getattr(self.settings, 'edge_voice', 'premwadee')
-        # ★ normalize: child → female (เสียงเด็กเอาออกแล้ว)
-        if target == "child":
-            target = "female"
-            self.settings.omnivoice_voice = "female"
+        target = getattr(self.settings, 'edge_voice', 'premwadee')
         # ★ highlight text toggle
         self.sidebar.set_base_voice_active(target)
         # ★ sync combo ซ่อน (compat)
@@ -3654,25 +3728,12 @@ class TTSForLivestreamApp(QMainWindow):
         is_full = self._is_full_build()
         s = self.settings
         # ★ แสดง/ซ่อน container ตาม build
-        self.sidebar.engine_toggle_container.setVisible(is_full)
         self.sidebar.rvc_container.setVisible(is_full)
         self.sidebar.voice_download_btn.setVisible(is_full)
         self.sidebar.voice_refresh_btn.setVisible(is_full)
         # ★ ซ่อน separator "|" ด้วยถ้าไม่มีปุ่มดาวโหลด (Lite)
         if hasattr(self.sidebar, 'voice_btn_sep'):
             self.sidebar.voice_btn_sep.setVisible(is_full)
-        # ★ Lite build ที่มี OmniVoice → โชว์ toggle (พิเศษ: dev mode ที่ลง omnivoice แยก)
-        if not is_full:
-            try:
-                from omnivoice_engine import is_omnivoice_available
-                if is_omnivoice_available():
-                    self.sidebar.engine_toggle_container.setVisible(True)
-                    # ★ ซ่อนกล่อง RVC แต่โชว์ toggle ได้ (ไม่มีโมเดล RVC)
-            except Exception:
-                pass
-        # ★ restore toggle state
-        engine = getattr(s, 'tts_engine', 'edge') if s else 'edge'
-        self.sidebar.set_engine_active(engine)
         # ★ repopulate combos
         self._populate_base_voices()
         self._populate_rvc_combo()
@@ -3690,9 +3751,7 @@ class TTSForLivestreamApp(QMainWindow):
                 self.sidebar.rvc_status.setText(f"⏳ กำลังโหลด {voice_id}...")
                 self.sidebar.rvc_status.setStyleSheet("color: #f59e0b; font-size: 13px;")
                 self.sidebar.rvc_combo.setEnabled(False)
-                # ★ หน่วงเวลา RVC load ถ้า tts_engine=omnivoice (รอ OmniVoice โหลดเสร็จก่อน กัน GPU race)
-                delay = 5000 if getattr(s, 'tts_engine', 'edge') == 'omnivoice' else 1000
-                QTimer.singleShot(delay, lambda: self._auto_load_rvc(voice_id))
+                QTimer.singleShot(1000, lambda: self._auto_load_rvc(voice_id))
 
     def _find_rvc_path(self, voice_id: str):
         """หา path ของ RVC model (.pth) — return path หรือ None (DRY helper)"""
@@ -3729,83 +3788,18 @@ class TTSForLivestreamApp(QMainWindow):
         """คืนสถานะเป็น Premwadee (compat — เรียก _sync_voice_status_label แทน)"""
         self._sync_voice_status_label()
 
-    def _on_engine_toggle(self, engine: str):
-        """toggle Azure/Omni — เปลี่ยน tts_engine + repopulate base voice
-
-        ★ engine: "edge" (Azure) หรือ "omnivoice" (Omni)
-        """
-        if not self.settings:
-            return
-        # ★ ถ้า Omni ไม่ available → บล็อก (revert UI)
-        #   ★★ retry 3 ครั้งเพราะ RVC loading อาจทำให้ torch import ค้างชั่วคราว
-        if engine == "omnivoice":
-            import time as _time
-            omni_ok = False
-            for attempt in range(3):
-                try:
-                    from omnivoice_engine import is_omnivoice_available
-                    if is_omnivoice_available():
-                        omni_ok = True
-                        break
-                except Exception:
-                    pass
-                _time.sleep(0.5)
-            if not omni_ok:
-                # ★ debug: log สาเหตุจริง
-                try:
-                    import torch
-                    torch_ok = True
-                except Exception as e:
-                    torch_ok = f"FAIL: {e}"
-                try:
-                    import omnivoice
-                    omni_imp = True
-                except Exception as e:
-                    omni_imp = f"FAIL: {type(e).__name__}: {e}"
-                logger.error(f"OmniVoice not available (3 retries) — torch={torch_ok}, omnivoice={omni_imp}")
-                self.sidebar.set_engine_active("edge")
-                self.status_bar.set_status("⚠ OmniVoice ไม่พร้อมใช้งาน (อาจกำลังโหลด RVC อยู่ ลองใหม่อีกครั้ง)")
-                return
-        self.settings.tts_engine = engine
-        # ★ update UI toggle highlight
-        self.sidebar.set_engine_active(engine)
-        # ★ repopulate base voice combo (เพราะเปลี่ยนตัวเลือก)
-        self._populate_base_voices()
-        self._select_current_base_voice()
-        # ★ sync pipeline config
-        if self.pipeline:
-            self.pipeline.config.tts_engine = engine
-        # ★ lazy-load OmniVoice ถ้าเลือก Omni
-        if engine == "omnivoice":
-            self._ensure_omnivoice_loaded()
-        # ★ update status
-        self._sync_voice_status_label()
-        # ★ sync settings dialog ด้วย (ถ้าเปิดอยู่)
-        self._sync_settings_dialog_voice()
-        self._save_settings()
-
     def _on_base_voice_click(self, voice_key: str):
         """user คลิก text toggle หญิง/ชาย — voice_key = "female" | "male"
 
-        ★ แปลงเป็นค่าที่ engine ใช้:
-          Omni: female/male (ตรงๆ)
-          Azure: female→premwadee, male→niwat
+        ★ แปลงเป็นค่า edge-tts: female→premwadee, male→niwat
         """
         if not self.settings:
             return
-        engine = getattr(self.settings, 'tts_engine', 'edge')
-        if engine == "omnivoice":
-            self.settings.omnivoice_voice = voice_key  # "female" / "male"
-            if self.pipeline:
-                self.pipeline.config.omnivoice_voice = voice_key
-            # ★ sync combo ซ่อน
-            target = voice_key
-        else:
-            edge_val = "premwadee" if voice_key == "female" else "niwat"
-            self.settings.edge_voice = edge_val
-            if self.pipeline:
-                self.pipeline.config.edge_voice = edge_val
-            target = edge_val
+        edge_val = "premwadee" if voice_key == "female" else "niwat"
+        self.settings.edge_voice = edge_val
+        if self.pipeline:
+            self.pipeline.config.edge_voice = edge_val
+        target = edge_val
         # ★ highlight text toggle
         self.sidebar.set_base_voice_active(target)
         # ★ sync combo ซ่อน (compat)
@@ -3887,25 +3881,17 @@ class TTSForLivestreamApp(QMainWindow):
         if not self.settings:
             return
         voice_id = getattr(self.settings, 'voice_id', '')
-        engine = getattr(self.settings, 'tts_engine', 'edge')
         # ★ RVC active → แสดงชื่อโมเดล + base engine (เลือกโมเดลจาก dropdown = RVC อยู่แล้ว ไม่ต้องบอก)
         if voice_id and voice_id not in ('premwadee', 'niwat'):
-            base_label = "Omni" if engine == "omnivoice" else "Azure"
-            voice_label = f"{voice_id} ({base_label})"
+            voice_label = f"{voice_id} (Azure)"
             status_text = f"🎤 เสียง: {voice_label}"
             self.sidebar.rvc_status.setText(f"✅ {voice_label}")
         else:
             # ★ base voice เท่านั้น
-            if engine == "omnivoice":
-                ov = getattr(self.settings, 'omnivoice_voice', 'female')
-                label = "หญิง" if ov == "female" else "ชาย"
-                status_text = f"🎤 เสียง: OmniVoice ({label})"
-                self.sidebar.rvc_status.setText(f"✅ OmniVoice ({label})")
-            else:
-                ev = getattr(self.settings, 'edge_voice', 'premwadee')
-                label = "Premwadee (หญิง)" if ev == "premwadee" else "Niwat (ชาย)"
-                status_text = f"🎤 เสียง: {label} (Azure)"
-                self.sidebar.rvc_status.setText(f"✅ {label} (Azure)")
+            ev = getattr(self.settings, 'edge_voice', 'premwadee')
+            label = "Premwadee (หญิง)" if ev == "premwadee" else "Niwat (ชาย)"
+            status_text = f"🎤 เสียง: {label} (Azure)"
+            self.sidebar.rvc_status.setText(f"✅ {label} (Azure)")
         self.sidebar.rvc_status.setStyleSheet("color: #10b981; font-size: 13px;")
         self.status_bar.set_status(status_text)
 
@@ -3918,22 +3904,11 @@ class TTSForLivestreamApp(QMainWindow):
         if s is None:
             return
         try:
-            # ★ engine radio
-            if s.tts_engine == "omnivoice":
-                dlg.tts_engine_omni.setChecked(True)
-            else:
-                dlg.tts_engine_edge.setChecked(True)
             # ★ edge voice combo
             ev = getattr(s, 'edge_voice', 'premwadee')
             for i in range(dlg.edge_voice_combo.count()):
                 if dlg.edge_voice_combo.itemData(i) == ev:
                     dlg.edge_voice_combo.setCurrentIndex(i)
-                    break
-            # ★ omnivoice voice combo
-            ov = getattr(s, 'omnivoice_voice', 'female')
-            for i in range(dlg.omnivoice_voice_combo.count()):
-                if dlg.omnivoice_voice_combo.itemData(i) == ov:
-                    dlg.omnivoice_voice_combo.setCurrentIndex(i)
                     break
         except Exception as e:
             logger.debug(f"sync settings dialog voice: {e}")
@@ -3946,42 +3921,6 @@ class TTSForLivestreamApp(QMainWindow):
         except Exception:
             pass
 
-    def _ensure_omnivoice_loaded(self):
-        """lazy-load OmniVoice engine — delegate ให้ _auto_load_omnivoice (มี progress bar)
-
-        ★ กันโหลดซ้ำ: ถ้ากำลังโหลดอยู่แล้ว → return
-        """
-        if self._omnivoice_engine is not None:
-            return  # โหลดแล้ว
-        # ★ กัน double-load (ถ้า _auto_load_omnivoice ทำงานอยู่แล้ว)
-        if getattr(self, '_omnivoice_loading', False):
-            return
-        self._omnivoice_loading = True
-        # ★ delegate ให้ _auto_load_omnivoice (มี progress bar ทุก stage)
-        self._auto_load_omnivoice()
-
-    def _on_omnivoice_loaded(self):
-        """OmniVoice โหลดเสร็จ (main thread)
-
-        ★ เดิม set rvc_status ตรงๆ เป็น "OmniVoice (เสียง)" เสมอ — ถ้ามี RVC model
-        ถูกเลือกไว้อยู่แล้ว (voice_id) ป้ายจะถูกเขียนทับ ทำให้ดูเหมือน RVC ไม่ได้ใช้งาน
-        ทั้งที่จริงยังใช้อยู่ (แค่ป้ายบอกผิด) → ใช้ _sync_voice_status_label() แทน ซึ่งเช็ค
-        voice_id ก่อนว่ามี RVC model ที่ควรโชว์ชื่อหรือไม่
-        """
-        self.status_bar.set_status(f"✅ OmniVoice พร้อม")
-        self._sync_voice_status_label()
-
-    def _on_omnivoice_failed(self, error):
-        """OmniVoice โหลดล้มเหลว (main thread) → fallback edge-tts"""
-        self.status_bar.set_status(f"❌ OmniVoice ล้มเหลว: {error} → ใช้ edge-tts")
-        self.sidebar.rvc_status.setText("✅ Premwadee (edge-tts)")
-        self.sidebar.rvc_status.setStyleSheet("color: #10b981; font-size: 13px;")
-        # ★ fallback เป็น edge-tts
-        self.settings.tts_engine = "edge"
-        if self.pipeline:
-            self.pipeline.config.tts_engine = "edge"
-
-    # ═══ Auto-load OmniVoice with progress bar ═══
     def _auto_check_update(self):
         """Auto-check อัพเดทหลังเปิดโปรแกรม 5 วินาที
 
@@ -4571,103 +4510,6 @@ class TTSForLivestreamApp(QMainWindow):
         """เปิด Settings ไปที่หน้าสนับสนุน"""
         self._open_settings_at_section("supporters")
 
-    def _auto_load_omnivoice(self):
-        """auto-load OmniVoice ตอนเปิดโปรแกรม (เบื้องหลัง + progress bar)
-
-        ★ pipeline เริ่มต้นใช้ edge-tts (fallback) จนกว่า OmniVoice จะพร้อม
-          → user ใช้งาน TTS ได้ทันที (เสียง edge-tts) สักครู่ OmniVoice จะพร้อม
-        """
-        if self._omnivoice_engine is not None:
-            return  # โหลดแล้ว
-        try:
-            from omnivoice_engine import is_omnivoice_available
-            if not is_omnivoice_available():
-                logger.info("OmniVoice not available — using edge-tts")
-                return
-        except ImportError:
-            return
-        # ★ show progress bar
-        self.status_bar.show_progress()
-        self.status_bar.set_progress(0, "กำลังเตรียม OmniVoice...")
-        # ★ import ใน main thread ก่อน (กัน PyInstaller thread import issue)
-        try:
-            from omnivoice_engine import OmniVoiceEngine
-        except ImportError as e:
-            self._omnivoice_progress_sig.emit(-1, f"❌ OmniVoice import fail: {e}")
-            return
-        # ★ load in background thread
-        def _bg():
-            try:
-                # ★ manual __init__ fields (เพื่อใช้ load_with_progress)
-                import threading, collections
-                engine = OmniVoiceEngine.__new__(OmniVoiceEngine)
-                engine._instruct = getattr(self.settings, 'omnivoice_voice', 'female')
-                engine._device = 'cuda:0'
-                engine._model = None
-                engine._loaded = False
-                engine._lock = threading.Lock()
-                # ★ TTS quality params (ต้องตรงกับ OmniVoiceEngine.__init__)
-                engine._language = "Thai"
-                engine._speed = 1.0
-                engine._normalize_text = True
-                # ★ init audio cache (เพราะ __new__ ข้าม __init__)
-                engine._audio_cache = collections.OrderedDict()
-                engine._audio_cache_max = 200
-                engine._audio_cache_ttl = 300.0
-                engine._max_cache_text_len = 80
-                import torch
-                engine._torch = torch
-                if not torch.cuda.is_available():
-                    engine._device = 'cpu'
-                engine._dtype = torch.float16
-                # ★ load with progress callback → emit signal (main thread)
-                def _on_progress(pct, text):
-                    self._omnivoice_progress_sig.emit(pct, text)
-                engine.load_with_progress(on_progress=_on_progress)
-                self._omnivoice_engine = engine
-                if self.pipeline:
-                    self.pipeline.omnivoice = engine
-                self._omnivoice_ready_sig.emit()
-            except Exception as e:
-                logger.error(f"Auto OmniVoice load failed: {e}")
-                self._omnivoice_progress_sig.emit(-1, f"❌ OmniVoice ล้มเหลว: {e}")
-        import threading
-        threading.Thread(target=_bg, name="OmniVoiceAutoLoad", daemon=True).start()
-
-    def _on_omnivoice_progress(self, percent: int, text: str):
-        """slot: OmniVoice load progress update (main thread) → update progress bar"""
-        if percent < 0:
-            # ★ error
-            self._omnivoice_loading = False  # ★ รีเซ็ต flag
-            self.status_bar.hide_progress()
-            self.status_bar.set_status(text)
-            self.sidebar.rvc_status.setText("✅ edge-tts (fallback)")
-            self.sidebar.rvc_status.setStyleSheet("color: #10b981; font-size: 13px;")
-            self.settings.tts_engine = "edge"
-            if self.pipeline:
-                self.pipeline.config.tts_engine = "edge"
-            return
-        self.status_bar.set_progress(percent, f"🎤 OmniVoice: {text}")
-
-    def _on_omnivoice_ready(self):
-        """slot: OmniVoice โหลดเสร็จ (main thread) → hide progress + update status"""
-        self._omnivoice_loading = False  # ★ รีเซ็ต flag
-        self.status_bar.hide_progress()
-        ov = getattr(self.settings, 'omnivoice_voice', 'female')
-        # ★ sync pipeline config (เปลี่ยน base engine เป็น omnivoice ตอนนี้)
-        if self.pipeline:
-            self.pipeline.config.tts_engine = "omnivoice"
-            self.pipeline.config.omnivoice_voice = ov
-        self.status_bar.set_status(f"✅ OmniVoice พร้อม ({ov})")
-        # ★ update sidebar status (ถ้ามี RVC อยู่ → แสดงชื่อโมเดล + Omni)
-        voice_id = getattr(self.settings, 'voice_id', '')
-        if voice_id and voice_id not in ('premwadee', 'niwat', ''):
-            self.sidebar.rvc_status.setText(f"✅ {voice_id} (Omni)")
-        else:
-            self.sidebar.rvc_status.setText(f"✅ OmniVoice ({ov})")
-        self.sidebar.rvc_status.setStyleSheet("color: #10b981; font-size: 13px;")
-        logger.info("OmniVoice auto-loaded and ready")
-
     def _on_rvc_loaded(self, engine, voice_id, index_path):
         """RVC โหลดเสร็จ (main thread)"""
         self._rvc_loading = False
@@ -4679,10 +4521,6 @@ class TTSForLivestreamApp(QMainWindow):
             self.pipeline.set_rvc(engine, voice_id, index_path)
         # ★ sync status label (DRY)
         self._sync_voice_status_label()
-        # ★ ถ้า base engine = OmniVoice → ensure โหลดแล้ว (เผื่อเลือก RVC ทีหลัง)
-        base_engine = getattr(self.settings, 'tts_engine', 'edge')
-        if base_engine == "omnivoice":
-            self._ensure_omnivoice_loaded()
 
     def _on_rvc_load_failed(self, error):
         """RVC โหลดล้มเหลว (main thread)"""
@@ -4887,6 +4725,8 @@ class TTSForLivestreamApp(QMainWindow):
                     self._stop_twitch_bot(_plat)
         # ★ re-register hotkeys (เผื่อ user เปลี่ยน hotkey ใน settings)
         self._reregister_hotkeys()
+        # ★ รายชื่อบล็อกอาจถูกแก้ใน settings → อัปเดตไอคอนในแชท
+        self._refresh_block_icons()
         # ★ re-call OBS WebSocket watcher (เผื่อ user เปิด/ปิด หรือเปลี่ยน host/port/password)
         self._obs_ws_auto_refresh()
         # ★ sync translate mode ไป TopBar (เผื่อ user เปลี่ยนโหมดใน settings → ปุ่มต้องซ่อน/แสดง)
@@ -4919,13 +4759,6 @@ class TTSForLivestreamApp(QMainWindow):
     def _open_ngreplace(self):
         from ui.dialogs.ngreplace import NGReplaceDialog
         dlg = NGReplaceDialog(self)
-        dlg.exec()
-
-    def _open_omni_skip(self):
-        """เปิด OmniVoice Word Skip editor"""
-        from ui.dialogs.omni_skip import OmniSkipDialog
-        dlg = OmniSkipDialog(self)
-        dlg.settings_changed.connect(self._on_settings_changed)
         dlg.exec()
 
     def _open_popout(self):
@@ -4993,6 +4826,52 @@ class TTSForLivestreamApp(QMainWindow):
         state = "เปิด" if self.settings.auto_translate_enabled else "ปิด"
         self.status_bar.set_status(f"🌐 การแปลอัตโนมัติ: {state}")
 
+    def _purge_old_history(self):
+        """ลบตัวข้อความแชทที่เก่ากว่า settings.message_history_keep_days วัน (0 = ไม่ลบ) — เงียบ ไม่ถาม"""
+        mh = getattr(self, 'message_history', None)
+        days = int(getattr(getattr(self, 'settings', None), 'message_history_keep_days', 0) or 0)
+        if mh is None or days <= 0:
+            return
+        try:
+            removed = mh.purge_older_than(days)
+            if removed:
+                logger.info(f"chat history: removed {removed:,} messages older than {days} days")
+        except Exception as exc:
+            logger.warning(f"chat history purge failed: {exc}")
+
+    def _check_history_size(self):
+        """หลังเปิดโปรแกรม: ไฟล์ประวัติแชทใหญ่เกินเกณฑ์ (1 GB) → เปิดหน้าต่างให้เลือกสำรอง/ล้าง
+
+        ล้าง = ลบเฉพาะ "ตัวข้อความแชท" — ยอดข้อความ/แพลตฟอร์ม/ยอดโดเนท-ซับของแต่ละคนยังอยู่ครบ (ดู message_history.clear_chat_text)
+        """
+        mh = getattr(self, 'message_history', None)
+        if mh is None:
+            return
+        try:
+            from message_history import WARN_BYTES
+            size = mh.file_size()
+            if size < WARN_BYTES:
+                return
+            logger.warning(f"message history file is {size / 1024 ** 3:.2f} GB — asking the user")
+            from ui.dialogs.history_size_dialog import HistorySizeDialog
+            dlg = HistorySizeDialog(mh, self, size)
+            dlg.exec()
+            if dlg.cleared:
+                self._post_system_message("🧹 ล้างประวัติข้อความแชทแล้ว (ยอดรายคน/แพลตฟอร์ม/ยอดสนับสนุน ยังอยู่ครบ)")
+        except Exception as exc:
+            logger.warning(f"history size check failed: {exc}")
+
+    def _open_event_detail(self, info):
+        """เปิดหน้ารายละเอียด event (กดจากแผง Events หรือแถว event ใน Live Chat)"""
+        if not info:
+            return
+        try:
+            from ui.dialogs.event_detail import EventDetailDialog
+            dlg = EventDetailDialog(info, self, on_open_profile=self._open_author_modal)
+            dlg.exec()
+        except Exception as exc:
+            logger.warning(f"open event detail failed: {exc}")
+
     def _open_author_modal(self, author):
         """เปิด Author Modal — สถิติ + donate + history + actions"""
         from ui.dialogs.author_modal import AuthorModal
@@ -5030,6 +4909,7 @@ class TTSForLivestreamApp(QMainWindow):
                     self.pipeline.set_filter(self.settings.to_text_filter())
                 except Exception:
                     pass
+            self._refresh_block_icons()
             self._post_system_message(f"✅ ปลดบล็อก {author}")
 
     def _get_block_status(self, author):

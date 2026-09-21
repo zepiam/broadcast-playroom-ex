@@ -266,29 +266,14 @@ class AppSettings:
 
     # ---- reading ----
     voice_id: str = BASE_VOICE_ID  # "premwadee" หรือ rvc model id
-    # ★ TTS engine choice — "edge" (edge-tts, online) | "omnivoice" (offline, zero-shot, RTX only)
-    #   default = "omnivoice" สำหรับ Full build (มี torch); Lite build จะ fallback เป็น "edge" อัตโนมัติ
-    tts_engine: str = "omnivoice"
-    # ★ OmniVoice voice design — "male" | "female" | "child" | "auto"
-    omnivoice_voice: str = "female"
+    # ★ TTS engine — ตอนนี้มีเฉพาะ "edge" (edge-tts) — ระบบ OmniVoice ถูกถอดออกแล้ว (2026-09)
+    #   เก็บ field นี้ไว้เผื่อนำ engine อื่นกลับมาในอนาคต; ค่าอื่นที่ค้างในไฟล์เก่าจะถูกบังคับเป็น "edge"
+    #   (ไฟล์สำรอง OmniVoice: ..\omnivoice_removed_backup_2026-09-20)
+    tts_engine: str = "edge"
     # ★ edge-tts voice — "premwadee" (หญิง) | "niwat" (ชาย)
     edge_voice: str = "premwadee"
-    # ★ OmniVoice short word policy — คำเดี่ยวสั้นกว่า min_length → ไม่อ่านด้วย OmniVoice เสมอ
-    #   0 = ปิด (อ่านทุกคำ)
-    omnivoice_skip_enabled: bool = True  # ★ default ON — คนไม่ชอบไปกดปิดเอง
-    # ★ 5 → 6: ทดสอบจริง 124 คำ + ตรวจด้วย Thai ASR อัตโนมัติ พบว่าอัตราล้มเหลวยังสูงถึง 25%
-    #   ที่ความยาว 5 ตัวอักษร ลดฮวบเหลือ ~6% ตั้งแต่ 6 ตัวอักษรขึ้นไป
-    omnivoice_skip_min_length: int = 6
-    # ★ EXPERIMENTAL: คำสั้นเดี่ยว → ลองให้ OmniVoice อ่านเอง (เจนซ้ำหลายครั้งเลือกไฟล์ที่ยาว
-    #   ที่สุด — ดู OmniVoiceEngine.generate_best_of_n) แทนสลับไป edge-tts ตรงๆ
-    #   ★ ปิดกลับเป็น default — วิธีนี้แก้ได้แค่เคส "เสียงสั้นผิดปกติ" (สุ่มพัง ~6-20%)
-    #   แต่มีอีกเคสที่พบภายหลัง: คำอุทาน/คำแสดงอารมณ์บางคำ (เช่น "งง", "โห", "อื้ม") โมเดิล
-    #   ออกเสียงผิดสม่ำเสมอทุกรอบ (ความยาวปกติ แต่เนื้อเสียงเพี้ยน) — เจนซ้ำเลือกยาวสุดช่วย
-    #   ไม่ได้เลยเพราะทุกรอบยาวเท่ากันหมด ต้องใช้ ASR ตรวจเนื้อหาจริงถึงจะจับได้ (ยังไม่ทำ)
-    #   → กลับไปใช้ทาง fallback edge-tts ตรงๆ ที่เสถียรกว่าและเข้าใจง่ายกว่าแทน
-    omnivoice_short_word_retry: bool = False
-    # ★ จำนวนครั้งที่เจนซ้ำก่อนเลือกอันยาวสุด (2-5) — ปรับได้จาก Settings โดยไม่ต้อง build ใหม่
-    omnivoice_short_word_repeat: int = 3
+    # ★ แชททั่วไปที่รอคิวอ่านนานเกินนี้ (วินาที) → ข้าม ไม่อ่าน (0 = ไม่จำกัด) — event โดเนท/ซับไม่ถูกข้าม
+    tts_max_wait_seconds: float = 45.0
     read_author: bool = False  # ★ default = อ่านแต่ข้อความเท่านั้น (อ่านชื่อเป็นตัวเลือก)
     read_message: bool = True
     # ★ อ่านข้อความที่เราพิมพ์บนหน้าเว็บ (Twitch/KICK) — default เปิด (อ่านเสมอ)
@@ -376,8 +361,7 @@ class AppSettings:
     obs_ws_port: int = 4455
     obs_ws_password: str = ""
     # ── Supporters API (ดึงรายชื่อผู้สนับสนุน + admin) ──
-    supporters_api_url: str = "https://men9ch.com/api"  # base URL (api.php/submit.php/approve.php)
-    supporters_admin_secret: str = ""  # admin secret (ดูจาก config.php บน server)
+    supporters_api_url: str = "https://men9ch.com/api"  # base URL (api.php/submit.php)
     overlay_animation: str = "fade"  # หนึ่งใน OVERLAY_ANIMATIONS (เข้า)
     overlay_exit_animation: str = "fade_out"  # หนึ่งใน OVERLAY_EXIT_ANIMATIONS (ออก)
     overlay_font_size: int = 18   # px (12-48)
@@ -697,7 +681,11 @@ class AppSettings:
     force_translate_users: list = field(default_factory=list)
     # message history (viewer profile modal)
     message_history_enabled: bool = True
-    message_history_retention: str = "all"  # "all" | "today"
+    message_history_retention: str = "all"  # (เดิม — ไม่ได้ใช้แล้ว; ดู message_history_keep_days)
+    # ★ เก็บ "ตัวข้อความแชท" ไว้กี่วัน — เกินนี้ลบทิ้งอัตโนมัติทุกครั้งที่เปิดโปรแกรม (ไม่ถาม) 0 = เก็บไม่จำกัด
+    #   ยอดข้อความ/แพลตฟอร์ม/วันที่มา รายคน + ยอดโดเนท/ซับ ไม่ถูกลบ (เก็บแยกจากตัวข้อความ)
+    #   ★ ผู้ใช้ใหม่ = 5 วัน; ผู้ใช้เดิมที่ไฟล์ settings ยังไม่มีค่านี้ = 0 (ไม่จำกัด เหมือนที่เคยเป็น) จนกว่าจะไปตั้งเอง
+    message_history_keep_days: int = 5
 
     # ---- events panel (ฝั่งขวาของแชท) ----
     # จำสถานะหุบ/ขยายของแผง Events ใน main window (default ขยาย)
@@ -803,12 +791,8 @@ class AppSettings:
             "youtube_quota_reset_at": float(self.youtube_quota_reset_at),
             "voice_id": self.voice_id,
             "tts_engine": self.tts_engine,
-            "omnivoice_voice": self.omnivoice_voice,
             "edge_voice": self.edge_voice,
-            "omnivoice_skip_enabled": bool(self.omnivoice_skip_enabled),
-            "omnivoice_skip_min_length": int(self.omnivoice_skip_min_length),
-            "omnivoice_short_word_retry": bool(self.omnivoice_short_word_retry),
-            "omnivoice_short_word_repeat": int(self.omnivoice_short_word_repeat),
+            "tts_max_wait_seconds": float(self.tts_max_wait_seconds),
             "read_author": self.read_author,
             "read_message": self.read_message,
             "read_own_web_messages": self.read_own_web_messages,
@@ -864,7 +848,6 @@ class AppSettings:
             "obs_ws_port": self.obs_ws_port,
             "obs_ws_password": self.obs_ws_password,
             "supporters_api_url": self.supporters_api_url,
-            "supporters_admin_secret": self.supporters_admin_secret,
             "overlay_animation": self.overlay_animation,
             "overlay_exit_animation": self.overlay_exit_animation,
             "overlay_font_size": self.overlay_font_size,
@@ -1045,6 +1028,7 @@ class AppSettings:
             "force_translate_users": list(self.force_translate_users),
             "message_history_enabled": self.message_history_enabled,
             "message_history_retention": self.message_history_retention,
+            "message_history_keep_days": int(self.message_history_keep_days),
             "events_panel_collapsed": self.events_panel_collapsed,
             "events_shown": list(self.events_shown),
             "events_popout_collapsed": self.events_popout_collapsed,
@@ -1191,35 +1175,22 @@ class AppSettings:
             s.youtube_quota_reset_at = float(data["youtube_quota_reset_at"])
         if "voice_id" in data:
             s.voice_id = data["voice_id"]
-        if "tts_engine" in data:
-            s.tts_engine = str(data["tts_engine"])
-        # ★ Lite build fallback ถูกจัดการที่ runtime (ไม่ใช่ settings load time)
-        #   เพราะ PyInstaller frozen exe อาจยังไม่พร้อม import torch ตอน load_settings
-        if "omnivoice_voice" in data:
-            # ★ migration: "auto" ถูกลบออกแล้ว → default เป็น "female"
-            ov = str(data["omnivoice_voice"])
-            s.omnivoice_voice = ov if ov in ("female", "male", "child") else "female"
+        # ★ OmniVoice ถูกถอดออกแล้ว → ค่า tts_engine อื่นที่ค้างในไฟล์เก่า (เช่น "omnivoice") บังคับเป็น "edge"
+        #   และ key omnivoice_* จะไม่ถูกอ่าน (หายไปเองตอนบันทึกครั้งถัดไป)
         if "edge_voice" in data:
             s.edge_voice = str(data["edge_voice"])
-        if "omnivoice_skip_enabled" in data:
+        if str(data.get("tts_engine", "edge")) != "edge":
+            # ผู้ใช้เดิมที่เลือกเพศเสียงไว้ที่ OmniVoice → ย้ายมาเป็นเสียง edge เพศเดียวกัน (ครั้งเดียว)
+            if str(data.get("omnivoice_voice", "")) == "male":
+                s.edge_voice = "niwat"
+            elif str(data.get("omnivoice_voice", "")) in ("female", "child"):
+                s.edge_voice = "premwadee"
+        s.tts_engine = "edge"
+        if "tts_max_wait_seconds" in data:
             try:
-                s.omnivoice_skip_enabled = bool(data["omnivoice_skip_enabled"])
-            except Exception:
-                s.omnivoice_skip_enabled = True
-        if "omnivoice_skip_min_length" in data:
-            try:
-                s.omnivoice_skip_min_length = int(data["omnivoice_skip_min_length"])
-            except Exception:
-                s.omnivoice_skip_min_length = 6
-        # ★ ไม่อ่านค่าเดิมจาก data — field นี้ไม่เคยมี UI ให้ user ตั้งเองเลยมาก่อน v2.7.8
-        #   (แค่ default False ภายใน) แต่ to_dict() เขียนค่าลง settings.json ของทุกคนไปแล้ว
-        #   ถ้าอ่านค่าเก่ากลับมา ทุกคนจะติด False ถาวร ไม่ได้ประโยชน์จาก default ใหม่เลย
-        #   → บังคับใช้ dataclass default (True) เสมอ จนกว่าจะมี UI ให้ user ตั้งเองจริงๆ
-        if "omnivoice_short_word_repeat" in data:
-            try:
-                s.omnivoice_short_word_repeat = max(2, min(5, int(data["omnivoice_short_word_repeat"])))
-            except Exception:
-                s.omnivoice_short_word_repeat = 3
+                s.tts_max_wait_seconds = max(0.0, float(data["tts_max_wait_seconds"]))
+            except (TypeError, ValueError):
+                s.tts_max_wait_seconds = 45.0
         if "read_author" in data:
             s.read_author = bool(data["read_author"])
         if "read_own_web_messages" in data:
@@ -1349,8 +1320,6 @@ class AppSettings:
             s.obs_ws_password = str(data["obs_ws_password"])
         if "supporters_api_url" in data:
             s.supporters_api_url = str(data["supporters_api_url"])
-        if "supporters_admin_secret" in data:
-            s.supporters_admin_secret = str(data["supporters_admin_secret"])
         if "overlay_animation" in data:
             s.overlay_animation = str(data["overlay_animation"])
         if "overlay_font_size" in data:
@@ -1678,8 +1647,6 @@ class AppSettings:
             s.obs_ws_password = str(data["obs_ws_password"])
         if "supporters_api_url" in data:
             s.supporters_api_url = str(data["supporters_api_url"])
-        if "supporters_admin_secret" in data:
-            s.supporters_admin_secret = str(data["supporters_admin_secret"])
         if "blocked_users" in data:
             s.blocked_users = list(data["blocked_users"])
         if "bot_blocklist_seeded" in data:
@@ -1783,6 +1750,12 @@ class AppSettings:
             s.message_history_enabled = bool(data["message_history_enabled"])
         if "message_history_retention" in data:
             s.message_history_retention = str(data["message_history_retention"])
+        # ★ ไฟล์ settings เดิมที่ยังไม่มีค่านี้ = ผู้ใช้เดิม → เก็บไม่จำกัดต่อไป (ไม่ลบข้อมูลใครเงียบๆ) ต้องไปตั้งเอง
+        try:
+            s.message_history_keep_days = max(0, min(3650, int(data["message_history_keep_days"]))) \
+                if "message_history_keep_days" in data else 0
+        except (TypeError, ValueError):
+            s.message_history_keep_days = 0
         if "events_panel_collapsed" in data:
             s.events_panel_collapsed = bool(data["events_panel_collapsed"])
         if "events_shown" in data:
@@ -1931,8 +1904,7 @@ def load_settings() -> AppSettings:
                     pass
         # ★ v2.4.2 migration — บังคับ default: Azure ผู้หญิง + อ่านทุกภาษา (ครั้งแรกเท่านั้น)
         if not data.get("_v242_defaults_set"):
-            s.tts_engine = "omnivoice"
-            s.omnivoice_voice = "female"
+            s.tts_engine = "edge"
             s.edge_voice = "premwadee"
             s.multilang_enabled = True
             s.auto_translate_enabled = False
@@ -1958,22 +1930,10 @@ def load_settings() -> AppSettings:
                     _json.dump(data, _f, ensure_ascii=False, indent=2)
             except Exception:
                 pass
-        # ★ migration: บังคับ omnivoice_skip_min_length=6 ครั้งเดียว —
-        #   ทดสอบจริง 124 คำพบว่าเกณฑ์เดิม 5 ยังปล่อยคำที่ล้มเหลว 25% หลุดไปใช้ OmniVoice
-        #   (from_dict อ่านค่าที่เซฟไว้ก่อนเสมอ ไม่สนใจ default ใหม่ของ dataclass)
-        if not data.get("_omnivoice_min_len_v2"):
-            s.omnivoice_skip_min_length = 6
-            try:
-                data["omnivoice_skip_min_length"] = 6
-                data["_omnivoice_min_len_v2"] = True
-                import json as _json
-                with open(SETTINGS_FILE, "w", encoding="utf-8") as _f:
-                    _json.dump(data, _f, ensure_ascii=False, indent=2)
-            except Exception:
-                pass
         return s
     except (json.JSONDecodeError, OSError, TypeError):
         s = AppSettings()
+        s.message_history_keep_days = 0   # ไฟล์ settings เสีย/อ่านไม่ได้ → อย่าเอาค่าเริ่มต้น "5 วัน" ไปลบประวัติของใคร
         if _has_rvc_voice(DEFAULT_RVC_VOICE):
             s.voice_id = DEFAULT_RVC_VOICE
         return s
@@ -1987,6 +1947,5 @@ def save_settings(settings: AppSettings) -> None:
     data["_opacity_reset_v2"] = True  # กัน reset opacity ซ้ำ (migration ครั้งเดียว)
     data["_v242_defaults_set"] = True  # กันบังคับ default ซ้ำ
     data["_read_author_default_v2"] = True  # กัน migrate ซ้ำ (เดิมหลุดหาย → clobber ค่าที่ user set เอง)
-    data["_omnivoice_min_len_v2"] = True  # กัน migrate ซ้ำ (เดิมหลุดหาย → clobber ค่าที่ user set เอง)
     with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)

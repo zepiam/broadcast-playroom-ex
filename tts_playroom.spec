@@ -3,7 +3,7 @@
 # tts_playroom.spec — Broadcast Playroom (base + plugin system)
 #
 # exe ตัวเดียว (~1GB) — Edge-TTS + ฟีเจอร์ครบ
-# torch/omnivoice/rvc แยกใน site-packages/ ข้าง exe (ไม่ bundle)
+# torch/rvc แยกใน site-packages/ ข้าง exe (ไม่ bundle)
 # → build เร็ว (~2 นาที)
 # → อัปเดต exe ไม่ต้อง rebuild torch 7GB
 # ════════════════════════════════════════════════════════════════════
@@ -50,11 +50,11 @@ excludes = [
     'pytest', 'sphinx', 'tornado', 'zmq', 'tensorrt', 'onnx', 'onnxruntime',
     'matplotlib',
     'customtkinter', 'tkinter', 'darkdetect',
-    'omnivoice', 'transformers', 'accelerate', 'datasets',
+    'transformers', 'accelerate', 'datasets',
     'safetensors', 'tokenizers', 'huggingface_hub',
     'cached_path', 'vocos', 'ema_pytorch', 'torchdiffeq',
     'bitsandbytes', 'wandb', 'gradio',
-    'omnivoice_engine', 'rvc_engine',
+    'rvc_engine',
     'sympy', 'mpmath', 'networkx', 'filelock', 'fsspec', 'jinja2',
     'regex', 'tqdm', 'pyyaml', 'packaging', 'PIL', 'pillow',
     'librosa', 'typer', 'tensorboardx', 'webdataset',

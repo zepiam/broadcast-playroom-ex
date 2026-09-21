@@ -17,6 +17,8 @@ class ChatPanel(QFrame):
     popout_requested = Signal()  # emit เมื่อกดปุ่ม popout
     clear_requested = Signal()   # emit เมื่อกด clear
     block_user_requested = Signal(str)  # emit author for blocking
+    unblock_user_requested = Signal(str)  # emit author for unblocking
+    event_detail_requested = Signal(dict)  # กดแถว event → info dict
     author_clicked = Signal(str)  # emit author name for profile/modal
     settings_clicked = Signal()  # emit เมื่อกด gear → Live Chat Settings
     code_mute_toggled = Signal(bool)  # emit True = muted (ปิดเสียงโค้ดลับ)
@@ -569,6 +571,8 @@ class ChatPanel(QFrame):
         # ★ connect row signals
         row.delete_requested.connect(self._delete_row)
         row.block_user_requested.connect(self.block_user_requested.emit)
+        row.unblock_user_requested.connect(self.unblock_user_requested.emit)
+        row.event_clicked.connect(self.event_detail_requested.emit)
         row.author_clicked.connect(self.author_clicked.emit)
         self.container_layout.insertWidget(0, row)
         self._rows.append(row)
@@ -589,6 +593,14 @@ class ChatPanel(QFrame):
             apply_zebra_backgrounds(self._rows)
         except Exception:
             pass
+
+    def refresh_block_icons(self):
+        """อัปเดตไอคอนบล็อกของทุก row (หลังบล็อก/ปลดบล็อก/แก้ settings)"""
+        for row in self._rows:
+            try:
+                row.refresh_block_status()
+            except Exception:
+                pass
 
     def clear_messages(self):
         """ล้าง chat ทั้งหมด"""

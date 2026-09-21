@@ -11,8 +11,7 @@
 ```
 ผู้สนับสนุน: โปรแกรม/เว็บ → กรอกฟอร์ม + แนบสลิป → POST submit.php
   → server เก็บ pending.json + ส่ง Discord webhook (@mention แอดมิน)
-  → แอดมินคลิกลิงก์จาก Discord → GET approve.php → กด Approve
-  → server ย้าย entry จาก pending.json → approved.json
+  → ผ่านการตรวจสอบฝั่ง server แล้วจึงเข้ารายชื่อที่ api.php ส่งกลับ
   → ทุกโปรแกรม/เว็บดึง GET api.php → แสดง ranking/รายชื่อ
 ```
 
@@ -25,7 +24,7 @@
 ```
 https://men9ch.com/api
 ```
-ต่อท้ายด้วย `api.php`, `submit.php`, `approve.php`, หรือ `admin.php`
+ต่อท้ายด้วย `api.php` หรือ `submit.php`
 
 ---
 
@@ -101,19 +100,6 @@ Client ควร:
 
 ---
 
-### 3. `POST api.php?action=delete&id={id}&token={admin_secret}` — ลบผู้สนับสนุน (admin)
-
-### 4. `POST api.php?action=fetch_pending&token={admin_secret}` — ดูรายการรอ approve (admin)
-```json
-{"ok": true, "pending": [...], "count": 3}
-```
-
-### 5. `GET approve.php?id={id}&token={admin_secret}` — อนุมัติ (ลิงก์ที่ webhook โพสต์เข้า Discord ให้แอดมินกด)
-
-### 6. `GET admin.php?token={admin_secret}` — หน้า admin panel เต็มรูปแบบ
-
----
-
 ## Headers ที่ต้องใส่ทุก request
 
 Host มี security plugin บล็อก bot User-Agent — ทุก client (รวมเว็บไซต์/โปรแกรมใหม่) ต้องปลอม header ให้เหมือน browser จริง:
@@ -162,14 +148,13 @@ Referer: https://men9ch.com/api/upload.html
 
 ## Client-side Python (โค้ดต้นฉบับ พอร์ตไปภาษาอื่นได้)
 
-- **[supporters_api.py](supporters_api.py)** — ทุกฟังก์ชันเรียก API: `fetch_supporters()`, `submit_supporter()`, `delete_supporter()`, `fetch_pending()`, `open_approve_url()`, `open_admin_url()` ใช้ `urllib` ล้วน ไม่พึ่ง `requests` — เห็น logic ทั้ง multipart body construction manual (ไม่ใช้ lib), SSL context, retry, error handling ครบ
+- **[supporters_api.py](supporters_api.py)** — ทุกฟังก์ชันเรียก API: `fetch_supporters()`, `submit_supporter()` ใช้ `urllib` ล้วน ไม่พึ่ง `requests` — เห็น logic ทั้ง multipart body construction manual (ไม่ใช้ lib), SSL context, retry, error handling ครบ
 - **[ui/dialogs/supporter_upload.py](ui/dialogs/supporter_upload.py)** — หน้าฟอร์ม PySide6 (reference สำหรับ UX flow ถ้าจะออกแบบฟอร์มเว็บให้ประสบการณ์คล้ายกัน — reactive ตามช่องทางที่เลือก, preview รูปสลิปก่อนส่ง, confirm dialog ก่อน submit)
 - **[machine_id.py](machine_id.py)** — fingerprint generator (desktop only ตามที่อธิบายด้านบน)
 
 ## Settings ที่เกี่ยวข้อง ([settings.py:369-371](settings.py:369))
 ```python
 supporters_api_url: str = "https://men9ch.com/api"
-supporters_admin_secret: str = ""  # ดูจาก config.php บน server
 ```
 
 ---
@@ -178,6 +163,6 @@ supporters_admin_secret: str = ""  # ดูจาก config.php บน server
 
 **ถ้าเปลี่ยน/หมุน Discord webhook URL ใหม่ ต้องแก้โปรแกรม/client ไหม?**
 
-ไม่ต้อง — client (โปรแกรม Python นี้, เว็บไซต์, หรือโปรแกรมอื่นในอนาคต) **ไม่เคยรู้จักหรือเก็บ webhook URL เลยแม้แต่นิดเดียว** สิ่งที่ client รู้มีแค่ `supporters_api_url` (base URL ของ `api.php`/`submit.php`) กับ `supporters_admin_secret` (token คนละตัวกับ webhook ใช้แค่ยืนยันแอดมินตอนเรียก API ลบ/ดู pending) การยิง Discord webhook เกิดขึ้นทั้งหมดฝั่ง `submit.php` บนโฮส — client แค่ POST ฟอร์มไปเหมือนเดิม ไม่รู้ตัวด้วยซ้ำว่ามีการเปลี่ยน webhook
+ไม่ต้อง — client (โปรแกรม Python นี้, เว็บไซต์, หรือโปรแกรมอื่นในอนาคต) **ไม่เคยรู้จักหรือเก็บ webhook URL เลยแม้แต่นิดเดียว** สิ่งที่ client รู้มีแค่ `supporters_api_url` (base URL ของ `api.php`/`submit.php`) การยิง Discord webhook เกิดขึ้นทั้งหมดฝั่ง `submit.php` บนโฮส — client แค่ POST ฟอร์มไปเหมือนเดิม ไม่รู้ตัวด้วยซ้ำว่ามีการเปลี่ยน webhook
 
 เปลี่ยน webhook = ไปแก้ค่าใน `config.php` บนโฮสอย่างเดียวพอ ทุก client ที่มีอยู่และที่จะเพิ่มในอนาคตไม่ต้องแตะเลย

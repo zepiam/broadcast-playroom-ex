@@ -198,7 +198,6 @@ PyInstaller exe ถูก AV แจ้งเตือนบ่อย (เป็�
 
 ### admin อนุมัติยังไง?
 - เปิดลิงก์จาก Discord → หน้า approve → กด Approve/Reject/Ban
-- หรือเข้า `men9ch.com/api/admin.php` (ต้อง login รหัส 1amCold7)
 
 ### โดนแบนทำยังไง?
 ถ้าส่งข้อมูลเท็จ → admin กด Ban → เครื่องนั้นส่งไม่ได้อีก (แบน machine ID)

@@ -6,11 +6,6 @@
 
 Plugin structure:
   engines/
-  ├── omnivoice/
-  │   ├── plugin.json          ← metadata
-  │   ├── site-packages/       ← Python packages (torch, omnivoice, ...)
-  │   └── files/               ← engine code (omnivoice_engine.py)
-  │       └── omnivoice_engine.py
   └── rvc/
       ├── plugin.json
       ├── site-packages/
@@ -19,13 +14,13 @@ Plugin structure:
 
 plugin.json format:
   {
-    "id": "omnivoice",
-    "name": "OmniVoice TTS",
+    "id": "rvc",
+    "name": "RVC voice filter",
     "description": "เสียง TTS ออฟไลน์",
     "version": "1.0.0",
     "type": "tts_engine",
-    "engine_module": "omnivoice_engine",
-    "engine_class": "OmniVoiceEngine",
+    "engine_module": "rvc_engine",
+    "engine_class": "RVCEngine",
     "requires_gpu": true,
     "min_disk_gb": 10
   }
@@ -193,7 +188,7 @@ def get_loaded_plugins() -> list[EnginePlugin]:
 
     ★ cache ผลลัพธ์ (เรียกครั้งเดียวตอนเปิดโปรแกรม)
     ★ โหลดลำดับ: lib/ ก่อน (base layer — torch/scipy/soundfile) → แล้วถึง engine plugins
-      (เพราะ omnivoice + rvc ใช้ torch ร่วมกันจาก lib/)
+      (เพราะ engine หลายตัวใช้ torch ร่วมกันจาก lib/)
     """
     global _cache
     if _cache is not None:
@@ -221,7 +216,7 @@ def is_plugin_available(plugin_id: str) -> bool:
     """เช็คว่า plugin ติดตั้งและโหลดแล้วไหม
 
     ★ ใช้สำหรับเช็คก่อนแสดงตัวเลือกใน UI
-      เช่น is_plugin_available("omnivoice") → True/False
+      เช่น is_plugin_available("rvc") → True/False
     """
     plugins = get_loaded_plugins()
     return any(p.id == plugin_id and p.loaded for p in plugins)
@@ -248,9 +243,9 @@ def ensure_engines_dir():
                 f.write(
                     "Engines Folder\n"
                     "=============\n\n"
-                    "วาง plugin engine ที่นี่ (เช่น omnivoice/, rvc/)\n\n"
+                    "วาง plugin engine ที่นี่ (เช่น rvc/)\n\n"
                     "วิธีติดตั้ง plugin:\n"
-                    "1. ดาวน์โหลด plugin (เช่น omnivoice.zip)\n"
+                    "1. ดาวน์โหลด plugin (เช่น rvc.zip)\n"
                     "2. แตกไฟล์ → วางในโฟลเดอร์นี้\n"
                     "3. เปิดโปรแกรมใหม่ → ใช้งานได้ทันที\n"
                 )

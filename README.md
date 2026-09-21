@@ -24,8 +24,7 @@
 - ✅ **ระบบ Supporters** — ผู้สนับสนุนส่งหลักฐานผ่านเว็บ → admin approve ผ่าน Discord → แสดงในโปรแกรม
 - ✅ **Auto-Update** — อัพเดทอัตโนมัติ (patch download + restart) ไม่ต้องโหลดใหม่
 - ✅ **โค้ดลับ** — viewer พิมพ์ !code → เล่นเสียง (มีหน้าตั้งค่า + Preview/Stop)
-- ✅ **OmniVoice** — TTS offline (Zero-shot, 600+ ภาษา) นอกจาก Azure
-- ✅ **Lite / Full** — แยกเวอร์ชั่น Lite (Edge-TTS only, ~1GB) และ Full (OmniVoice + RVC, ~7GB)
+- ✅ **Lite / Full** — แยกเวอร์ชั่น Lite (Edge-TTS only, ~1GB) และ Full (RVC, ~7GB)
 - ✅ **Portable Data** — ข้อมูลเก็บใน `data/` ข้าง exe (ไม่ depend home dir)
 - ✅ **Portable exe** — PyInstaller รองรับทั้ง Lite และ Full build
 
@@ -48,7 +47,6 @@
 
 ### TTS (Text to Speech)
 - **Azure (Edge-TTS)** — ออนไลน์ เสียงชัดแม่นยำ (Neural Voice)
-- **OmniVoice** — ออฟไลน์ Zero-shot TTS (Full version เท่านั้น)
 - **RVC Voice Conversion** — แปลงเสียงด้วย AI (Full version เท่านั้น)
 - ปรับ pitch / speed / volume
 - รองรับ viewer commands ([x2] / [p1] / [v50])
@@ -101,7 +99,7 @@
 | | Lite | Full |
 |---|---|---|
 | **ขนาด** | ~1 GB | ~7 GB |
-| **TTS** | Edge-TTS (Azure) | Edge-TTS + OmniVoice |
+| **TTS** | Edge-TTS (Azure) | Edge-TTS (Azure) |
 | **RVC** | ❌ | ✅ |
 | **GPU** | ไม่ต้องการ | แนะนำ RTX (CUDA) |
 | **เหมาะกับ** | ทุกคน | มีการ์ดจอ RTX/GTX |
@@ -145,7 +143,6 @@ tts-for-livestream-ver2/
 │   settings.py                # AppSettings dataclass + save/load
 │   text_filter.py             # Text filtering (NG/replace/secret codes)
 │   tts_engine.py              # Edge-TTS engine
-│   omnivoice_engine.py        # OmniVoice engine (Full only)
 │   rvc_engine.py              # RVC voice conversion (Full only)
 │   translator.py              # Translation (Google)
 │   composer_server.py         # Canvas overlay server (aiohttp)
@@ -184,7 +181,7 @@ run.bat
 # Lite (Edge-TTS only, ~1GB)
 python -m PyInstaller tts_lite.spec --noconfirm
 
-# Full (OmniVoice + RVC, ~7GB)
+# Full (RVC, ~7GB)
 python -m PyInstaller tts_full.spec --noconfirm
 ```
 

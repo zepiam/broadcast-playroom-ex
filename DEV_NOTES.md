@@ -2,6 +2,12 @@
 
 > จดบันทึกการพัฒนา ปัญหาที่เจอ และวิธีแก้ เพื่อไม่ให้ลืม
 
+> **2026-09-20 — ถอดระบบ OmniVoice ออกจากโปรแกรมแล้ว** (อ่านคำสั้นๆ พังบ่อย): ลบ `omnivoice_engine.py`, `ui/dialogs/omni_skip.py`,
+> ปุ่ม/ตัวเลือก OmniVoice ใน Settings + sidebar (Azure/Omni toggle), ฟิลด์ `omnivoice_*` ใน settings/pipeline.
+> `settings.json` เก่าที่มี `tts_engine: "omnivoice"` จะถูกบังคับเป็น edge ตอนโหลด (เพศเสียงย้ายไป `edge_voice`).
+> ส่วนที่เหลือในบันทึกด้านล่างที่พูดถึง OmniVoice = ประวัติเก่า. ไฟล์ก่อนถอดสำรองไว้ที่ `..\omnivoice_removed_backup_2026-09-20`
+> (ถ้าจะนำกลับ: คัดลอกไฟล์จากโฟลเดอร์นั้นกลับ). ยังคง `transformers` ใน spec/main.py ไว้ (ยังไม่ได้ทดสอบ frozen build หลังตัดออก)
+
 ---
 
 ## 🐛 ปัญหาที่เจอบ่อย + วิธีแก้ (สำคัญมาก)

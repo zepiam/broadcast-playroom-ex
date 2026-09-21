@@ -12,20 +12,78 @@ from ui.theme import COLOR_CARD, COLOR_BORDER, COLOR_HEADING
 
 
 class EventCard(QFrame):
-    """Single event row (sub/bits/raid/etc)"""
+    """แถว event 1 รายการ — กดเพื่อดูรายละเอียด (ใครให้ / เท่าไหร่ / ซับกี่เดือน / มอบให้ใคร / ข้อความแนบ)
 
-    def __init__(self, event_type, text, parent=None):
+    ข้อมูลมาจาก event_details.build_info() (dict `info`) — ไม่มี info ก็แสดงแบบย่อจาก text เหมือนเดิม
+    สีตามธีม (import ui.theme / ui.user_kit ตอนสร้าง ไม่ freeze ค่า)
+    """
+    clicked = Signal(dict)
+
+    _ICONS = {"sub": "⭐", "bits": "💎", "raid": "🚀", "donate": "💰", "follow": "❤️"}
+    _CAT_ROLE = {"money": "supporter", "sub": "accent", "gift": "info", "other": "info"}
+
+    def __init__(self, event_type, text, parent=None, info=None):
         super().__init__(parent)
-        self.setObjectName("Card")
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 6, 8, 6)
+        from ui.user_kit import C, role, dim_text, faint_text, rgba
+        from ui.platform_icons import get_platform_pixmap
+        self.setObjectName("EventCard")
+        self.info = dict(info) if info else {
+            "event": event_type, "headline": text, "author": "", "fields": [], "message": "",
+            "icon": self._ICONS.get(event_type, "🔔"), "category": "other", "label": event_type,
+        }
+        info = self.info
+        R = role(self._CAT_ROLE.get(info.get("category", "other"), "info"))
+        self.setCursor(Qt.PointingHandCursor if info.get("author") else Qt.ArrowCursor)
+        self.setStyleSheet(
+            f"QFrame#EventCard {{ background-color: {C('CARD')}; border: 1px solid {C('BORDER')}; "
+            f"border-left: 4px solid {R['solid']}; border-radius: 8px; }}"
+            f"QFrame#EventCard:hover {{ background-color: {C('CARD_HOVER')}; border-color: {R['solid']}; }}")
+        self.setToolTip("คลิกเพื่อดูรายละเอียด" if info.get("author") else "")
 
-        icon_map = {"sub": "⭐", "bits": "💎", "raid": "🚀", "donate": "💰", "follow": "❤️"}
-        icon = icon_map.get(event_type, "🔔")
-        label = QLabel(f"{icon} {text}")
-        label.setStyleSheet("font-size: 14px;")
-        label.setWordWrap(True)
-        layout.addWidget(label)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(10, 7, 8, 7)
+        lay.setSpacing(2)
+
+        top = QHBoxLayout()
+        top.setSpacing(5)
+        icon = QLabel(info.get("icon", "🔔"))
+        icon.setStyleSheet("font-size: 14px; background: transparent; border: none; min-height: 0;")
+        top.addWidget(icon)
+        name = QLabel(info.get("author") or text)
+        name.setStyleSheet(f"font-size: 13px; font-weight: 700; color: {C('TEXT')}; background: transparent; border: none; min-height: 0;")
+        name.setMinimumWidth(10)
+        top.addWidget(name, 1)
+        plat = info.get("platform")
+        if plat:
+            pm = get_platform_pixmap(plat, 14)
+            if not pm.isNull():
+                pl = QLabel()
+                pl.setPixmap(pm)
+                pl.setStyleSheet("background: transparent; border: none;")
+                top.addWidget(pl)
+        ts = info.get("ts") or ""
+        if len(ts) >= 16:
+            tl = QLabel(ts[11:16])
+            tl.setStyleSheet(f"font-size: 11px; color: {faint_text()}; background: transparent; border: none; min-height: 0;")
+            top.addWidget(tl)
+        lay.addLayout(top)
+
+        head = QLabel(info.get("headline") or text)
+        head.setWordWrap(True)
+        head.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {R['text_on_card']}; background: transparent; border: none; min-height: 0;")
+        lay.addWidget(head)
+
+        msg = (info.get("message") or "").strip()
+        if msg:
+            prev = QLabel("“" + (msg if len(msg) <= 70 else msg[:68] + "…") + "”")
+            prev.setWordWrap(True)
+            prev.setStyleSheet(f"font-size: 12px; color: {dim_text()}; background: transparent; border: none; min-height: 0;")
+            lay.addWidget(prev)
+
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.LeftButton and self.info.get("author") and self.rect().contains(e.position().toPoint()):
+            self.clicked.emit(self.info)
+        super().mouseReleaseEvent(e)
 
 
 class EventsPanel(QFrame):
@@ -37,6 +95,7 @@ class EventsPanel(QFrame):
     """
 
     collapsed_toggled = Signal(bool)  # ★ emit เมื่อ collapse state เปลี่ยน (เพื่อ save)
+    event_clicked = Signal(dict)      # ★ กดการ์ด event → info dict (app เปิดหน้ารายละเอียด)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -165,9 +224,10 @@ class EventsPanel(QFrame):
     def is_collapsed(self):
         return self._collapsed
 
-    def add_event(self, event_type, text):
-        """เพิ่ม event ใหม่ (ใหม่สุดอยู่บน)"""
-        card = EventCard(event_type, text, self.container)
+    def add_event(self, event_type, text, info=None):
+        """เพิ่ม event ใหม่ (ใหม่สุดอยู่บน) — info = event_details.build_info() (ไม่ใส่ = แสดงแบบย่อ)"""
+        card = EventCard(event_type, text, self.container, info=info)
+        card.clicked.connect(self.event_clicked.emit)
         self.container_layout.insertWidget(0, card)
         # cap (เก็บล่าสุด 50)
         while self.container_layout.count() > 51:

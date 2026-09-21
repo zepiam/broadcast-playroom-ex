@@ -72,7 +72,6 @@
 | **ภาษา** | Python 3.10 | รองรับ TTS/AI libraries |
 | **GUI** | **PySide6 (Qt for Python)** | GPU accelerated + ลื่น + ทันสมัย |
 | **TTS** | edge-tts (Azure Neural Voice) | ฟรี + เสียงดี + หลายภาษา |
-| **TTS (offline)** | OmniVoice (k2-fsa) | Zero-shot offline TTS 600+ ภาษา (Full เท่านั้น) |
 | **RVC** | rvc-python + PyTorch + CUDA | Voice conversion (GPU) |
 | **Game Overlay** | PySide6 + QtWebEngine | Transparent window |
 | **OBS Overlay** | aiohttp + WebSocket | Real-time chat |
@@ -92,7 +91,7 @@
 | | Lite | Full |
 |---|---|---|
 | **ขนาด** | ~1 GB | ~7 GB |
-| **TTS** | Edge-TTS (Azure) | Edge-TTS + **OmniVoice** (offline) |
+| **TTS** | Edge-TTS (Azure) | Edge-TTS (Azure) |
 | **RVC** | ❌ | ✅ (PyTorch + CUDA) |
 | **GPU** | ไม่จำเป็น | NVIDIA RTX/GTX + CUDA (หรือ CPU ช้า) |
 | **RAM** | ~4 GB | ~8 GB |
@@ -131,8 +130,7 @@ text → filter (NG/Replace) → translate (ถ้าเปิด) → detect la
 ```
 ผู้สนับสนุน: โปรแกรม/เว็บ → กรอก + แนบสลิป → submit.php
   → server เก็บ pending.json + ส่ง Discord webhook (@mention)
-  → admin คลิกลิงก์ Discord → approve.php → กด Approve
-  → server ย้าย pending → approved.json
+  → ผ่านการตรวจสอบฝั่ง server แล้วจึงเข้ารายชื่อที่แสดง
   → โปรแกรมดึง api.php → แสดงชื่อในตาราง
 ```
 

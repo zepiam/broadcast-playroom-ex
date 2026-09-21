@@ -532,6 +532,13 @@ class KickChat:
             "LuckyUsersWhoGotGiftSubscriptionsEvent",
         ):
             self._handle_gifted_sub(data, is_gifter=False)
+        # ── สมัครซับ / ซับต่อ (months) ──
+        elif event in ("App\\Events\\SubscriptionEvent", "SubscriptionEvent"):
+            self._handle_subscription(data)
+        # ── KICKs gifted (ทิปของ KICK — แนบข้อความได้) ──
+        elif event in ("App\\Events\\KicksGifted", "KicksGifted",
+                       "App\\Events\\KicksGiftedEvent", "KicksGiftedEvent"):
+            self._handle_kicks_gifted(data)
         # ── stream status (optional — ignore เพื่อลด noise) ──
         elif event in (
             "App\\Events\\StreamerIsLive",
@@ -570,6 +577,51 @@ class KickChat:
             )
         )
 
+    def _handle_subscription(self, data: dict) -> None:
+        """KICK SubscriptionEvent → ซับใหม่/ซับต่อ (months = เดือนที่ซับ) — KICK ไม่มีช่องข้อความแนบ"""
+        user = data.get("user") if isinstance(data.get("user"), dict) else {}
+        author = data.get("username") or user.get("username") or user.get("name") or "?"
+        try:
+            months = int(data.get("months") or 1)
+        except (TypeError, ValueError):
+            months = 1
+        event = "resub" if months > 1 else "sub"
+        self.messages_read += 1
+        self.on_message(
+            ChatMessage(
+                platform="kick", author=author, text="", event=event,
+                system_text=f"ซับ {months} เดือน" if months > 1 else "สมัครซับ",
+                extra={"detail": {"months": months}},
+            )
+        )
+
+    def _handle_kicks_gifted(self, data: dict) -> None:
+        """KICK KicksGifted → ทิป (KICKs) พร้อมข้อความที่ผู้ส่งแนบ
+
+        รูปแบบตาม webhook kicks.gifted ของ KICK: {sender:{username}, gift:{amount, name, tier, message}}
+        (รูปแบบจริงบน pusher ยังไม่ได้ยืนยัน จึงอ่านแบบยืดหยุ่น: message/amount อยู่ชั้นบนหรือในตัว gift ก็ได้)
+        """
+        gift = data.get("gift") if isinstance(data.get("gift"), dict) else {}
+        sender = data.get("sender") or data.get("user") or {}
+        if not isinstance(sender, dict):
+            sender = {"username": str(sender)}
+        author = sender.get("username") or sender.get("name") or data.get("username") or "?"
+        message = data.get("message") or gift.get("message") or ""
+        raw_amt = gift.get("amount", data.get("amount", data.get("kicks")))
+        try:
+            amount = int(raw_amt) if raw_amt is not None else None
+        except (TypeError, ValueError):
+            amount = None
+        self.messages_read += 1
+        self.on_message(
+            ChatMessage(
+                platform="kick", author=author, text=str(message), event="bits", amount=amount,
+                system_text=f"ส่ง {amount:,} KICKs" if amount else "ส่ง KICKs",
+                extra={"detail": {"kind": "kicks", "gift_name": gift.get("name", ""),
+                                  "tier": gift.get("tier", "")}},
+            )
+        )
+
     def _handle_gifted_sub(self, data: dict, is_gifter: bool) -> None:
         """KICK gifted subscription → ChatMessage(event="subgift")
 
@@ -579,15 +631,29 @@ class KickChat:
         # structure ประมาณ: {gifter_user: {username}, gifted_user: {...}, ...}
         gifter = data.get("gifter") or data.get("gifter_user") or {}
         gifted = data.get("gifted") or data.get("gifted_user") or data.get("user") or {}
+        # ★ รูปแบบที่ KICK ส่งจริงมักเป็น gifter_username (string) + gifted_usernames (list) — รองรับทั้งสองแบบ
+        if not isinstance(gifter, dict):
+            gifter = {"username": str(gifter)}
+        if not isinstance(gifted, dict):
+            gifted = {"username": str(gifted)}
+        gifter_name = data.get("gifter_username") or gifter.get("username") or gifter.get("name") or ""
+        recipients = data.get("gifted_usernames")
+        if not isinstance(recipients, (list, tuple)):
+            one = gifted.get("username") or gifted.get("name") or ""
+            recipients = [one] if one else []
+        recipients = [str(x) for x in recipients if x]
+        count = data.get("gifted_amount") or data.get("quantity") or (len(recipients) or 1)
+        try:
+            count = int(count)
+        except (TypeError, ValueError):
+            count = len(recipients) or 1
         if is_gifter:
-            author = gifter.get("username") or gifter.get("name") or "?"
+            author = gifter_name or "?"
             sys_text = "มอบ KICK Sub"
-            # มีจำนวน?
-            count = data.get("gifted_amount") or data.get("quantity") or 1
-            if count and int(count) > 1:
+            if count > 1:
                 sys_text = f"มอบ KICK Sub ×{count}"
         else:
-            author = gifted.get("username") or gifted.get("name") or "?"
+            author = (recipients[0] if recipients else "") or gifted.get("username") or gifted.get("name") or "?"
             sys_text = "ได้รับ KICK Sub"
         display = f"🎁 {sys_text}"
         self.messages_read += 1
@@ -601,6 +667,8 @@ class KickChat:
                 extra={
                     "kick_user_id": (gifter if is_gifter else gifted).get("id"),
                     "is_gifter": is_gifter,
+                    "detail": {"is_gifter": is_gifter, "recipients": recipients, "count": count,
+                               "gifter": gifter_name},
                 },
             )
         )

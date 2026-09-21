@@ -47,6 +47,80 @@ def set_chat_settings(show_platform_icon=None, author_color_mode=None,
         _chat_settings['zebra_stripes'] = zebra_stripes
 
 
+# ★ ผู้ให้สถานะบล็อกของผู้ใช้ (app.py ตั้งให้) — fn(author) → None | "block_all" | "block_tts"
+_block_status_provider = None
+
+_BLOCK_ICONS = {
+    "block_all": "ผู้ใช้นี้ถูกบล็อก (ไม่อ่าน TTS + ไม่แสดงใน overlay) — คลิกขวาที่ข้อความเพื่อปลดบล็อก",
+    "block_tts": "ผู้ใช้นี้ถูกบล็อก TTS (ไม่อ่านออกเสียง แต่ยังแสดงในแชท) — คลิกขวาที่ข้อความเพื่อปลดบล็อก",
+}
+_block_pix_cache = {}
+
+
+def _block_pixmap(status, size=16):
+    """วาดไอคอนบล็อกเอง (คมทุกธีม ไม่พึ่งฟอนต์ emoji)
+    block_all = วงกลมแดงมีขีดเฉียง | block_tts = ลำโพงสีเหลืองอำพันมีขีดเฉียง"""
+    key = (status, size)
+    pm = _block_pix_cache.get(key)
+    if pm is not None:
+        return pm
+    from PySide6.QtGui import QPainter, QPen, QPainterPath
+    from PySide6.QtCore import QPointF, QRectF
+    dpr = 2
+    pm = QPixmap(size * dpr, size * dpr)
+    pm.setDevicePixelRatio(dpr)
+    pm.fill(Qt.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing, True)
+    sz = float(size)
+    if status == "block_all":
+        col = QColor("#ef4444")
+        pen = QPen(col, sz * 0.15)
+        pen.setCapStyle(Qt.RoundCap)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        m = sz * 0.14
+        p.drawEllipse(QRectF(m, m, sz - 2 * m, sz - 2 * m))
+        d = sz * 0.30
+        p.drawLine(QPointF(d, sz - d), QPointF(sz - d, d))
+    else:
+        col = QColor("#f59e0b")
+        p.setPen(Qt.NoPen)
+        p.setBrush(col)
+        sp = QPainterPath()   # ลำโพง: กล่องเล็ก + กรวย
+        sp.moveTo(sz * 0.10, sz * 0.38)
+        sp.lineTo(sz * 0.30, sz * 0.38)
+        sp.lineTo(sz * 0.52, sz * 0.20)
+        sp.lineTo(sz * 0.52, sz * 0.80)
+        sp.lineTo(sz * 0.30, sz * 0.62)
+        sp.lineTo(sz * 0.10, sz * 0.62)
+        sp.closeSubpath()
+        p.drawPath(sp)
+        pen = QPen(col, sz * 0.12)
+        pen.setCapStyle(Qt.RoundCap)
+        p.setPen(pen)
+        p.drawLine(QPointF(sz * 0.66, sz * 0.40), QPointF(sz * 0.90, sz * 0.60))   # x mute
+        p.drawLine(QPointF(sz * 0.66, sz * 0.60), QPointF(sz * 0.90, sz * 0.40))
+    p.end()
+    _block_pix_cache[key] = pm
+    return pm
+
+
+def set_block_status_provider(fn):
+    """ตั้งฟังก์ชันเช็คสถานะบล็อก (เรียกจาก app.py)"""
+    global _block_status_provider
+    _block_status_provider = fn
+
+
+def _lookup_block_status(author):
+    if not author or _block_status_provider is None:
+        return None
+    try:
+        return _block_status_provider(author)
+    except Exception:
+        return None
+
+
 # ★ zebra colors (เข้มกว่า bg นิดหน่อย — subtle separation)
 ZEBRA_COLOR = "#101524"  # odd rows
 
@@ -118,6 +192,8 @@ class ChatRow(QWidget):
     author_clicked = Signal(str)
     delete_requested = Signal(object)
     block_user_requested = Signal(str)
+    unblock_user_requested = Signal(str)
+    event_clicked = Signal(dict)   # ★ กดแถว event → info (event_details.build_info) เปิดหน้ารายละเอียด
 
     def __init__(self, msg, parent=None, font_size=16):
         super().__init__(parent)
@@ -129,6 +205,7 @@ class ChatRow(QWidget):
         self.msg = msg
         self._font_size = font_size
         self._emote_labels = {}
+        self.block_icon = None   # ★ ไอคอนเล็กๆ บอกว่าผู้ใช้ถูกบล็อก (สร้างเฉพาะข้อความปกติ)
         self._emote_replies = []  # ★ keep refs to QNetworkReply กัน GC ก่อน finished
         self._zebra_on = False  # ★ flag สำหรับ zebra background (set โดย apply_zebra_backgrounds)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -161,18 +238,48 @@ class ChatRow(QWidget):
         menu = QMenu(self)
         menu.setStyleSheet("QMenu { background: #131726; border: 1px solid #2a2f45; border-radius: 8px; padding: 4px; } QMenu::item { padding: 8px 24px; border-radius: 4px; color: #e5e7eb; } QMenu::item:selected { background: #7c3aed; }")
         author = getattr(self.msg, 'author', '') or ''
+        status = _lookup_block_status(author) if author else None
         act_delete = menu.addAction("🗑 ลบข้อความนี้")
+        act_block_all = act_block_tts = act_unblock = None
         if author:
             menu.addSeparator()
-            act_block_all = menu.addAction("🚫 บล็อกผู้ใช้ (ทุกอย่าง)")
-            act_block_tts = menu.addAction("🔇 บล็อก TTS (ไม่อ่าน)")
+            if status:
+                label = "บล็อกทุกอย่าง" if status == "block_all" else "บล็อก TTS"
+                act_unblock = menu.addAction(f"✅ ปลดบล็อก ({label})")
+            else:
+                act_block_all = menu.addAction("🚫 บล็อกผู้ใช้ (ทุกอย่าง)")
+                act_block_tts = menu.addAction("🔇 บล็อก TTS (ไม่อ่าน)")
         action = menu.exec(self.mapToGlobal(pos))
+        if action is None:
+            return
         if action == act_delete:
             self.delete_requested.emit(self)
-        elif author and action == act_block_all:
+        elif action == act_unblock:
+            self.unblock_user_requested.emit(author)
+        elif action == act_block_all:
             self.block_user_requested.emit(author)
-        elif author and action == act_block_tts:
+        elif action == act_block_tts:
             self.block_user_requested.emit(author + "||tts_only")
+
+    def set_block_status(self, status):
+        """แสดง/ซ่อนไอคอนบล็อก — status = None | "block_all" | "block_tts" """
+        lbl = self.block_icon
+        if lbl is None:
+            return
+        if not status or status not in _BLOCK_ICONS:
+            lbl.setVisible(False)
+            lbl.setToolTip("")
+            return
+        lbl.setPixmap(_block_pixmap(status, 16))
+        lbl.setToolTip(_BLOCK_ICONS[status])
+        lbl.setProperty("blockStatus", status)
+        lbl.setVisible(True)
+
+    def refresh_block_status(self):
+        """เช็คสถานะบล็อกล่าสุดแล้วอัปเดตไอคอน (เรียกหลังบล็อก/ปลดบล็อก/แก้ settings)"""
+        if self.block_icon is None:
+            return
+        self.set_block_status(_lookup_block_status(getattr(self.msg, 'author', '') or ''))
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
@@ -236,6 +343,15 @@ class ChatRow(QWidget):
                     author_row.addWidget(icon_lbl)
             except Exception:
                 pass
+
+        # ★ ไอคอนบล็อก (ซ่อนไว้ก่อน — โชว์เมื่อผู้ใช้ถูกบล็อกอยู่) — ไม่ใส่ให้ข้อความจากบอท/จากเราเอง
+        if not is_bot_response and not is_own_message:
+            self.block_icon = QLabel()
+            self.block_icon.setFixedSize(16, 16)
+            self.block_icon.setStyleSheet("border: none; background: transparent;")
+            self.block_icon.setVisible(False)
+            author_row.addWidget(self.block_icon)
+            self.refresh_block_status()
 
         # ★ Author label
         self.author_label = QLabel()
@@ -366,6 +482,9 @@ class ChatRow(QWidget):
             'share': '📢', 'join': '👋', 'system': '🔔',
         }
         icon = icon_map.get(event, '🔔')
+        _ev_info = (getattr(self.msg, 'extra', None) or {}).get('event_info')
+        if _ev_info and _ev_info.get('icon'):
+            icon = _ev_info['icon']
         text = f"{icon} "
         if author:
             text += f"<b style='color:#f47fff'>{author}</b> "
@@ -384,10 +503,18 @@ class ChatRow(QWidget):
         else:
             text += event
 
+        info = (getattr(self.msg, 'extra', None) or {}).get('event_info')
+        if info and info.get('message'):
+            import html as _html
+            text += f" <span style='color:#e5e7eb'>“{_html.escape(str(info['message']))}”</span>"
         label = QLabel(text)
         label.setTextFormat(Qt.RichText)
         label.setWordWrap(True)
         label.setStyleSheet(f"color: #fbbf24; font-size: {self._font_size}px;")
+        if info:
+            label.setCursor(Qt.PointingHandCursor)
+            label.setToolTip("คลิกเพื่อดูรายละเอียด")
+            label.mousePressEvent = lambda e, i=info: self.event_clicked.emit(i)
         layout.addWidget(label, 1)
 
     def _render_content(self, extra, platform):

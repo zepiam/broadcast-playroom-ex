@@ -8,7 +8,7 @@ setlocal
 
 echo ============================================
 echo  Building Broadcast Playroom (Lite)
-echo  Edge-TTS only (no RVC/OmniVoice)
+echo  Edge-TTS only (no RVC)
 echo ============================================
 echo.
 

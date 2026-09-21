@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 # ════════════════════════════════════════════════════════════════════
 # tts_full.spec — PyInstaller spec สำหรับ Broadcast Playroom v2 (Full)
-# ฟีเจอร์ครบทุกอย่าง + Edge-TTS + OmniVoice + RVC (PyTorch/CUDA)
+# ฟีเจอร์ครบทุกอย่าง + Edge-TTS + RVC (PyTorch/CUDA)
 # ════════════════════════════════════════════════════════════════════
 import os
 import sys
@@ -42,16 +42,13 @@ _fairseq_datas = collect_data_files('fairseq', include_py_files=True)
 datas += _fairseq_datas
 _rvc_hidden = collect_submodules('rvc_python')
 _fairseq_hidden = collect_submodules('fairseq')
-# ★ OmniVoice + transformers data + submodules + metadata
-_omni_datas = collect_data_files('omnivoice', include_py_files=True)
-datas += _omni_datas
-_omni_hidden = collect_submodules('omnivoice')
+# ★ transformers data + submodules + metadata (คงไว้ — ระบบ OmniVoice ถูกถอดออกแล้ว แต่ไม่ได้ตัด transformers
+#   เพื่อไม่ให้กระทบ RVC; ตัดได้ภายหลังหลังทดสอบ build จริง — สำรอง spec เดิม: ..\omnivoice_removed_backup_2026-09-20)
 _tf_datas = collect_data_files('transformers', include_py_files=False)
 datas += _tf_datas
 _tf_hidden = collect_submodules('transformers')
-# ★ collect metadata (.dist-info) — omnivoice/__init__.py ใช้ importlib.metadata
+# ★ collect metadata (.dist-info)
 from PyInstaller.utils.hooks import copy_metadata
-datas += copy_metadata('omnivoice')
 datas += copy_metadata('torch')
 datas += copy_metadata('torchaudio')
 datas += copy_metadata('torchvision')
@@ -89,12 +86,8 @@ a = Analysis(
         'torch', 'torchaudio', 'fairseq', 'rvc_python', 'rvc_python.infer',
         'torchcrepe', 'pyworld', 'scipy', 'scipy.signal', 'omegaconf', 'faiss', 'av',
         '_sitebuiltins',
-        # OmniVoice
-        'omnivoice', 'transformers',
-        # ★ OmniVoice deps — HiggsAudioV2TokenizerModel (transformers dynamic import)
-        'transformers.models.higgs_audio_v2_tokenizer',
-        'transformers.models.higgs_audio_v2_tokenizer.modeling_higgs_audio_v2_tokenizer',
-        'transformers.models.higgs_audio_v2_tokenizer.configuration_higgs_audio_v2_tokenizer',
+        # transformers (ใช้ร่วมกับ stack ของ RVC)
+        'transformers',
         # PySide6
         'PySide6', 'PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets',
         'PySide6.QtWebEngineWidgets', 'PySide6.QtWebEngineCore',
@@ -105,11 +98,11 @@ a = Analysis(
         'updater', 'splash',
         'now_playing', 'winsdk',
         'obsws_python', 'obs_refresh',
-        'omnivoice_engine', 'rvc_engine', 'engine_plugin_loader',
+        'rvc_engine', 'engine_plugin_loader',
         # ★ v2.5.0 — Chat Bot + OAuth + OBS + Single Instance
         'twitch_oauth', 'twitch_bot', 'youtube_oauth', 'kick_oauth', 'announcement', 'server_guard',
         'single_instance', 'obs_launcher',
-    ] + _requests_subs + _urllib3_subs + _rvc_hidden + _fairseq_hidden + _omni_hidden + _tf_hidden,
+    ] + _requests_subs + _urllib3_subs + _rvc_hidden + _fairseq_hidden + _tf_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=['rthook_help.py'],

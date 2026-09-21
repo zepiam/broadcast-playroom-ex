@@ -80,7 +80,7 @@ class PlatformCard(QFrame):
         info = QVBoxLayout()
         info.setSpacing(0)
         self.name_label = QLabel(label)
-        self.name_label.setStyleSheet("font-weight: 600; color: #e5e7eb; font-size: 14px;")
+        theme.styled(self.name_label, "font-weight: 600; color: #e5e7eb; font-size: 14px;")
         self.name_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         # ★ ปุ่ม GO (🚀 เปิดหน้าช่อง/ห้อง live ในเบราว์เซอร์ — แสดงเมื่อเชื่อมต่อแล้ว)
         from PySide6.QtWidgets import QToolButton
@@ -100,10 +100,10 @@ class PlatformCard(QFrame):
         name_row.addWidget(self.name_label)
         name_row.addWidget(self.go_btn)
         self.status_label = QLabel("ยังไม่เชื่อมต่อ")
-        self.status_label.setStyleSheet("font-size: 12px; color: #6b7280;")
+        theme.styled(self.status_label, "font-size: 12px; color: #6b7280;")
         # ★ stream title (แสดงเมื่อเชื่อมต่อสำเร็จ — ดึงจาก live stream จริง)
         self.stream_title_label = QLabel("")
-        self.stream_title_label.setStyleSheet("font-size: 11px; color: #9ca3af; font-style: italic;")
+        theme.styled(self.stream_title_label, "font-size: 11px; color: #9ca3af; font-style: italic;")
         self.stream_title_label.setWordWrap(False)
         self.stream_title_label.setVisible(False)
         info.addLayout(name_row)
@@ -118,7 +118,7 @@ class PlatformCard(QFrame):
         self.refresh_btn = QToolButton()
         self.refresh_btn.setText("🔄")
         self.refresh_btn.setToolTip("ดึง Title ใหม่จากแพลตฟอร์ม")
-        self.refresh_btn.setStyleSheet("""
+        theme.styled(self.refresh_btn, """
             QToolButton { background: transparent; border: none; font-size: 11px; padding: 0 2px; }
             QToolButton:hover { background: rgba(124,58,237,0.15); border-radius: 3px; }
         """)
@@ -126,7 +126,8 @@ class PlatformCard(QFrame):
         self.refresh_btn.setVisible(False)
         self.refresh_btn.clicked.connect(lambda: self.refresh_stream_requested.emit(self.platform_key))
         title_row.addWidget(self.refresh_btn)
-        self.edit_link_label = QLabel('<span style="color:#7c3aed; text-decoration: underline;">Edit</span>')
+        self.edit_link_label = QLabel(theme.T('<span style="color:#7c3aed; text-decoration: underline;">Edit</span>'))
+        theme.register_theme_listener(self._refresh_edit_link)
         self.edit_link_label.setTextFormat(Qt.RichText)
         self.edit_link_label.setStyleSheet("font-size: 11px; background: transparent;")
         self.edit_link_label.setCursor(Qt.PointingHandCursor)
@@ -137,7 +138,7 @@ class PlatformCard(QFrame):
         row1.addLayout(info, 1)
         # ★ viewer count (ฝั่งขวา — แสดงเมื่อเชื่อมต่อแล้วได้รับยอดจริง)
         self.viewer_label = QLabel("")
-        self.viewer_label.setStyleSheet("font-size: 12px; color: #9ca3af; font-weight: 600; background: transparent; border: none;")
+        theme.styled(self.viewer_label, "font-size: 12px; color: #9ca3af; font-weight: 600; background: transparent; border: none;")
         self.viewer_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.viewer_label.setVisible(False)  # ★ ซ่อนตอนเริ่ม (ยังไม่มียอด)
         row1.addWidget(self.viewer_label)
@@ -175,6 +176,9 @@ class PlatformCard(QFrame):
         self.vol_slider.valueChanged.connect(lambda v: self.volume_changed.emit(self.platform_key, v))
         layout.addWidget(self.vol_slider)
 
+
+    def _refresh_edit_link(self):
+        self.edit_link_label.setText(theme.T('<span style="color:#7c3aed; text-decoration: underline;">Edit</span>'))
 
     def _on_btn(self):
         if self.btn.text() in ("เชื่อมต่อ", "ลองใหม่"):
@@ -227,7 +231,7 @@ class PlatformCard(QFrame):
         self.btn.setText("...")
         self.btn.setEnabled(False)
         self.status_label.setText("กำลังเชื่อมต่อ...")
-        self.status_label.setStyleSheet("font-size: 12px; color: #f59e0b;")
+        theme.styled(self.status_label, "font-size: 12px; color: #f59e0b;")
 
     def set_connected(self, connected):
         """อัปเดตสถานะ"""
@@ -237,7 +241,7 @@ class PlatformCard(QFrame):
             self.btn.setText("หยุดเชื่อมต่อ")
             self.btn.setObjectName("Danger")
             self.status_label.setText("✅ เชื่อมต่อแล้ว")
-            self.status_label.setStyleSheet("font-size: 12px; color: #10b981;")
+            theme.styled(self.status_label, "font-size: 12px; color: #10b981;")
             self.viewer_label.setText("👥 0")
             self.viewer_label.setVisible(True)
             self.go_btn.setVisible(True)
@@ -246,7 +250,7 @@ class PlatformCard(QFrame):
             self.btn.setObjectName("")
             self.status_label.setText("ยังไม่เชื่อมต่อ")
             # (repolish อยู่ท้ายฟังก์ชัน — ครอบทั้งสอง branch)
-            self.status_label.setStyleSheet("font-size: 12px; color: #6b7280;")
+            theme.styled(self.status_label, "font-size: 12px; color: #6b7280;")
             self.viewer_label.setVisible(False)
             self.viewer_label.setText("")
             self.go_btn.setVisible(False)
@@ -389,12 +393,12 @@ class Sidebar(QFrame):
         ph.addWidget(self.platform_toggle)
         header = QLabel("🔌 แพลตฟอร์ม")
         header.setObjectName("Heading")
-        header.setStyleSheet("font-size: 16px; font-weight: 700; color: #f59e0b;")
+        theme.styled(header, "font-size: 16px; font-weight: 700; color: #f59e0b;")
         ph.addWidget(header)
         ph.addStretch()
         # ★ connected count
         self.platform_count = QLabel("0/0")
-        self.platform_count.setStyleSheet("color: #10b981; font-size: 12px; font-weight: 600;")
+        theme.styled(self.platform_count, "color: #10b981; font-size: 12px; font-weight: 600;")
         ph.addWidget(self.platform_count)
         # ★ Settings gear
         self.gear_btn = QPushButton("⚙")
@@ -414,13 +418,13 @@ class Sidebar(QFrame):
         # ★ Separator
         sep = QFrame()
         sep.setFixedHeight(1)
-        sep.setStyleSheet(f"background-color: {theme.COLOR_BORDER};")
+        theme.styled(sep, "background-color: #2a2f45;")
         clayout.addWidget(sep)
 
         # ★ Voice header — เหลือแค่หัวข้อ (สถานะย้ายไปใต้ RVC combo แล้ว)
         voice_header = QLabel("🎤 เสียง")
         voice_header.setObjectName("Heading")
-        voice_header.setStyleSheet("font-size: 16px; font-weight: 700; color: #f59e0b;")
+        theme.styled(voice_header, "font-size: 16px; font-weight: 700; color: #f59e0b;")
         clayout.addWidget(voice_header)
 
         # ════════════════════════════════════════════════════════════════
@@ -433,11 +437,9 @@ class Sidebar(QFrame):
         bv_layout.setContentsMargins(0, 2, 0, 2)
         bv_layout.setSpacing(2)
         bv_title = QLabel("เสียงพื้นฐาน")
-        bv_title.setStyleSheet(
-            "color: #d1d5db; font-size: 11px; font-weight: 600;"
+        theme.styled(bv_title, "color: #d1d5db; font-size: 11px; font-weight: 600;"
             "background-color: rgba(255, 255, 255, 0.04);"
-            "padding: 4px 8px; border-radius: 4px;"
-        )
+            "padding: 4px 8px; border-radius: 4px;")
         bv_title.setAlignment(Qt.AlignCenter)
         bv_layout.addWidget(bv_title)
         bv_row = QHBoxLayout()
@@ -447,7 +449,7 @@ class Sidebar(QFrame):
         self.voice_btn_female = self._make_text_toggle("หญิง")
         bv_row.addWidget(self.voice_btn_female)
         bv_sep = QLabel("|")
-        bv_sep.setStyleSheet("color: #4b5563; font-size: 13px; padding: 0 6px;")
+        theme.styled(bv_sep, "color: #4b5563; font-size: 13px; padding: 0 6px;")
         bv_row.addWidget(bv_sep)
         self.voice_btn_male = self._make_text_toggle("ชาย")
         bv_row.addWidget(self.voice_btn_male)
@@ -465,11 +467,9 @@ class Sidebar(QFrame):
         rvc_layout.setContentsMargins(0, 4, 0, 4)
         rvc_layout.setSpacing(2)
         rvc_title = QLabel("โมเดลเสียง RVC")
-        rvc_title.setStyleSheet(
-            "color: #d1d5db; font-size: 11px; font-weight: 600;"
+        theme.styled(rvc_title, "color: #d1d5db; font-size: 11px; font-weight: 600;"
             "background-color: rgba(255, 255, 255, 0.04);"
-            "padding: 4px 8px; border-radius: 4px;"
-        )
+            "padding: 4px 8px; border-radius: 4px;")
         rvc_layout.addWidget(rvc_title)
         # ★ combo + refresh อยู่บรรทัดเดียวกัน (combo stretch, refresh ชิดขวา)
         rvc_row = QHBoxLayout()
@@ -492,7 +492,7 @@ class Sidebar(QFrame):
         # ★ สถานะเสียงปัจจุบัน (ย้ายมาจาก header — อยู่ใต้ RVC combo)
         #   อยู่นอก rvc_container เพื่อให้ Lite build (ไม่มี RVC) ก็แสดงได้
         self.rvc_status = QLabel("✅ Premwadee (Azure)")
-        self.rvc_status.setStyleSheet("color: #10b981; font-size: 12px;")
+        theme.styled(self.rvc_status, "color: #10b981; font-size: 12px;")
         self.rvc_status.setAlignment(Qt.AlignCenter)
         self.rvc_status.setWordWrap(True)
         clayout.addWidget(self.rvc_status)
@@ -500,7 +500,7 @@ class Sidebar(QFrame):
         # ★ Separator ก่อนปุ่ม action (ทดสอบ / ดาวน์โหลด / รีเฟรช)
         voice_sep = QFrame()
         voice_sep.setFixedHeight(1)
-        voice_sep.setStyleSheet(f"background-color: {theme.COLOR_BORDER};")
+        theme.styled(voice_sep, "background-color: #2a2f45;")
         clayout.addWidget(voice_sep)
 
         # ★ Voice buttons — text labels: ทดสอบฟัง | ดาวโหลดโมเดลเสียง
@@ -512,7 +512,7 @@ class Sidebar(QFrame):
         self.voice_test_btn.setToolTip("ทดสอบเสียง TTS")
         voice_btn_row.addWidget(self.voice_test_btn)
         self.voice_btn_sep = QLabel("|")
-        self.voice_btn_sep.setStyleSheet("color: #4b5563; font-size: 13px; padding: 0 6px;")
+        theme.styled(self.voice_btn_sep, "color: #4b5563; font-size: 13px; padding: 0 6px;")
         voice_btn_row.addWidget(self.voice_btn_sep)
         self.voice_download_btn = self._make_text_toggle("ดาวโหลดโมเดลเสียง")
         self.voice_download_btn.setToolTip("ดาวน์โหลดเสียง RVC")
@@ -523,18 +523,18 @@ class Sidebar(QFrame):
         # ★ Separator ก่อน sliders
         sep2 = QFrame()
         sep2.setFixedHeight(1)
-        sep2.setStyleSheet(f"background-color: {theme.COLOR_BORDER};")
+        theme.styled(sep2, "background-color: #2a2f45;")
         clayout.addWidget(sep2)
 
         # ★ Volume slider (label + value on right)
         vol_row = QHBoxLayout()
         vol_row.setContentsMargins(0, 0, 0, 0)
         vol_label = QLabel("🔊 Volume")
-        vol_label.setStyleSheet("color: #9ca3af; font-size: 12px;")
+        theme.styled(vol_label, "color: #9ca3af; font-size: 12px;")
         vol_row.addWidget(vol_label)
         vol_row.addStretch()
         self.vol_val_label = QLabel("100")
-        self.vol_val_label.setStyleSheet("color: #06b6d4; font-size: 12px;")
+        theme.styled(self.vol_val_label, "color: #06b6d4; font-size: 12px;")
         vol_row.addWidget(self.vol_val_label)
         clayout.addLayout(vol_row)
         self.vol_slider = QSlider(Qt.Horizontal)
@@ -547,11 +547,11 @@ class Sidebar(QFrame):
         rate_row = QHBoxLayout()
         rate_row.setContentsMargins(0, 0, 0, 0)
         rate_label = QLabel("⚡ Speed")
-        rate_label.setStyleSheet("color: #9ca3af; font-size: 12px;")
+        theme.styled(rate_label, "color: #9ca3af; font-size: 12px;")
         rate_row.addWidget(rate_label)
         rate_row.addStretch()
         self.rate_val_label = QLabel("+0")
-        self.rate_val_label.setStyleSheet("color: #06b6d4; font-size: 12px;")
+        theme.styled(self.rate_val_label, "color: #06b6d4; font-size: 12px;")
         rate_row.addWidget(self.rate_val_label)
         clayout.addLayout(rate_row)
         self.rate_slider = QSlider(Qt.Horizontal)
@@ -568,9 +568,9 @@ class Sidebar(QFrame):
         # pitch slider
         pitch_label_row = QHBoxLayout()
         pitch_label = QLabel("Pitch (ระดับเสียง)")
-        pitch_label.setStyleSheet("color: #9ca3af; font-size: 12px;")
+        theme.styled(pitch_label, "color: #9ca3af; font-size: 12px;")
         self.pitch_val_label = QLabel("+0")
-        self.pitch_val_label.setStyleSheet("color: #06b6d4; font-size: 12px;")
+        theme.styled(self.pitch_val_label, "color: #06b6d4; font-size: 12px;")
         pitch_label_row.addWidget(pitch_label)
         pitch_label_row.addStretch()
         pitch_label_row.addWidget(self.pitch_val_label)
@@ -618,7 +618,7 @@ class Sidebar(QFrame):
         btn.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
         btn.setFocusPolicy(Qt.NoFocus)
         # ★ default style = inactive (เทา)
-        btn.setStyleSheet(self._text_toggle_style(active=False))
+        theme.styled(btn, self._text_toggle_style(active=False))
         return btn
 
     @staticmethod
@@ -634,7 +634,7 @@ class Sidebar(QFrame):
 
     def _set_text_toggle_active(self, btn: QPushButton, active: bool):
         """ตั้ง active/inactive style ให้ text toggle"""
-        btn.setStyleSheet(self._text_toggle_style(active))
+        theme.styled(btn, self._text_toggle_style(active))
 
     def set_base_voice_active(self, voice: str):
         """highlight base voice toggle — voice = "female" | "male" | "premwadee" | "niwat"
@@ -660,4 +660,4 @@ class Sidebar(QFrame):
         """อัปเดตตัวเลขจำนวนแพลตฟอร์มที่เชื่อมต่ออยู่"""
         color = "#10b981" if connected > 0 else "#6b7280"
         self.platform_count.setText(f"{connected}/{total}")
-        self.platform_count.setStyleSheet(f"color: {color}; font-size: 12px; font-weight: 600;")
+        theme.styled(self.platform_count, f"color: {color}; font-size: 12px; font-weight: 600;")

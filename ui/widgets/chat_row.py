@@ -7,6 +7,7 @@ import logging
 import os
 import time
 import urllib.request
+from ui.theme import T as _T  # ★ แปลงสีของธีม default ในสไตล์ชีต → สีของธีมปัจจุบัน
 from PySide6.QtCore import Qt, Signal, QSize, QTimer, QThread, QObject, QUrl, QByteArray
 from PySide6.QtGui import QPixmap, QImage, QFont, QColor
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
@@ -122,7 +123,7 @@ def _lookup_block_status(author):
 
 
 # ★ zebra colors (เข้มกว่า bg นิดหน่อย — subtle separation)
-ZEBRA_COLOR = "#101524"  # odd rows
+ZEBRA_COLOR = "#101524"  # (เดิม — ไม่ใช้แล้ว: สี zebra จริงอ่านสดจาก theme.COLOR_ZEBRA ตามธีมที่เลือก)
 
 
 def apply_zebra_backgrounds(rows):
@@ -218,7 +219,8 @@ class ChatRow(QWidget):
         painter = QPainter(self)
         # ★ zebra background
         if self._zebra_on:
-            painter.fillRect(self.rect(), QColor(ZEBRA_COLOR))
+            import ui.theme as _theme
+            painter.fillRect(self.rect(), QColor(_theme.COLOR_ZEBRA))
         # ★ กรอบฟ้าบางๆ สำหรับข้อความที่ส่งจากในโปรแกรม (own message)
         extra = getattr(self.msg, 'extra', {}) or {}
         if extra.get('_own_message') and not extra.get('_is_bot_response'):
@@ -236,7 +238,7 @@ class ChatRow(QWidget):
     def _show_context_menu(self, pos):
         from PySide6.QtWidgets import QMenu
         menu = QMenu(self)
-        menu.setStyleSheet("QMenu { background: #131726; border: 1px solid #2a2f45; border-radius: 8px; padding: 4px; } QMenu::item { padding: 8px 24px; border-radius: 4px; color: #e5e7eb; } QMenu::item:selected { background: #7c3aed; }")
+        menu.setStyleSheet(_T("QMenu { background: #131726; border: 1px solid #2a2f45; border-radius: 8px; padding: 4px; } QMenu::item { padding: 8px 24px; border-radius: 4px; color: #e5e7eb; } QMenu::item:selected { background: #7c3aed; }"))
         author = getattr(self.msg, 'author', '') or ''
         status = _lookup_block_status(author) if author else None
         act_delete = menu.addAction("🗑 ลบข้อความนี้")
@@ -389,7 +391,7 @@ class ChatRow(QWidget):
         if extra.get("_tts_id"):
             self.tts_status_label = QLabel()
             self.tts_status_label.setStyleSheet(
-                "font-size:10px; color:#6b7280; border:none; background:transparent;"
+                _T("font-size:10px; color:#6b7280; border:none; background:transparent;")
             )
             author_row.addWidget(self.tts_status_label)
             self.set_tts_status("queued", {})
@@ -427,7 +429,7 @@ class ChatRow(QWidget):
                 self.refresh_tts_wait()
             elif status == "playing":
                 lbl.setText("🔊")
-                lbl.setStyleSheet(self._TTS_GREEN)
+                lbl.setStyleSheet(_T(self._TTS_GREEN))
                 lbl.setToolTip("กำลังอ่าน TTS")
             elif status == "done":
                 el = info.get("elapsed")
@@ -437,14 +439,14 @@ class ChatRow(QWidget):
                 else:
                     lbl.setText("✓")
                     lbl.setToolTip("อ่านแล้ว")
-                lbl.setStyleSheet(self._TTS_GREEN)
+                lbl.setStyleSheet(_T(self._TTS_GREEN))
             elif status == "skipped":
                 lbl.setText("⊘")
-                lbl.setStyleSheet(self._TTS_GRAY)
+                lbl.setStyleSheet(_T(self._TTS_GRAY))
                 lbl.setToolTip(f"ไม่อ่าน TTS — {info.get('reason', 'ถูกกรอง')}")
             elif status == "error":
                 lbl.setText("⚠")
-                lbl.setStyleSheet(self._TTS_RED)
+                lbl.setStyleSheet(_T(self._TTS_RED))
                 lbl.setToolTip(f"TTS ผิดพลาด — {info.get('reason', '?')}")
         except Exception:
             pass
@@ -581,7 +583,10 @@ class ChatRow(QWidget):
             orig_label = self._make_wrap_label(f"{flag} {original_text}", color="#10b981", size_offset=-1)
             self.content_layout.addWidget(orig_label)
 
-    def _make_wrap_label(self, text, color="#e5e7eb", size_offset=0):
+    def _make_wrap_label(self, text, color=None, size_offset=0):
+        if color is None:
+            import ui.theme as _theme
+            color = _theme.COLOR_TEXT
         fs = self._font_size + size_offset
         lbl = QLabel(text)
         lbl.setWordWrap(True)

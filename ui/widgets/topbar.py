@@ -56,6 +56,7 @@ class TopBar(QFrame):
         self.setMaximumHeight(52)
         self._translate_mode = "off"  # "off" | "multilang" | "translate"
         self._build_ui()
+        theme.register_theme_listener(self._update_tts_button)   # ★ ปุ่มอ่านแชท/ปิดอ่านตั้งสีเอง → รีเฟรชสดตอนสลับธีม
 
     def _build_ui(self):
         layout = QHBoxLayout(self)
@@ -69,12 +70,10 @@ class TopBar(QFrame):
         self.btn_obs.setFixedHeight(32)
         self.btn_obs.setCursor(Qt.PointingHandCursor)
         self.btn_obs.setToolTip("เปิดโปรแกรม OBS (หรือดึงหน้าต่าง OBS ที่ซ่อนไว้ขึ้นมาแสดง)")
-        self.btn_obs.setStyleSheet(
-            "QPushButton { background-color: #1e293b; color: #e2e8f0; border: 1px solid #334155; "
+        theme.styled(self.btn_obs, "QPushButton { background-color: #1e293b; color: #e2e8f0; border: 1px solid #334155; "
             "border-radius: 6px; padding: 4px 12px; font-size: 13px; font-weight: 600; }"
             "QPushButton:hover { background-color: #334155; border-color: #475569; }"
-            "QPushButton:pressed { background-color: #0f172a; }"
-        )
+            "QPushButton:pressed { background-color: #0f172a; }")
         # ★ โหลด OBS icon จาก assets/obs_icon.png (extract จาก obs64.exe)
         import os as _os
         from PySide6.QtGui import QPixmap, QIcon
@@ -123,7 +122,7 @@ class TopBar(QFrame):
         vol_layout.addWidget(vol_lbl)
         vol_layout.addWidget(self.vol_slider, 1)
         self.vol_value_lbl = QLabel("100%")
-        self.vol_value_lbl.setStyleSheet("color: #7c3aed; font-weight: 600; min-width: 36px;")
+        theme.styled(self.vol_value_lbl, "color: #7c3aed; font-weight: 600; min-width: 36px;")
         self.vol_slider.valueChanged.connect(lambda v: self.vol_value_lbl.setText(f"{v}%"))
         vol_layout.addWidget(self.vol_value_lbl)
         vol_action.setDefaultWidget(vol_widget)
@@ -301,15 +300,15 @@ class TopBar(QFrame):
             self.btn_tts.setText("🔇 ปิดอ่าน")
             _on_danger = theme.COLOR_ON_DANGER_TEXT
             self.btn_tts._main_btn.setStyleSheet(
-                f"QPushButton {{ background-color: {theme.COLOR_DANGER}; color: {_on_danger}; border: none; "
+                f"QPushButton {{ background-color: {theme.COLOR_DANGER_BTN}; color: {_on_danger}; border: none; "
                 "border-radius: 14px 0 0 14px; padding: 4px 6px 4px 14px; "
                 "font-weight: 600; font-size: 12px; }"
-                f"QPushButton:hover {{ background-color: {theme.COLOR_DANGER_HOVER}; }}"
+                f"QPushButton:hover {{ background-color: {theme.COLOR_DANGER_BTN_HOVER}; }}"
             )
             self.btn_tts._arrow_btn.setStyleSheet(
-                f"QPushButton {{ background-color: {theme.COLOR_DANGER}; color: {_on_danger}; border: none; "
+                f"QPushButton {{ background-color: {theme.COLOR_DANGER_BTN}; color: {_on_danger}; border: none; "
                 "border-radius: 0 14px 14px 0; padding: 4px 2px; font-size: 11px; }"
-                f"QPushButton:hover {{ background-color: {theme.COLOR_DANGER_HOVER}; }}"
+                f"QPushButton:hover {{ background-color: {theme.COLOR_DANGER_BTN_HOVER}; }}"
             )
 
     def set_tts_state(self, on):
@@ -425,19 +424,15 @@ class TopBar(QFrame):
         self._obs_running = running
         if running:
             self.btn_obs.setText("  กำลังใช้งาน OBS")
-            self.btn_obs.setStyleSheet(
-                "QPushButton { background-color: #064e3b; color: #6ee7b7; border: 1px solid #10b981; "
+            theme.styled(self.btn_obs, "QPushButton { background-color: #064e3b; color: #6ee7b7; border: 1px solid #10b981; "
                 "border-radius: 6px; padding: 4px 12px; font-size: 13px; font-weight: 600; }"
                 "QPushButton:hover { background-color: #065f46; border-color: #34d399; }"
-                "QPushButton:pressed { background-color: #064e3b; }"
-            )
+                "QPushButton:pressed { background-color: #064e3b; }")
             self.btn_obs.setToolTip("OBS กำลังรันอยู่ — กดเพื่อเปิดหน้าต่าง")
         else:
             self.btn_obs.setText("  เปิด OBS")
-            self.btn_obs.setStyleSheet(
-                "QPushButton { background-color: #1e293b; color: #e2e8f0; border: 1px solid #334155; "
+            theme.styled(self.btn_obs, "QPushButton { background-color: #1e293b; color: #e2e8f0; border: 1px solid #334155; "
                 "border-radius: 6px; padding: 4px 12px; font-size: 13px; font-weight: 600; }"
                 "QPushButton:hover { background-color: #334155; border-color: #475569; }"
-                "QPushButton:pressed { background-color: #0f172a; }"
-            )
+                "QPushButton:pressed { background-color: #0f172a; }")
             self.btn_obs.setToolTip("เปิดโปรแกรม OBS")

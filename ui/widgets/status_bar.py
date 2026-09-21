@@ -1,6 +1,7 @@
 """status_bar.py — Bottom status bar with progress bar"""
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QLabel, QHBoxLayout, QProgressBar
+import ui.theme as theme  # ★ theme.styled(): สีตามธีม + รีเฟรชสดเมื่อสลับธีม
 
 
 def _read_version() -> str:
@@ -47,7 +48,7 @@ class StatusBar(QFrame):
         layout.setSpacing(8)
 
         self.status_label = QLabel("Ready")
-        self.status_label.setStyleSheet("color: #9ca3af; font-size: 13px;")
+        theme.styled(self.status_label, "color: #9ca3af; font-size: 13px;")
         layout.addWidget(self.status_label)
 
         layout.addStretch()
@@ -60,7 +61,7 @@ class StatusBar(QFrame):
         self.progress_bar.setValue(0)
         self.progress_bar.setTextVisible(True)
         self.progress_bar.setVisible(False)  # ★ hidden by default
-        self.progress_bar.setStyleSheet("""
+        theme.styled(self.progress_bar, """
             QProgressBar {
                 background-color: #1a1f33;
                 border: 1px solid #2a2f45;
@@ -78,7 +79,7 @@ class StatusBar(QFrame):
         layout.addWidget(self.progress_bar)
 
         self.version_label = QLabel(_read_version())
-        self.version_label.setStyleSheet("color: #6b7280; font-size: 13px;")
+        theme.styled(self.version_label, "color: #6b7280; font-size: 13px;")
         layout.addWidget(self.version_label)
 
     def set_status(self, msg):

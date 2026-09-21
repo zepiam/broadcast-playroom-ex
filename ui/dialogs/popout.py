@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QDialog, QWidget, QFrame, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
     QScrollArea,
 )
-from ui.theme import COLOR_CARD, COLOR_BORDER
+import ui.theme as theme  # ★ theme.styled(): สีตามธีม + รีเฟรชสดเมื่อสลับธีม
 from ui.widgets.chat_row import ChatRow
 
 
@@ -28,7 +28,7 @@ class PopoutWindow(QDialog):
         # ★ Header
         header = QFrame()
         header.setFixedHeight(40)
-        header.setStyleSheet(f"background-color: {COLOR_CARD}; border-bottom: 1px solid {COLOR_BORDER};")
+        theme.styled(header, "background-color: #131726; border-bottom: 1px solid #2a2f45;")
         hlayout = QHBoxLayout(header)
         hlayout.setContentsMargins(12, 0, 12, 0)
         title = QLabel("💬 แชทสด")
@@ -36,7 +36,7 @@ class PopoutWindow(QDialog):
         hlayout.addWidget(title)
         hlayout.addStretch()
         self.viewers_label = QLabel("👥 0")
-        self.viewers_label.setStyleSheet("color: #9ca3af; font-size: 14px;")
+        theme.styled(self.viewers_label, "color: #9ca3af; font-size: 14px;")
         hlayout.addWidget(self.viewers_label)
         btn_close = QPushButton("✕")
         btn_close.setObjectName("IconButton")

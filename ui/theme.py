@@ -252,6 +252,91 @@ for _key, _pal in THEMES.items():
     _pal["ON_DANGER_HOVER_TEXT"] = _on(_pal["DANGER_HOVER"])
     _pal["ON_SUCCESS_HOVER_TEXT"] = _on(_pal["SUCCESS_HOVER"])
 
+
+# ════════════════════════════════════════════════════════
+# ★ โทเคนสีที่คำนวณต่อธีม (2026-09) — แทนที่สี hex ตายตัวของธีม default ที่เคยฝังใน widget
+#   หลักการ: "default" ต้องได้ค่าเดิมเป๊ะ (ผู้ใช้เดิมหน้าตาไม่เปลี่ยน) / ธีมอื่นได้สีที่ derive จากพาเลตของธีมนั้น
+# ════════════════════════════════════════════════════════
+def _mix(a: str, b: str, t: float) -> str:
+    """ผสมสี a→b ที่สัดส่วน t (0=a, 1=b)"""
+    a, b = a.lstrip("#"), b.lstrip("#")
+    ca = [int(a[i:i + 2], 16) for i in (0, 2, 4)]
+    cb = [int(b[i:i + 2], 16) for i in (0, 2, 4)]
+    return "#%02x%02x%02x" % tuple(round(x + (y - x) * t) for x, y in zip(ca, cb))
+
+
+def rgba(hex_color: str, alpha: float) -> str:
+    """'#rrggbb' + alpha(0-1) → 'rgba(r, g, b, a)' สำหรับ QSS"""
+    h = hex_color.lstrip("#")
+    return "rgba(%d, %d, %d, %s)" % (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), alpha)
+
+
+def _contrast(fg: str, bg: str) -> float:
+    lf, lb = _rel_lum(fg), _rel_lum(bg)
+    return (max(lf, lb) + 0.05) / (min(lf, lb) + 0.05)
+
+
+# ธีมเดิมที่ปุ่มแดงอ่านออกอยู่แล้ว (ตัวอักษรขาวบนแดงเข้ม) — คงค่าเดิม
+_DANGER_BTN_UNCHANGED = {"default", "ember_dusk"}
+# ปุ่ม/ช่อง "ระดับ control" ของ chat panel + topbar ที่เดิมใช้โทน slate ตายตัว (Tailwind slate)
+_SLATE = {
+    "CTRL_BG": "#1e293b", "CTRL_BORDER": "#334155", "CTRL_BORDER_HI": "#475569", "CTRL_DEEP": "#0f172a",
+    "CTRL_TEXT": "#e2e8f0", "CTRL_DIM": "#94a3b8", "CTRL_FAINT": "#64748b", "CTRL_SEP": "#475569",
+}
+
+for _key, _pal in THEMES.items():
+    # ── ปุ่มแดง (#Danger / ปุ่มปิดอ่านบน topbar / ปุ่ม "หยุดเชื่อมต่อ"): ตัวอักษร "ขาว" เสมอ ──
+    #    พื้นปุ่มเข้มลงเท่าที่จำเป็นให้ขาวอ่านชัด (WCAG >= 4.5:1) — ไม่แตะ DANGER เดิม (ยังใช้เป็นสีข้อความ/ไอคอนบนพื้นมืด)
+    _white = "#ffffff"
+    _pal["ON_DANGER_TEXT"] = _white
+    _pal["ON_DANGER_HOVER_TEXT"] = _white
+    if _key in _DANGER_BTN_UNCHANGED:
+        _pal["DANGER_BTN"], _pal["DANGER_BTN_HOVER"] = _pal["DANGER"], _pal["DANGER_HOVER"]
+    else:
+        # เข้มลงแบบคงเฉด + เพิ่มความอิ่มสี (ผสมกับดำตรงๆ จะได้แดงหม่นออกอิฐ) จนขาวอ่านชัด
+        import colorsys as _cs
+        _rgb = [int(_pal["DANGER"].lstrip("#")[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+        _h, _s, _v = _cs.rgb_to_hsv(*_rgb)
+        _s = max(_s, 0.80)
+        _bg = _pal["DANGER"]
+        while _v > 0.30:
+            _bg = "#%02x%02x%02x" % tuple(round(c * 255) for c in _cs.hsv_to_rgb(_h, _s, _v))
+            if _contrast(_white, _bg) >= 4.5:
+                break
+            _v -= 0.01
+        _pal["DANGER_BTN"] = _bg
+        _pal["DANGER_BTN_HOVER"] = _mix(_bg, "#000000", 0.14)
+
+    # ── สีแถบสลับ (zebra) ของแถวแชท: ยกพื้นหลังเล็กน้อยไปทางสี ACCENT ของธีม ให้เห็นชัดแต่ไม่แย่งตัวอักษร ──
+    if _key == "default":
+        _pal["ZEBRA"] = "#101524"                      # ค่าเดิมของโปรแกรม
+    else:
+        _t = 0.05
+        _zb = _mix(_pal["BG"], _pal["ACCENT"], _t)
+        while _contrast(_zb, _pal["BG"]) < 1.10 and _t < 0.30:
+            _t += 0.01
+            _zb = _mix(_pal["BG"], _pal["ACCENT"], _t)
+        _pal["ZEBRA"] = _zb
+
+    # ── เส้นขอบปุ่ม "หยุดเชื่อมต่อ": default/ember คงเดิม / ธีมอื่นใช้แดงสดเท่ากับพื้นปุ่มแดง (ไม่เข้มจนจม) ──
+    _pal["DANGER_EDGE"] = _pal["DANGER_HOVER"] if _key in _DANGER_BTN_UNCHANGED else _pal["DANGER_BTN"]
+    # ── เทาอ่อน/เทาเข้มที่ sidebar ใช้ (default = ค่าเดิม) ──
+    _pal["TEXT_SOFT"] = "#d1d5db" if _key == "default" else _mix(_pal["TEXT"], _pal["TEXT_DIM"], 0.45)
+    _pal["TEXT_MUTE"] = "#4b5563" if _key == "default" else _pal["TEXT_FAINT"]
+
+    # ── สี accent อ่อน (ข้อความ/ชิปบนพื้นมืด) ──
+    _pal["ACCENT_SOFT"] = "#a78bfa" if _key == "default" else _mix(_pal["ACCENT"], "#ffffff", 0.40)
+
+    # ── โทน "control" (เดิม slate ตายตัว): default = ค่าเดิมเป๊ะ / ธีมอื่น = derive จากพาเลต ──
+    if _key == "default":
+        _pal.update(_SLATE)
+    else:
+        _pal.update({
+            "CTRL_BG": _pal["CARD_HI"], "CTRL_BORDER": _pal["BORDER"], "CTRL_BORDER_HI": _pal["BORDER_LIGHT"],
+            "CTRL_DEEP": _pal["BG_DARK"], "CTRL_TEXT": _pal["TEXT"], "CTRL_DIM": _pal["TEXT_DIM"],
+            "CTRL_FAINT": _pal["TEXT_FAINT"], "CTRL_SEP": _pal["TEXT_FAINT"],
+        })
+
 # ═══════════════════════════════════════════════════════════════
 # Color constants (module-level) — apply_theme() จะเขียนทับตัวแปรพวกนี้
 # ตาม theme ที่เลือกไว้ใน settings ตอนเปิดโปรแกรม (ก่อนสร้าง widget ใดๆ)
@@ -281,6 +366,102 @@ COLOR_ON_ACCENT_TEXT = THEMES["default"]["ON_ACCENT_TEXT"]
 COLOR_ON_DANGER_TEXT = THEMES["default"]["ON_DANGER_TEXT"]
 COLOR_ON_SUCCESS_TEXT = THEMES["default"]["ON_SUCCESS_TEXT"]
 COLOR_ON_WARNING_TEXT = THEMES["default"]["ON_WARNING_TEXT"]
+COLOR_DANGER_BTN = THEMES["default"]["DANGER_BTN"]
+COLOR_DANGER_BTN_HOVER = THEMES["default"]["DANGER_BTN_HOVER"]
+COLOR_ZEBRA = THEMES["default"]["ZEBRA"]
+COLOR_ACCENT_SOFT = THEMES["default"]["ACCENT_SOFT"]
+COLOR_CTRL_BG = THEMES["default"]["CTRL_BG"]
+COLOR_CTRL_BORDER = THEMES["default"]["CTRL_BORDER"]
+COLOR_CTRL_BORDER_HI = THEMES["default"]["CTRL_BORDER_HI"]
+COLOR_CTRL_DEEP = THEMES["default"]["CTRL_DEEP"]
+COLOR_CTRL_TEXT = THEMES["default"]["CTRL_TEXT"]
+COLOR_CTRL_DIM = THEMES["default"]["CTRL_DIM"]
+COLOR_CTRL_FAINT = THEMES["default"]["CTRL_FAINT"]
+COLOR_CTRL_SEP = THEMES["default"]["CTRL_SEP"]
+
+# ════════════════════════════════════════════════════════
+# ★ Live re-theme: widget ที่ตั้งสีด้วย setStyleSheet() ตรงๆ (ไม่ผ่าน QSS กลาง) ลงทะเบียนเมธอด
+#   refresh ของตัวเองที่นี่ → apply_theme() เรียกให้ทุกครั้งที่สลับธีม (ไม่ต้องรีสตาร์ท)
+# ════════════════════════════════════════════════════════
+import re as _re
+import weakref as _weakref
+_THEME_LISTENERS = []
+
+# ── ตัวช่วยกลาง: แปลงสี hex "ของธีม default" ที่ฝังในสไตล์ชีตให้เป็นสีของธีมปัจจุบัน ──
+#    ใช้ theme.styled(widget, "color: #9ca3af; ...") แทน widget.setStyleSheet(...) →
+#    (1) ได้สีตามธีมที่เลือกตั้งแต่สร้าง (2) รีเฟรชสดเมื่อสลับธีม (3) ธีม default ได้ค่าเดิมเป๊ะ (แปลง hex เป็นตัวมันเอง)
+_HEX_TOKEN_ORDER = ["BG", "BG_DARK", "CARD", "CARD_HI", "CARD_HOVER", "ACCENT", "ACCENT_HOVER", "ACCENT_2", "HEADING",
+                    "DANGER", "DANGER_HOVER", "SUCCESS", "SUCCESS_HOVER", "TEXT", "TEXT_DIM", "TEXT_FAINT", "BORDER",
+                    "BORDER_LIGHT", "CTRL_BG", "CTRL_BORDER", "CTRL_BORDER_HI", "CTRL_DEEP", "CTRL_TEXT", "CTRL_DIM",
+                    "CTRL_FAINT", "ACCENT_SOFT", "TEXT_SOFT", "TEXT_MUTE"]
+_DEFAULT_HEX_TO_TOKEN = {}
+for _k in _HEX_TOKEN_ORDER:
+    _DEFAULT_HEX_TO_TOKEN.setdefault(THEMES["default"][_k].lower(), _k)
+_HEX_RE = _re.compile(r"#[0-9a-fA-F]{6}\b")
+_ACCENT_RGBA_RE = _re.compile(r"rgba\(\s*124\s*,\s*58\s*,\s*237\s*,")
+_CURRENT_PALETTE = THEMES["default"]
+
+
+def T(css: str) -> str:
+    """แปลงสีของธีม default ในสตริงสไตล์ชีต → สีของธีมปัจจุบัน (สีที่ไม่ใช่ของพาเลต เช่นสีแพลตฟอร์ม คงเดิม)"""
+    pal = _CURRENT_PALETTE
+
+    def _sub(m):
+        key = _DEFAULT_HEX_TO_TOKEN.get(m.group(0).lower())
+        return pal[key] if key else m.group(0)
+    css = _HEX_RE.sub(_sub, css)
+    h = pal["ACCENT"].lstrip("#")
+    return _ACCENT_RGBA_RE.sub("rgba(%d, %d, %d," % (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)), css)
+
+
+_STYLED = _weakref.WeakKeyDictionary()      # widget -> สไตล์ชีตต้นฉบับ (ก่อนแปลง)
+
+
+def styled(widget, css: str) -> None:
+    """setStyleSheet(T(css)) + จำไว้เพื่อรีเฟรชอัตโนมัติเมื่อสลับธีม (เรียกซ้ำกับ widget เดิม = แทนที่สไตล์ชีตที่จำไว้)"""
+    try:
+        _STYLED[widget] = css
+    except TypeError:
+        pass
+    widget.setStyleSheet(T(css))
+
+
+def _restyle_registered() -> None:
+    for w, css in list(_STYLED.items()):
+        try:
+            w.setStyleSheet(T(css))
+        except RuntimeError:
+            pass                      # C++ object ถูกลบไปแล้ว
+
+
+def register_theme_listener(bound_method) -> None:
+    """ลงทะเบียน bound method (เช่น self._apply_theme_styles) — เก็บแบบ weak ไม่ค้าง widget ที่ถูกลบ"""
+    # การ์ด Events ถูกสร้างต่อเนื่องตลอดเซสชัน → ล้างรายการของ widget ที่ถูกลบแล้วเป็นระยะ กันลิสต์โตไม่จำกัด
+    if len(_THEME_LISTENERS) >= 256 and len(_THEME_LISTENERS) % 128 == 0:
+        _THEME_LISTENERS[:] = [r for r in _THEME_LISTENERS if r() is not None]
+    try:
+        _THEME_LISTENERS.append(_weakref.WeakMethod(bound_method))
+    except TypeError:
+        _THEME_LISTENERS.append(lambda f=bound_method: f)
+
+
+def notify_theme_changed() -> None:
+    """เรียกทุก listener (ข้ามตัวที่ widget ถูกลบไปแล้ว / error ของตัวใดตัวหนึ่งไม่ทำให้ตัวอื่นพัง)"""
+    import logging as _logging
+    alive = []
+    for ref in list(_THEME_LISTENERS):
+        fn = ref()
+        if fn is None:
+            continue
+        try:
+            fn()
+            alive.append(ref)
+        except RuntimeError:
+            pass                  # C++ object ถูกลบไปแล้ว — ตัดออกจากรายการ
+        except Exception as e:    # pragma: no cover
+            alive.append(ref)
+            _logging.getLogger("theme").warning("theme listener failed: %s", e)
+    _THEME_LISTENERS[:] = alive
 
 # ═══════════════════════════════════════════════════════════════
 # Fonts
@@ -408,13 +589,13 @@ QPushButton#Primary:hover {
 
 /* Danger button */
 QPushButton#Danger {
-    background-color: __DANGER__;
-    border: 2px solid __DANGER_HOVER__;
+    background-color: __DANGER_BTN__;
+    border: 2px solid __DANGER_EDGE__;
     color: __ON_DANGER_TEXT__;
     font-weight: 600;
 }
 QPushButton#Danger:hover {
-    background-color: __DANGER_HOVER__;
+    background-color: __DANGER_BTN_HOVER__;
     color: __ON_DANGER_HOVER_TEXT__;
     border-color: #fca5a5;
 }
@@ -773,9 +954,13 @@ def apply_theme(app: QApplication, theme_name: str = "default") -> None:
     global COLOR_DANGER, COLOR_DANGER_HOVER, COLOR_SUCCESS, COLOR_SUCCESS_HOVER
     global COLOR_TEXT, COLOR_TEXT_DIM, COLOR_TEXT_FAINT, COLOR_BORDER, COLOR_BORDER_LIGHT
     global COLOR_ON_ACCENT_TEXT, COLOR_ON_DANGER_TEXT, COLOR_ON_SUCCESS_TEXT, COLOR_ON_WARNING_TEXT
+    global COLOR_DANGER_BTN, COLOR_DANGER_BTN_HOVER, COLOR_ZEBRA, COLOR_ACCENT_SOFT
+    global COLOR_CTRL_BG, COLOR_CTRL_BORDER, COLOR_CTRL_BORDER_HI, COLOR_CTRL_DEEP
+    global COLOR_CTRL_TEXT, COLOR_CTRL_DIM, COLOR_CTRL_FAINT, COLOR_CTRL_SEP, _CURRENT_PALETTE
 
     setup_fonts(app)
     palette = THEMES.get(theme_name) or THEMES["default"]
+    _CURRENT_PALETTE = palette
 
     COLOR_BG = palette["BG"]
     COLOR_BG_DARK = palette["BG_DARK"]
@@ -799,6 +984,18 @@ def apply_theme(app: QApplication, theme_name: str = "default") -> None:
     COLOR_ON_DANGER_TEXT = palette["ON_DANGER_TEXT"]
     COLOR_ON_SUCCESS_TEXT = palette["ON_SUCCESS_TEXT"]
     COLOR_ON_WARNING_TEXT = palette["ON_WARNING_TEXT"]
+    COLOR_DANGER_BTN = palette["DANGER_BTN"]
+    COLOR_DANGER_BTN_HOVER = palette["DANGER_BTN_HOVER"]
+    COLOR_ZEBRA = palette["ZEBRA"]
+    COLOR_ACCENT_SOFT = palette["ACCENT_SOFT"]
+    COLOR_CTRL_BG = palette["CTRL_BG"]
+    COLOR_CTRL_BORDER = palette["CTRL_BORDER"]
+    COLOR_CTRL_BORDER_HI = palette["CTRL_BORDER_HI"]
+    COLOR_CTRL_DEEP = palette["CTRL_DEEP"]
+    COLOR_CTRL_TEXT = palette["CTRL_TEXT"]
+    COLOR_CTRL_DIM = palette["CTRL_DIM"]
+    COLOR_CTRL_FAINT = palette["CTRL_FAINT"]
+    COLOR_CTRL_SEP = palette["CTRL_SEP"]
 
     # ★ replace placeholders with actual colors
     qss = QSS
@@ -828,7 +1025,12 @@ def apply_theme(app: QApplication, theme_name: str = "default") -> None:
         '__ON_ACCENT_HOVER_TEXT__': palette["ON_ACCENT_HOVER_TEXT"],
         '__ON_DANGER_HOVER_TEXT__': palette["ON_DANGER_HOVER_TEXT"],
         '__ON_SUCCESS_HOVER_TEXT__': palette["ON_SUCCESS_HOVER_TEXT"],
+        '__DANGER_BTN__': COLOR_DANGER_BTN,
+        '__DANGER_EDGE__': palette["DANGER_EDGE"],
+        '__DANGER_BTN_HOVER__': COLOR_DANGER_BTN_HOVER,
     }
     for placeholder, color in replacements.items():
         qss = qss.replace(placeholder, color)
     app.setStyleSheet(qss)
+    _restyle_registered()       # ★ widget ที่ตั้งสีผ่าน theme.styled() รีเฟรชตามธีมใหม่สดๆ
+    notify_theme_changed()      # ★ widget ที่มีเมธอดรีเฟรชของตัวเอง (register_theme_listener)

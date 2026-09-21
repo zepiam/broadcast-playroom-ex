@@ -1,16 +1,16 @@
 {
-  "version": "2.8.0",
+  "version": "2.8.1",
   "changelog": "- หน้า User Manager ใหม่ (แบ่งหน้า / ซ่อนบอทและคนที่ถูกบล็อก / ค้นหา)\n- กดดูรายละเอียดโดเนท/ซับ/เมมเบอร์ได้ (เดือน, ผู้รับ, ข้อความแนบ)\n- ไอคอนในแชทบอกว่าใครถูกบล็อก\n- ธีมใหม่ 12 แบบ (รวม 16 ธีม)\n- ปิดเสียงแล้วหยุดอ่านทันที (รวมปิดเสียงรายแพลตฟอร์ม)\n- ข้ามข้อความที่ยาวเกินกำหนด (ตั้งได้ใน Settings) — โดเนท/อีเวนต์ไม่ถูกข้าม\n- แปลภาษาแล้วค่อยอ่าน: แชทขึ้นต้นฉบับก่อน แล้วเปลี่ยนเป็นไทยเมื่อแปลเสร็จ\n- เก็บแชท 5 วัน (ผู้ใช้ใหม่) + ปุ่มล้างแชทใน User Manager + แจ้งเตือนเมื่อประวัติแชทเกิน 1 GB\n- แก้ Prime sub ถูกอ่านเป็น Tier 1 / อ่านชื่อแบบ \"ชื่อ พูดว่า ข้อความ\"\n- ถอดระบบเสียง OmniVoice (ย้ายมาใช้เสียง Edge ให้อัตโนมัติ)",
   "lite": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.0/patch_lite.zip",
-    "size": 17034958,
-    "sha256": "038dbfae1a4755930d15dfdb166f179c1a2bb20693e3a09bef0d19ab9433080f"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.1/patch_lite.zip",
+    "size": 17039381,
+    "sha256": "05f4dc37f47bd4b674b07e6d66f27ff64e410a43d9f48f74c3d41453586a0efa"
   },
   "full": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.0/patch_full.zip",
-    "size": 70889585,
-    "sha256": "78b1910271de8e4504b4a6b14f882a2c79edba70658deeb2bc980392584a232a"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.1/patch_full.zip",
+    "size": 70893859,
+    "sha256": "4fd7037d01bb568d58e1f21bdc05270199932a410d8fd075fadd84164c1501f2"
   }
 }

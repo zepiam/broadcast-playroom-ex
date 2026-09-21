@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QFrame, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QScrollArea,
     QWidget, QSizePolicy,
 )
-from ui.theme import COLOR_CARD, COLOR_BORDER, COLOR_HEADING
+import ui.theme as theme  # ★ theme.styled(): สีตามธีม + รีเฟรชสดเมื่อสลับธีม
 
 
 class EventCard(QFrame):
@@ -32,12 +32,9 @@ class EventCard(QFrame):
             "icon": self._ICONS.get(event_type, "🔔"), "category": "other", "label": event_type,
         }
         info = self.info
-        R = role(self._CAT_ROLE.get(info.get("category", "other"), "info"))
+        self._cat_key = self._CAT_ROLE.get(info.get("category", "other"), "info")
+        self._w_name = self._w_time = self._w_head = self._w_prev = None
         self.setCursor(Qt.PointingHandCursor if info.get("author") else Qt.ArrowCursor)
-        self.setStyleSheet(
-            f"QFrame#EventCard {{ background-color: {C('CARD')}; border: 1px solid {C('BORDER')}; "
-            f"border-left: 4px solid {R['solid']}; border-radius: 8px; }}"
-            f"QFrame#EventCard:hover {{ background-color: {C('CARD_HOVER')}; border-color: {R['solid']}; }}")
         self.setToolTip("คลิกเพื่อดูรายละเอียด" if info.get("author") else "")
 
         lay = QVBoxLayout(self)
@@ -50,7 +47,7 @@ class EventCard(QFrame):
         icon.setStyleSheet("font-size: 14px; background: transparent; border: none; min-height: 0;")
         top.addWidget(icon)
         name = QLabel(info.get("author") or text)
-        name.setStyleSheet(f"font-size: 13px; font-weight: 700; color: {C('TEXT')}; background: transparent; border: none; min-height: 0;")
+        self._w_name = name
         name.setMinimumWidth(10)
         top.addWidget(name, 1)
         plat = info.get("platform")
@@ -64,21 +61,40 @@ class EventCard(QFrame):
         ts = info.get("ts") or ""
         if len(ts) >= 16:
             tl = QLabel(ts[11:16])
-            tl.setStyleSheet(f"font-size: 11px; color: {faint_text()}; background: transparent; border: none; min-height: 0;")
+            self._w_time = tl
             top.addWidget(tl)
         lay.addLayout(top)
 
         head = QLabel(info.get("headline") or text)
         head.setWordWrap(True)
-        head.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {R['text_on_card']}; background: transparent; border: none; min-height: 0;")
+        self._w_head = head
         lay.addWidget(head)
 
         msg = (info.get("message") or "").strip()
         if msg:
             prev = QLabel("“" + (msg if len(msg) <= 70 else msg[:68] + "…") + "”")
             prev.setWordWrap(True)
-            prev.setStyleSheet(f"font-size: 12px; color: {dim_text()}; background: transparent; border: none; min-height: 0;")
+            self._w_prev = prev
             lay.addWidget(prev)
+        self.restyle()
+        theme.register_theme_listener(self.restyle)     # ★ การ์ดที่มีอยู่แล้วเปลี่ยนสีตามธีมใหม่สดๆ
+
+    def restyle(self):
+        """ตั้ง/รีเฟรชสีของการ์ดตามธีมปัจจุบัน (เรียกตอนสร้าง + ทุกครั้งที่สลับธีม)"""
+        from ui.user_kit import C, role, dim_text, faint_text
+        R = role(self._cat_key)
+        self.setStyleSheet(
+            f"QFrame#EventCard {{ background-color: {C('CARD')}; border: 1px solid {C('BORDER')}; "
+            f"border-left: 4px solid {R['solid']}; border-radius: 8px; }}"
+            f"QFrame#EventCard:hover {{ background-color: {C('CARD_HOVER')}; border-color: {R['solid']}; }}")
+        if self._w_name is not None:
+            self._w_name.setStyleSheet(f"font-size: 13px; font-weight: 700; color: {C('TEXT')}; background: transparent; border: none; min-height: 0;")
+        if self._w_time is not None:
+            self._w_time.setStyleSheet(f"font-size: 11px; color: {faint_text()}; background: transparent; border: none; min-height: 0;")
+        if self._w_head is not None:
+            self._w_head.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {R['text_on_card']}; background: transparent; border: none; min-height: 0;")
+        if self._w_prev is not None:
+            self._w_prev.setStyleSheet(f"font-size: 12px; color: {dim_text()}; background: transparent; border: none; min-height: 0;")
 
     def mouseReleaseEvent(self, e):
         if e.button() == Qt.LeftButton and self.info.get("author") and self.rect().contains(e.position().toPoint()):
@@ -118,12 +134,12 @@ class EventsPanel(QFrame):
         # ★ Header: [📊 Events (N)] ........ [‹ ซ่อน]
         header_row = QFrame()
         header_row.setFixedHeight(36)
-        header_row.setStyleSheet(f"background-color: {COLOR_CARD}; border-bottom: 1px solid {COLOR_BORDER};")
+        theme.styled(header_row, "background-color: #131726; border-bottom: 1px solid #2a2f45;")
         h_layout = QHBoxLayout(header_row)
         h_layout.setContentsMargins(12, 0, 4, 0)
         h_layout.setSpacing(4)
         self.title_label = QLabel("📊 Events (0)")
-        self.title_label.setStyleSheet(f"font-weight: 600; color: {COLOR_HEADING}; font-size: 14px; border: none; background: transparent;")
+        theme.styled(self.title_label, "font-weight: 600; color: #f59e0b; font-size: 14px; border: none; background: transparent;")
         h_layout.addWidget(self.title_label)
         h_layout.addStretch()
         # ★ ปุ่ม ‹ (ซ่อน panel)
@@ -132,7 +148,7 @@ class EventsPanel(QFrame):
         self.btn_collapse.setFixedSize(28, 28)
         self.btn_collapse.setCursor(Qt.PointingHandCursor)
         self.btn_collapse.setToolTip("ซ่อนแผง Events")
-        self.btn_collapse.setStyleSheet("""
+        theme.styled(self.btn_collapse, """
             QPushButton { border: none; background: transparent; font-size: 18px; font-weight: 700; color: #9ca3af; padding: 0; }
             QPushButton:hover { color: #f59e0b; }
         """)
@@ -164,17 +180,17 @@ class EventsPanel(QFrame):
         self.btn_expand.setObjectName("IconButton")
         self.btn_expand.setCursor(Qt.PointingHandCursor)
         self.btn_expand.setToolTip("แสดงแผง Events")
-        self.btn_expand.setStyleSheet(f"""
-            QPushButton {{
+        theme.styled(self.btn_expand, """
+            QPushButton {
                 border: none;
-                background-color: {COLOR_CARD};
-                border-left: 1px solid {COLOR_BORDER};
+                background-color: #131726;
+                border-left: 1px solid #2a2f45;
                 font-size: 20px;
                 font-weight: 700;
                 color: #9ca3af;
                 padding: 0;
-            }}
-            QPushButton:hover {{ color: #f59e0b; background-color: #1a1f33; }}
+            }
+            QPushButton:hover { color: #f59e0b; background-color: #1a1f33; }
         """)
         self.btn_expand.clicked.connect(self.expand)
         col_layout.addWidget(self.btn_expand)

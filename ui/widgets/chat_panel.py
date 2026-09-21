@@ -42,8 +42,8 @@ class ChatPanel(QFrame):
 
         # ★ Header
         header = QFrame()
+        self._header = header          # ★ สีตั้งใน _apply_theme_styles() (ตามธีม + รีเฟรชสดตอนสลับธีม)
         header.setFixedHeight(36)
-        header.setStyleSheet(f"background-color: {theme.COLOR_CARD}; border-bottom: 1px solid {theme.COLOR_BORDER};")
         hlayout = QHBoxLayout(header)
         hlayout.setContentsMargins(12, 0, 8, 0)
         hlayout.setSpacing(6)
@@ -54,7 +54,6 @@ class ChatPanel(QFrame):
         hlayout.addWidget(title)
         # ★ viewer count (click → toggle hide/show)
         self.viewers_label = QLabel("👥 0")
-        self.viewers_label.setStyleSheet("color: #9ca3af; font-size: 14px;")
         self.viewers_label.setCursor(Qt.PointingHandCursor)
         self.viewers_label.setToolTip("คลิกเพื่อซ่อน/แสดงยอดคนดู")
         self._viewers_hidden = False
@@ -160,10 +159,6 @@ class ChatPanel(QFrame):
         #   ★ มี platform chips ให้ติ๊กเลือกแพลตฟอร์มที่จะส่ง
         self._input_bar = QFrame()
         self._input_bar.setObjectName("ChatInputBar")
-        self._input_bar.setStyleSheet(
-            f"QFrame#ChatInputBar {{ background: {theme.COLOR_BG_DARK}; "
-            f"border-top: 1px solid {theme.COLOR_BORDER}; }}"
-        )
         input_outer = QVBoxLayout(self._input_bar)
         input_outer.setContentsMargins(8, 4, 8, 6)
         input_outer.setSpacing(4)
@@ -207,18 +202,13 @@ class ChatPanel(QFrame):
 
         # ★ เส้นคั่น | ระหว่าง toggle กับ setting
         separator = QLabel("|")
-        separator.setStyleSheet("color: #475569; font-size: 12px; border: none; background: transparent;")
+        self._sep_label = separator
         chips_and_controls.addWidget(separator)
 
         # ★ Setting text (ขวาสุด)
         self.btn_bot_settings = QPushButton("Setting")
         self.btn_bot_settings.setObjectName("BotSetting")
         self.btn_bot_settings.setCursor(Qt.PointingHandCursor)
-        self.btn_bot_settings.setStyleSheet(
-            "QPushButton#BotSetting { background: transparent; border: none; "
-            "color: #94a3b8; font-size: 12px; font-weight: 600; }"
-            "QPushButton#BotSetting:hover { color: #e2e8f0; }"
-        )
         self.btn_bot_settings.clicked.connect(self.bot_settings_requested.emit)
         chips_and_controls.addWidget(self.btn_bot_settings)
 
@@ -230,23 +220,11 @@ class ChatPanel(QFrame):
 
         self.input_field = QLineEdit()
         self.input_field.setPlaceholderText("พิมพ์ข้อความ... (Enter = ส่ง)")
-        self.input_field.setStyleSheet(
-            f"QLineEdit {{ background: {theme.COLOR_CARD_HI}; color: {theme.COLOR_TEXT}; "
-            f"border: 1px solid {theme.COLOR_BORDER_LIGHT}; "
-            "border-radius: 6px; padding: 6px 10px; font-size: 13px; }"
-            f"QLineEdit:focus {{ border-color: {theme.COLOR_ACCENT}; }}"
-        )
         self.input_field.returnPressed.connect(self._on_send_clicked)
 
         self.btn_send = QPushButton("ส่ง")
         self.btn_send.setFixedHeight(32)
         self.btn_send.setCursor(Qt.PointingHandCursor)
-        self.btn_send.setStyleSheet(
-            f"QPushButton {{ background: {theme.COLOR_ACCENT}; color: white; border: none; "
-            "border-radius: 6px; padding: 0 16px; font-weight: 600; }"
-            f"QPushButton:hover {{ background: {theme.COLOR_ACCENT_HOVER}; }}"
-            f"QPushButton:pressed {{ background: {theme.COLOR_ACCENT_HOVER}; }}"
-        )
         self.btn_send.clicked.connect(self._on_send_clicked)
 
         # ★ checkbox TTS ข้างปุ่มส่ง — ติ๊ก = ข้อความที่พิมพ์ผ่านช่องนี้จะถูกอ่านออกเสียง
@@ -256,12 +234,6 @@ class ChatPanel(QFrame):
             "☑ = ให้ TTS อ่านข้อความที่ส่งผ่านช่องพิมพ์นี้ | "
             "☐ = ส่งโดยไม่อ่านออกเสียง | "
             "(จำค่าที่ติ๊กไว้ — เปิดโปรแกรมใหม่ใช้ค่าเดิม)"
-        )
-        self.tts_check.setStyleSheet(
-            "QCheckBox { color: #94a3b8; font-size: 12px; font-weight: 600; "
-            "background: transparent; border: none; spacing: 4px; }"
-            "QCheckBox::indicator { width: 14px; height: 14px; }"
-            "QCheckBox:hover { color: #e2e8f0; }"
         )
 
         input_row.addWidget(self.input_field, 1)
@@ -278,36 +250,93 @@ class ChatPanel(QFrame):
         #   ★ ซ่อนเมื่อ: ไม่ได้เชื่อมต่อ Twitch หรือ OAuth login แล้ว
         self._bot_overlay = QFrame()
         self._bot_overlay.setObjectName("BotOverlay")
-        self._bot_overlay.setStyleSheet(
-            "QFrame#BotOverlay { background: rgba(15, 23, 42, 0.85); border-top: 1px solid #334155; }"
-        )
         overlay_layout = QHBoxLayout(self._bot_overlay)
         overlay_layout.setContentsMargins(12, 8, 12, 8)
         overlay_layout.setSpacing(8)
 
         overlay_text = QLabel("🔒 ล็อกอิน Twitch / KICK เพื่อส่งแชท + ใช้ Chat Bot")
-        overlay_text.setStyleSheet("color: #94a3b8; font-size: 13px; border: none; background: transparent;")
+        self._overlay_text = overlay_text
         overlay_layout.addWidget(overlay_text)
         overlay_layout.addStretch()
 
         self.btn_connect_bot = QPushButton("🤖 เชื่อมต่อแชทบอท")
         self.btn_connect_bot.setCursor(Qt.PointingHandCursor)
-        self.btn_connect_bot.setStyleSheet(
-            "QPushButton { background: #7c3aed; color: white; border: none; "
-            "border-radius: 6px; padding: 6px 16px; font-weight: 600; }"
-            "QPushButton:hover { background: #6d28d9; }"
-        )
         self.btn_connect_bot.clicked.connect(self.connect_bot_requested.emit)
         overlay_layout.addWidget(self.btn_connect_bot)
 
         self._bot_overlay.setVisible(False)
         layout.addWidget(self._bot_overlay)
 
+        # ★ สีทั้งหมดของแผงนี้ (header / ช่องพิมพ์ / ปุ่ม / chip) มาจากธีมปัจจุบัน + รีเฟรชสดเมื่อสลับธีม
+        self._apply_theme_styles()
+        theme.register_theme_listener(self._apply_theme_styles)
+
+    def _apply_theme_styles(self):
+        """ตั้ง/รีเฟรชสีที่ตั้งด้วย setStyleSheet() ตรงๆ ตามธีมปัจจุบัน (เรียกตอนสร้าง + ทุกครั้งที่สลับธีม)
+
+        ★ เดิมสีพวกนี้ฝังเป็น hex ของธีม default → สลับธีมแล้วแถบ "แชทสด"/ช่องพิมพ์ยังเป็นสีเดิมทุกธีม
+        ★ ธีม default ต้องได้ค่าเดิมเป๊ะ (โทเคน CTRL_* ของ default = slate เดิม)
+        """
+        t = theme
+        self._header.setStyleSheet(f"background-color: {t.COLOR_CARD}; border-bottom: 1px solid {t.COLOR_BORDER};")
+        self.viewers_label.setStyleSheet(f"color: {t.COLOR_TEXT_DIM}; font-size: 14px;")
+        self._input_bar.setStyleSheet(
+            f"QFrame#ChatInputBar {{ background: {t.COLOR_BG_DARK}; "
+            f"border-top: 1px solid {t.COLOR_BORDER}; }}"
+        )
+        self._sep_label.setStyleSheet(f"color: {t.COLOR_CTRL_SEP}; font-size: 12px; border: none; background: transparent;")
+        self.btn_bot_settings.setStyleSheet(
+            "QPushButton#BotSetting { background: transparent; border: none; "
+            f"color: {t.COLOR_CTRL_DIM}; font-size: 12px; font-weight: 600; }}"
+            f"QPushButton#BotSetting:hover {{ color: {t.COLOR_CTRL_TEXT}; }}"
+        )
+        self.input_field.setStyleSheet(
+            f"QLineEdit {{ background: {t.COLOR_CARD_HI}; color: {t.COLOR_TEXT}; "
+            f"border: 1px solid {t.COLOR_BORDER_LIGHT}; "
+            "border-radius: 6px; padding: 6px 10px; font-size: 13px; }"
+            f"QLineEdit:focus {{ border-color: {t.COLOR_ACCENT}; }}"
+        )
+        self.btn_send.setStyleSheet(
+            f"QPushButton {{ background: {t.COLOR_ACCENT}; color: {t.COLOR_ON_ACCENT_TEXT}; border: none; "
+            "border-radius: 6px; padding: 0 16px; font-weight: 600; }"
+            f"QPushButton:hover {{ background: {t.COLOR_ACCENT_HOVER}; }}"
+            f"QPushButton:pressed {{ background: {t.COLOR_ACCENT_HOVER}; }}"
+        )
+        self.tts_check.setStyleSheet(
+            f"QCheckBox {{ color: {t.COLOR_CTRL_DIM}; font-size: 12px; font-weight: 600; "
+            "background: transparent; border: none; spacing: 4px; }"
+            "QCheckBox::indicator { width: 14px; height: 14px; }"
+            f"QCheckBox:hover {{ color: {t.COLOR_CTRL_TEXT}; }}"
+        )
+        self._bot_overlay.setStyleSheet(
+            f"QFrame#BotOverlay {{ background: {t.rgba(t.COLOR_CTRL_DEEP, 0.85)}; border-top: 1px solid {t.COLOR_CTRL_BORDER}; }}"
+        )
+        self._overlay_text.setStyleSheet(f"color: {t.COLOR_CTRL_DIM}; font-size: 13px; border: none; background: transparent;")
+        self.btn_connect_bot.setStyleSheet(
+            f"QPushButton {{ background: {t.COLOR_ACCENT}; color: {t.COLOR_ON_ACCENT_TEXT}; border: none; "
+            "border-radius: 6px; padding: 6px 16px; font-weight: 600; }"
+            f"QPushButton:hover {{ background: {t.COLOR_ACCENT_HOVER}; }}"
+        )
+        self.btn_ask.setStyleSheet(self._ask_btn_qss(getattr(self, '_ask_active', False)))
+        self._update_bot_toggle_text(self.btn_bot_toggle.isChecked())
+        # chips (ชิปแพลตฟอร์มข้างช่องพิมพ์) — สร้างใหม่ด้วยพารามิเตอร์ล่าสุดเพื่อให้สีตามธีมใหม่
+        last = getattr(self, '_last_chip_args', None)
+        if last is not None:
+            try:
+                self.update_platform_chips(*last)
+            except Exception:
+                pass
+        # แถบ zebra ของแถวแชท
+        try:
+            self._apply_zebra()
+        except Exception:
+            pass
+
     def _update_bot_toggle_text(self, checked):
         """★ อัปเดตข้อความ toggle — 'Chat Bot : ON' (สีส้ม) / 'OFF' (สีเทา)"""
         state = "ON" if checked else "OFF"
         # ★ QPushButton ไม่รองรับ HTML → ใช้ stylesheet คุมสีทั้งปุ่ม
-        color = "#f59e0b" if checked else "#64748b"
+        color = theme.COLOR_HEADING if checked else theme.COLOR_CTRL_FAINT
         weight = "700" if checked else "600"
         self.btn_bot_toggle.setText(f"🤖 Chat Bot :  {state}")
         self.btn_bot_toggle.setStyleSheet(
@@ -359,9 +388,9 @@ class ChatPanel(QFrame):
             "twitch": True, "youtube": True, "kick": True}
         menu = QMenu(self)
         menu.setStyleSheet(
-            "QMenu { background: #1e293b; color: #e2e8f0; border: 1px solid #475569; "
+            f"QMenu {{ background: {theme.COLOR_CTRL_BG}; color: {theme.COLOR_CTRL_TEXT}; border: 1px solid {theme.COLOR_CTRL_BORDER_HI}; "
             "padding: 4px; } QMenu::item { padding: 4px 24px 4px 12px; } "
-            "QMenu::item:selected { background: #7c3aed; }"
+            f"QMenu::item:selected {{ background: {theme.COLOR_ACCENT}; color: {theme.COLOR_ON_ACCENT_TEXT}; }}"
         )
         # ★ แสดงเฉพาะแพลตฟอร์มที่มี Bot ใช้งานจริง (YouTube ยังไม่มี — พร้อมเมื่อไหร่ค่อยเพิ่ม)
         labels = {"twitch": "Twitch", "kick": "KICK"}
@@ -391,11 +420,11 @@ class ChatPanel(QFrame):
          ทำให้หน้าตา tooltip ต่างจากปุ่มข้าง ๆ — ต้องใส่ให้เอง)"""
         body = (
             "font-size: 11px; font-weight: 800; letter-spacing: 0.5px; padding: 0px; "
-            + ("color: #ffffff; background: #059669;" if active
-               else "color: #6b7280; background: rgba(255,255,255,0.05);")
+            + (f"color: {theme.COLOR_ON_SUCCESS_TEXT}; background: {theme.COLOR_SUCCESS_HOVER};" if active
+               else f"color: {theme.COLOR_TEXT_FAINT}; background: rgba(255,255,255,0.05);")
         )
-        tip = ("QToolTip { background-color: #1a1f33; color: #e5e7eb; "
-               "border: 1px solid #2a2f45; border-radius: 4px; "
+        tip = (f"QToolTip {{ background-color: {theme.COLOR_CARD_HI}; color: {theme.COLOR_TEXT}; "
+               f"border: 1px solid {theme.COLOR_BORDER}; border-radius: 4px; "
                "padding: 4px 8px; font-size: 14px; }")
         return body + " " + tip
 
@@ -431,6 +460,7 @@ class ChatPanel(QFrame):
             platforms: list of แพลตฟอร์มที่ส่งได้ (OAuth login แล้ว)
             twitch_connected_no_oauth: True = Twitch เชื่อมต่อแล้วแต่ยังไม่ OAuth → แสดง overlay
         """
+        self._last_chip_args = (platforms, twitch_connected_no_oauth)   # ★ ไว้สร้างชิปใหม่ตอนสลับธีม
         # ★ จัดการ overlay + input bar
         if hasattr(self, '_bot_overlay'):
             if twitch_connected_no_oauth:
@@ -475,8 +505,8 @@ class ChatPanel(QFrame):
             # ★ แสดงชื่อแพลตฟอร์มข้างหน้าช่องพิมพ์ (label ธรรมดา)
             text_lbl = QLabel(label)
             text_lbl.setStyleSheet(
-                "color: #a78bfa; font-size: 12px; font-weight: 600; "
-                "background: rgba(124,58,237,0.15); border-radius: 14px; "
+                f"color: {theme.COLOR_ACCENT_SOFT}; font-size: 12px; font-weight: 600; "
+                f"background: {theme.rgba(theme.COLOR_ACCENT, 0.15)}; border-radius: 14px; "
                 "padding: 2px 12px; border: none;"
             )
             text_lbl.setFixedHeight(24)
@@ -524,15 +554,15 @@ class ChatPanel(QFrame):
             return
         if active:
             chip.setStyleSheet(
-                "QPushButton { background: #7c3aed; color: white; border: 1px solid #6d28d9; "
+                f"QPushButton {{ background: {theme.COLOR_ACCENT}; color: {theme.COLOR_ON_ACCENT_TEXT}; border: 1px solid {theme.COLOR_ACCENT_HOVER}; "
                 "border-radius: 14px; padding: 2px 12px; font-size: 12px; font-weight: 600; }"
-                "QPushButton:hover { background: #6d28d9; }"
+                f"QPushButton:hover {{ background: {theme.COLOR_ACCENT_HOVER}; }}"
             )
         else:
             chip.setStyleSheet(
-                "QPushButton { background: #1e293b; color: #64748b; border: 1px solid #334155; "
+                f"QPushButton {{ background: {theme.COLOR_CTRL_BG}; color: {theme.COLOR_CTRL_FAINT}; border: 1px solid {theme.COLOR_CTRL_BORDER}; "
                 "border-radius: 14px; padding: 2px 12px; font-size: 12px; }"
-                "QPushButton:hover { background: #334155; color: #94a3b8; }"
+                f"QPushButton:hover {{ background: {theme.COLOR_CTRL_BORDER}; color: {theme.COLOR_CTRL_DIM}; }}"
             )
 
     def set_send_enabled(self, enabled: bool, placeholder: str = ""):

@@ -3857,9 +3857,9 @@ class TTSForLivestreamApp(QMainWindow):
             self.pipeline.config.voice = voice_id
         self._rvc_loading = True
         self.status_bar.set_status(f"⏳ กำลังโหลด RVC: {voice_id}... (5-15 วินาที)")
-        self.sidebar.rvc_status.setText(f"⏳ กำลังโหลด {voice_id}...")
         self.sidebar.rvc_status.setStyleSheet("color: #f59e0b; font-size: 13px;")
         self.sidebar.rvc_combo.setEnabled(False)
+        self._start_rvc_spinner(voice_id)
 
         _pth = pth_path
         _vid = voice_id
@@ -3875,6 +3875,34 @@ class TTSForLivestreamApp(QMainWindow):
                 self._rvc_failed_sig.emit(str(e))
 
         threading.Thread(target=_bg_load_rvc, name="RvcLoad", daemon=True).start()
+
+    # ★ สปินเนอร์ + หลอดโหลดของ RVC — เดิมมีแค่ text สีส้ม "กำลังโหลด..." นิ่งๆ ผู้ใช้ไม่รู้ว่าค้างหรือกำลังทำงาน
+    #   (เกรงว่าจะไปกดเปลี่ยนโมเดลรัวๆ — แม้ combo จะถูก disable ระหว่างโหลดอยู่แล้วก็ตาม)
+    _RVC_SPIN_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+    def _start_rvc_spinner(self, voice_id: str):
+        """เริ่มอนิเมชัน (braille spinner หมุน + หลอด indeterminate) ระหว่างโหลด RVC model"""
+        self._rvc_spin_voice_id = voice_id
+        self._rvc_spin_idx = 0
+        if hasattr(self.sidebar, 'rvc_progress'):
+            self.sidebar.rvc_progress.start()
+        if not getattr(self, '_rvc_spin_timer', None):
+            self._rvc_spin_timer = QTimer(self)
+            self._rvc_spin_timer.timeout.connect(self._tick_rvc_spinner)
+        self.sidebar.rvc_status.setText(f"{self._RVC_SPIN_FRAMES[0]} กำลังโหลด {voice_id}...")
+        self._rvc_spin_timer.start(90)
+
+    def _tick_rvc_spinner(self):
+        self._rvc_spin_idx = (self._rvc_spin_idx + 1) % len(self._RVC_SPIN_FRAMES)
+        frame = self._RVC_SPIN_FRAMES[self._rvc_spin_idx]
+        self.sidebar.rvc_status.setText(f"{frame} กำลังโหลด {getattr(self, '_rvc_spin_voice_id', '')}...")
+
+    def _stop_rvc_spinner(self):
+        """หยุดอนิเมชัน — เรียกทั้งตอนโหลดสำเร็จและล้มเหลว (ก่อน set ข้อความสถานะสุดท้าย)"""
+        if getattr(self, '_rvc_spin_timer', None) is not None:
+            self._rvc_spin_timer.stop()
+        if hasattr(self.sidebar, 'rvc_progress'):
+            self.sidebar.rvc_progress.stop()
 
     def _sync_voice_status_label(self):
         """sync rvc_status label ตามสถานะปัจจุบัน (engine + base voice + RVC)"""
@@ -4513,6 +4541,7 @@ class TTSForLivestreamApp(QMainWindow):
     def _on_rvc_loaded(self, engine, voice_id, index_path):
         """RVC โหลดเสร็จ (main thread)"""
         self._rvc_loading = False
+        self._stop_rvc_spinner()
         self.sidebar.rvc_combo.setEnabled(True)
         if self.pipeline:
             pitch = getattr(self.settings, 'rvc_pitch', 0)
@@ -4521,10 +4550,15 @@ class TTSForLivestreamApp(QMainWindow):
             self.pipeline.set_rvc(engine, voice_id, index_path)
         # ★ sync status label (DRY)
         self._sync_voice_status_label()
+        # ★ บั๊กที่เจอ: _load_rvc_model ตั้ง settings.voice_id ไว้ในหน่วยความจำตั้งแต่ก่อนโหลด
+        #   แต่ไม่เคยบันทึกลงไฟล์เลย (ต่างจากตอนเลือก "ไม่ใช้ RVC" ที่ _on_rvc_change เซฟให้)
+        #   → ปิดโปรแกรมแล้วเปิดใหม่ settings.json ยังเป็นค่าเก่า โมเดล RVC ที่เลือกไว้หายทุกครั้ง
+        self._save_settings()
 
     def _on_rvc_load_failed(self, error):
         """RVC โหลดล้มเหลว (main thread)"""
         self._rvc_loading = False
+        self._stop_rvc_spinner()
         self.sidebar.rvc_combo.setEnabled(True)
         self.status_bar.set_status(f"❌ โหลด RVC ไม่ได้: {error}")
         self.sidebar.rvc_status.setText(f"❌ โหลดไม่ได้")
@@ -4536,6 +4570,8 @@ class TTSForLivestreamApp(QMainWindow):
         self.sidebar.rvc_combo.blockSignals(False)
         if self.pipeline:
             self.pipeline.set_rvc(None, '', '')
+        # ★ เซฟด้วย — กันโมเดลที่โหลดไม่ได้ (เช่นไฟล์เสีย) ค้างเป็นค่าที่โปรแกรมพยายามโหลดซ้ำทุกครั้งที่เปิด
+        self._save_settings()
         QTimer.singleShot(3000, lambda: self._sync_voice_status_label())
 
     def _on_volume_change(self, value):

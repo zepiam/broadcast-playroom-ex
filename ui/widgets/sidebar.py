@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QWidget, QComboBox, QSlider, QSizePolicy,
 )
 import ui.theme as theme  # ★ อ้าง theme.COLOR_X สดตอนสร้าง widget (ตามธีมที่เลือกไว้จริง)
+from ui.widgets.loading_bar import LoadingBar
 
 
 class _ConstrainedScrollArea(QScrollArea):
@@ -496,6 +497,13 @@ class Sidebar(QFrame):
         self.rvc_status.setAlignment(Qt.AlignCenter)
         self.rvc_status.setWordWrap(True)
         clayout.addWidget(self.rvc_status)
+
+        # ★ หลอดโหลด RVC (indeterminate — วิ่งไปเรื่อยๆ ไม่มี % เพราะไม่รู้เวลาที่แน่นอน)
+        #   ซ่อนไว้ปกติ — app.py เรียก .start()/.stop() ตอนเริ่ม/จบโหลดโมเดล (_load_rvc_model) เพื่อให้เห็นชัดว่า
+        #   "กำลังทำงานอยู่" ไม่ใช่ค้าง (เดิมมีแค่ text สีส้ม — ผู้ใช้เผลอกดเลือกโมเดลรัวๆ ระหว่างรอ)
+        #   ★ วาดเอง (LoadingBar) แทน QProgressBar(range 0,0) — native "busy" style ของ Qt กระตุกไม่สวย/ไม่สม่ำเสมอ
+        self.rvc_progress = LoadingBar(track="#1a1f33", accent="#f59e0b")
+        clayout.addWidget(self.rvc_progress)
 
         # ★ Separator ก่อนปุ่ม action (ทดสอบ / ดาวน์โหลด / รีเฟรช)
         voice_sep = QFrame()

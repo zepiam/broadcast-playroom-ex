@@ -49,30 +49,32 @@
     background: #10182e;
     border: 1px solid rgba(255,255,255,0.15);
     border-radius: 8px;
-    padding: 6px 4px;
+    padding: 6px 3px;
     margin: 0 0 10px 0;
-    flex-wrap: wrap;
+    /* ★ บังคับแถวเดียวเสมอ (เดิม wrap ได้ พอปุ่มรวมกันกว้างกว่า sidebar เลยตกไปบรรทัดสอง) */
+    flex-wrap: nowrap;
     justify-content: center;
-    row-gap: 4px;
   }
-  body.edit-mode #zoom-toolbar { display: flex; align-items: center; gap: 4px; }
+  body.edit-mode #zoom-toolbar { display: flex; align-items: center; gap: 2px; }
   #zoom-toolbar button {
     background: rgba(255,255,255,0.1);
     border: none;
     color: #fff;
-    width: 28px; height: 28px;
+    width: 26px; height: 26px;
     border-radius: 4px;
     cursor: pointer;
-    font-size: 16px;
+    font-size: 15px;
     line-height: 1;
+    flex-shrink: 0;
   }
   #zoom-toolbar button:hover { background: rgba(74,158,255,0.3); }
   #zoom-toolbar #zoom-level {
     color: #fff;
-    font-size: 12px;
-    min-width: 44px;
+    font-size: 11px;
+    min-width: 38px;
     text-align: center;
     font-family: monospace;
+    flex-shrink: 0;
   }
 
   /* ═══════════════════════════════════════════════════
@@ -143,6 +145,46 @@
   @keyframes slideOut { to { opacity: 0; transform: translateX(20px); } }
   .widget.type-chat.exiting-fade_out .chat-line { animation: fadeOut 0.4s forwards; }
   .widget.type-chat.exiting-slide_out .chat-line { animation: slideOut 0.4s forwards; }
+
+  /* ── Theme Part 2 (2026-09) — กล่องหลังข้อความจริง ต่อธีม ── */
+  /* box-fit (ปกติ) = กล่องหุ้มแค่ข้อความ / box-wide = กล่องเต็มความกว้าง widget */
+  .widget.type-chat[class*="theme-"] .chat-line { width: fit-content; max-width: 100%; box-sizing: border-box; }
+  .widget.type-chat.box-wide[class*="theme-"] .chat-line { width: 100%; }
+  .widget.type-chat[class*="theme-"] .chat-line { padding: 6px 12px; position: relative; overflow: hidden; }
+
+  .widget.type-chat.theme-coral-reef .chat-line { background: linear-gradient(120deg,#ff7a59 0%,#ff5f9e 45%,#22c3c8 100%); border-radius: 10px; box-shadow: 0 3px 8px rgba(255,90,140,.3); }
+  .widget.type-chat.theme-coral-reef .chat-line::after { content:""; position:absolute; inset:0; background: radial-gradient(circle 2px at 18% 30%,rgba(255,240,180,.8),transparent), radial-gradient(circle 2px at 75% 65%,rgba(255,255,255,.7),transparent); }
+
+  .widget.type-chat.theme-bio-forest .chat-line { background: radial-gradient(circle at 25% 60%,#0d2b1a 0%,#04120a 85%); border: 1px solid rgba(120,255,180,.28); border-radius: 10px; box-shadow: 0 0 10px rgba(80,220,150,.2); }
+  .widget.type-chat.theme-bio-forest .chat-line::after { content:""; position:absolute; inset:0; background: radial-gradient(circle 2px at 30% 35%,rgba(130,255,190,.6),transparent), radial-gradient(circle 2px at 78% 55%,rgba(130,255,190,.45),transparent); }
+
+  .widget.type-chat.theme-desert-dune .chat-line { background: linear-gradient(180deg,#f3d9a4 0%,#e0b578 55%,#c99a5c 100%); background-image: repeating-linear-gradient(100deg,rgba(255,255,255,.12) 0 2px,transparent 2px 22px), linear-gradient(180deg,#f3d9a4 0%,#e0b578 55%,#c99a5c 100%); border: 1px solid #b8895a; border-radius: 10px; }
+
+  .widget.type-chat.theme-frozen-lake .chat-line { background: linear-gradient(160deg,#0c2430 0%,#173a4a 100%); background-image: repeating-linear-gradient(35deg,rgba(190,235,255,.1) 0 1px,transparent 1px 26px), repeating-linear-gradient(-50deg,rgba(190,235,255,.08) 0 1px,transparent 1px 34px), linear-gradient(160deg,#0c2430 0%,#173a4a 100%); border: 1px solid rgba(180,230,255,.3); border-radius: 6px; }
+
+  .widget.type-chat.theme-denim-patch .chat-line { background: repeating-linear-gradient(45deg,#3a5a8a 0 3px,#33517d 3px 6px); border: 2px dashed #f0e6c8; border-radius: 4px; }
+
+  .widget.type-chat.theme-steampunk .chat-line { background: linear-gradient(160deg,#3a2a18 0%,#241a0e 100%); border: 2px solid #b8863a; border-radius: 5px; padding-right: 26px; }
+  .widget.type-chat.theme-steampunk .chat-line::after { content:""; position:absolute; top:5px; right:5px; width:14px; height:14px; border-radius:50%; border:2px dashed #b8863a; opacity:.75; }
+
+  .widget.type-chat.theme-ramen-steam .chat-line { background: linear-gradient(180deg,#5a1a12 0%,#8a2a12 100%); border-radius: 6px 6px 18px 18px; }
+
+  .widget.type-chat.theme-knit-sweater .chat-line { background: repeating-linear-gradient(45deg,#c94f4f 0 8px,#b23e3e 8px 16px); background-image: repeating-linear-gradient(-45deg,rgba(0,0,0,.08) 0 8px,transparent 8px 16px), repeating-linear-gradient(45deg,#c94f4f 0 8px,#b23e3e 8px 16px); border: 2px solid #8a2e2e; border-radius: 10px; }
+
+  .widget.type-chat.theme-equalizer .chat-line { background: #0a0a0f; border: 1px solid #2a2a35; border-radius: 6px; padding-left: 16px; }
+  .widget.type-chat.theme-equalizer .chat-line::before { content:""; position:absolute; left:0; top:0; bottom:0; width:8px; background: repeating-linear-gradient(0deg,#22d3ee 0 4px,#7c3aed 4px 5px,transparent 5px 8px); }
+
+  .widget.type-chat.theme-holo-badge .chat-line { background: linear-gradient(100deg,#dce8ff 0%,#ffe8f5 25%,#e8fff5 50%,#fff8dc 75%,#dce8ff 100%); border: 1px solid #c9c9d9; border-radius: 4px; padding-bottom: 10px; }
+  .widget.type-chat.theme-holo-badge .chat-line::after { content:""; position:absolute; left:0; right:0; bottom:0; height:5px; background: repeating-linear-gradient(90deg,#1a1a1a 0 2px,transparent 2px 5px); opacity:.5; }
+
+  .widget.type-chat.theme-cross-stitch .chat-line { background: #f2ead9; border: 2px dashed #b23a4a; border-radius: 5px; padding-top: 11px; }
+  .widget.type-chat.theme-cross-stitch .chat-line::before { content:""; position:absolute; top:0; left:0; right:0; height:5px; background: repeating-linear-gradient(90deg,#b23a4a 0 5px,#3a6a9a 5px 10px); }
+
+  .widget.type-chat.theme-frost-window .chat-line { background: linear-gradient(160deg,#eaf6ff 0%,#cfe9fb 100%); border: 1px solid #a9d4ec; border-radius: 8px; }
+  .widget.type-chat.theme-frost-window .chat-line::after { content:""; position:absolute; left:0; bottom:0; width:26px; height:26px; background: radial-gradient(circle at 0% 100%,rgba(255,255,255,.65),transparent 70%); }
+
+  .widget.type-chat.theme-lunar-lantern .chat-line { background: radial-gradient(circle at 50% 20%,#ff5a3c 0%,#c2181b 80%); border-top: 3px solid #f0c65e; border-radius: 10px; padding-bottom: 9px; }
+  .widget.type-chat.theme-lunar-lantern .chat-line::after { content:""; position:absolute; left:0; right:0; bottom:0; height:4px; background: repeating-linear-gradient(90deg,#f0c65e 0 3px,transparent 3px 8px); }
 
   /* ── Alert widget (iframe ภายนอก) ── */
   .widget.type-alert .widget-inner iframe {
@@ -768,6 +810,120 @@
   .widget.viewer-theme-vapor .viewer-chip {
     background: rgba(1,205,254,0.1); padding: 2px 8px; border-radius: 0;
     border: 1px solid #01cdfe;
+  }
+  /* ── viewer themes ชุดที่ 3 (10 แบบ, 2026-09-26) ── */
+  .widget.viewer-theme-ice .widget-inner {
+    color: #e0f7ff; text-shadow: 0 0 6px #7dd3fc, 0 1px 2px #000;
+  }
+  .widget.viewer-theme-ice .viewer-total {
+    background: linear-gradient(135deg, rgba(224,247,255,0.2), rgba(125,211,252,0.15));
+    padding: 4px 12px; border-radius: 8px; border: 1px solid rgba(224,247,255,0.5);
+  }
+  .widget.viewer-theme-ice .viewer-chip {
+    background: rgba(125,211,252,0.12); padding: 2px 8px; border-radius: 8px;
+    border: 1px solid rgba(224,247,255,0.3);
+  }
+  .widget.viewer-theme-rose-gold .widget-inner {
+    color: #f7cac9; text-shadow: 0 1px 2px #8b4a52, 0 0 4px #e8b4a0;
+    font-family: Georgia, serif;
+  }
+  .widget.viewer-theme-rose-gold .viewer-total {
+    background: linear-gradient(135deg, rgba(245,208,197,0.25), rgba(232,180,160,0.2));
+    padding: 4px 12px; border-radius: 8px; border: 1px solid rgba(247,202,201,0.5);
+  }
+  .widget.viewer-theme-rose-gold .viewer-chip {
+    background: rgba(232,180,160,0.15); padding: 2px 8px; border-radius: 8px;
+    border: 1px solid rgba(247,202,201,0.35);
+  }
+  .widget.viewer-theme-emerald .widget-inner {
+    color: #50fa7b; text-shadow: 0 0 6px #10b981, 0 1px 2px #000;
+  }
+  .widget.viewer-theme-emerald .viewer-total {
+    background: rgba(16,185,129,0.18); padding: 4px 12px; border-radius: 8px;
+    border: 1px solid rgba(80,250,123,0.5);
+  }
+  .widget.viewer-theme-emerald .viewer-chip {
+    background: rgba(16,185,129,0.12); padding: 2px 8px; border-radius: 8px;
+    border: 1px solid rgba(80,250,123,0.3);
+  }
+  .widget.viewer-theme-sakura .widget-inner {
+    color: #ffb7c5; text-shadow: 0 1px 3px #fff, 0 0 6px #ff8fab;
+  }
+  .widget.viewer-theme-sakura .viewer-total {
+    background: linear-gradient(135deg, rgba(255,183,197,0.25), rgba(255,214,224,0.2));
+    padding: 4px 12px; border-radius: 20px; border: 1px solid rgba(255,183,197,0.5);
+  }
+  .widget.viewer-theme-sakura .viewer-chip {
+    background: rgba(255,143,171,0.15); padding: 2px 8px; border-radius: 16px;
+    border: 1px solid rgba(255,183,197,0.35);
+  }
+  .widget.viewer-theme-toxic .widget-inner {
+    color: #ccff00; text-shadow: 0 0 6px #adff2f, 0 0 12px #7fff00;
+    font-family: 'Courier New', monospace;
+  }
+  .widget.viewer-theme-toxic .viewer-total {
+    background: rgba(173,255,47,0.15); padding: 4px 12px; border-radius: 4px;
+    border: 1px solid #adff2f;
+  }
+  .widget.viewer-theme-toxic .viewer-chip {
+    background: rgba(127,255,0,0.1); padding: 2px 8px; border-radius: 4px;
+    border: 1px solid rgba(173,255,47,0.4);
+  }
+  .widget.viewer-theme-blood-moon .widget-inner {
+    color: #ff4757; text-shadow: 0 0 8px #c0392b, 0 1px 2px #000;
+  }
+  .widget.viewer-theme-blood-moon .viewer-total {
+    background: radial-gradient(circle, rgba(192,57,43,0.3), rgba(80,0,0,0.25));
+    padding: 4px 12px; border-radius: 50px; border: 1px solid rgba(255,71,87,0.5);
+  }
+  .widget.viewer-theme-blood-moon .viewer-chip {
+    background: rgba(192,57,43,0.18); padding: 2px 8px; border-radius: 50px;
+    border: 1px solid rgba(255,71,87,0.35);
+  }
+  .widget.viewer-theme-chrome .widget-inner {
+    color: #e8eaed; text-shadow: 0 1px 2px #000, 0 0 4px rgba(255,255,255,0.4);
+  }
+  .widget.viewer-theme-chrome .viewer-total {
+    background: linear-gradient(135deg, #4b5563, #1f2937, #4b5563);
+    padding: 4px 12px; border-radius: 6px; border: 1px solid #9ca3af;
+  }
+  .widget.viewer-theme-chrome .viewer-chip {
+    background: linear-gradient(135deg, #374151, #111827);
+    padding: 2px 8px; border-radius: 6px; border: 1px solid #6b7280;
+  }
+  .widget.viewer-theme-coral .widget-inner {
+    color: #ff7f6b; text-shadow: 0 0 5px #ff6b6b, 0 1px 2px #000;
+  }
+  .widget.viewer-theme-coral .viewer-total {
+    background: linear-gradient(135deg, rgba(255,127,107,0.25), rgba(255,159,127,0.2));
+    padding: 4px 12px; border-radius: 8px; border: 1px solid rgba(255,127,107,0.5);
+  }
+  .widget.viewer-theme-coral .viewer-chip {
+    background: rgba(255,127,107,0.15); padding: 2px 8px; border-radius: 8px;
+    border: 1px solid rgba(255,159,127,0.35);
+  }
+  .widget.viewer-theme-galaxy .widget-inner {
+    color: #c4b5fd; text-shadow: 0 0 6px #8b5cf6, 0 1px 2px #000;
+  }
+  .widget.viewer-theme-galaxy .viewer-total {
+    background: linear-gradient(135deg, #1e1b4b, #4c1d95, #1e1b4b);
+    padding: 4px 12px; border-radius: 8px; border: 1px solid rgba(196,181,253,0.4);
+  }
+  .widget.viewer-theme-galaxy .viewer-chip {
+    background: rgba(76,29,149,0.3); padding: 2px 8px; border-radius: 8px;
+    border: 1px solid rgba(139,92,246,0.35);
+  }
+  .widget.viewer-theme-amber .widget-inner {
+    color: #ffb86c; text-shadow: 0 1px 2px #7c2d12, 0 0 5px #f59e0b;
+    font-family: Georgia, serif;
+  }
+  .widget.viewer-theme-amber .viewer-total {
+    background: linear-gradient(135deg, rgba(245,158,11,0.25), rgba(180,83,9,0.2));
+    padding: 4px 12px; border-radius: 6px; border: 1px solid rgba(245,158,11,0.5);
+  }
+  .widget.viewer-theme-amber .viewer-chip {
+    background: rgba(180,83,9,0.18); padding: 2px 8px; border-radius: 6px;
+    border: 1px solid rgba(245,158,11,0.35);
   }
 
   /* ★ viewer align (ชิดซ้าย/กลาง/ขวา) */
@@ -1687,6 +1843,10 @@
   body.edit-mode .widget.selected {
     border-color: #4a9eff;
     box-shadow: 0 0 0 2px rgba(74,158,255,0.4);
+    /* ★ ดัน widget ที่ select ไว้ให้ลอยขึ้นบนสุดเสมอ (ภาพ/คลิกเท่านั้น — ไม่แตะ w.z/ลำดับชั้นจริง)
+       ไม่งั้นปุ่ม ⚙/🗑/resize handle ของ widget ที่จมอยู่ล่างสุด (เช่น select ผ่านเมนูคลิกขวา)
+       จะโดน widget อื่นที่ z-index สูงกว่าบังจนกดไม่ได้ แม้จะ display:flex ขึ้นมาแล้วก็ตาม */
+    z-index: 99999 !important;
   }
   body.edit-mode .widget-inner { pointer-events: auto; }
   /* ★ chat/alert/playroom widget มี iframe → ใน editor mode ต้อง pointer-events: none
@@ -1753,7 +1913,7 @@
     display: none;
     position: fixed;
     top: 0; right: 0;
-    width: 260px;
+    width: 300px;
     height: 100vh;
     background: #16213e;
     color: #fff;
@@ -1763,7 +1923,7 @@
     z-index: 1000;
   }
   body.edit-mode #sidebar { display: block; }
-  body.edit-mode #canvas { width: calc(100% - 260px); padding: 20px; }
+  body.edit-mode #canvas { width: calc(100% - 300px); padding: 20px; }
   body:not(.edit-mode) #canvas { padding: 0; }   /* overlay mode: ไม่มี padding */
 
   #sidebar h2 {
@@ -1971,23 +2131,87 @@
   }
   .layer-row.drag-over { border-top: 2px solid #4a9eff; }
   .layer-icon { font-size: 16px; flex-shrink: 0; }
-  .layer-name { flex: 1; font-size: 13px; color: #fff; cursor: pointer; }
+  .layer-name { flex: 1; font-size: 13px; color: #fff; cursor: pointer; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .layer-name:hover { color: #93c5fd; }
   .layer-name .sub { font-size: 10px; color: #888; margin-left: 4px; }
-  .layer-settings-btn, .layer-vis-btn, .layer-up-btn, .layer-down-btn {
-    background: none; border: none; cursor: pointer;
-    font-size: 14px; padding: 2px 4px; opacity: 0.7;
-    transition: opacity 0.15s;
-    color: #ffffff;
-    filter: grayscale(1) brightness(3);
+
+  /* ★ กลุ่มปุ่ม action (ตั้งค่า/แสดง-ซ่อน) — แยกกรอบชัดเจนจากปุ่มเรียงลำดับ กันสับสนว่าปุ่มไหนทำอะไร */
+  .layer-actions {
+    display: flex; align-items: center; gap: 3px;
+    padding-left: 6px; margin-left: 2px;
+    border-left: 1px solid rgba(255,255,255,0.12);
+    flex-shrink: 0;
   }
-  .layer-settings-btn:hover, .layer-vis-btn:hover,
-  .layer-up-btn:hover, .layer-down-btn:hover { opacity: 1; }
-  .layer-settings-btn { font-size: 12px; }
-  .layer-up-btn, .layer-down-btn { font-size: 11px; }
+  .layer-settings-btn, .layer-vis-btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.15s;
+    color: #ffffff;
+  }
+  /* ★ ปุ่มตั้งค่า — hover เป็นสีฟ้า (โทนเดียวกับ accent ของแอป) ให้รู้สึกว่า "เปิดหน้าต่าง" */
+  .layer-settings-btn:hover { background: rgba(74,158,255,0.25); border-color: #4a9eff; }
+  /* ★ ปุ่มแสดง/ซ่อน — สีพื้นหลังเปลี่ยนตามสถานะจริง (เขียวอ่อน=กำลังแสดง, แดงอ่อน=ซ่อนอยู่)
+     ไม่ใช้ grayscale filter เหมือนเดิมแล้ว (ทำให้ 👁/🚫 เทาเหมือนกันหมด แยกไม่ออกว่าอันไหนคืออันไหน) */
+  .layer-vis-btn.is-visible { background: rgba(74,222,128,0.12); border-color: rgba(74,222,128,0.35); }
+  .layer-vis-btn.is-visible:hover { background: rgba(74,222,128,0.22); }
+  .layer-vis-btn.is-hidden { background: rgba(248,113,113,0.14); border-color: rgba(248,113,113,0.4); }
+  .layer-vis-btn.is-hidden:hover { background: rgba(248,113,113,0.24); }
+
+  /* ★ กลุ่มปุ่มเลื่อนชั้นขึ้น/ลง — ซ้อนแนวตั้งแบบ stepper แยกจากกลุ่ม action ชัดเจน */
+  .layer-reorder {
+    display: flex; flex-direction: column; gap: 1px;
+    margin-left: 4px; flex-shrink: 0;
+  }
+  .layer-up-btn, .layer-down-btn {
+    background: none; border: none; cursor: pointer;
+    font-size: 9px; width: 18px; height: 11px;
+    display: flex; align-items: center; justify-content: center;
+    color: #ffffff; opacity: 0.55;
+    transition: opacity 0.15s, background 0.15s;
+    border-radius: 3px;
+    line-height: 1;
+  }
+  .layer-up-btn:hover, .layer-down-btn:hover { opacity: 1; background: rgba(255,255,255,0.12); }
   .layer-up-btn:disabled, .layer-down-btn:disabled {
     opacity: 0.15; cursor: default;
   }
+  .layer-up-btn:disabled:hover, .layer-down-btn:disabled:hover { background: none; }
+
+  /* ★ คลิกขวาบน canvas — เมนูเลือก widget ที่ซ้อนกันอยู่ตรงจุดนั้น (กันต้องไปกดแท็บ Layers
+     เวลาอยาก select widget ที่อยู่ด้านล่างสุดของกอง) */
+  #canvas-ctx-menu {
+    position: fixed;
+    background: #16213e;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    padding: 4px;
+    z-index: 10000;
+    min-width: 180px;
+    max-height: 320px;
+    overflow-y: auto;
+  }
+  #canvas-ctx-menu .ctx-title {
+    font-size: 11px; color: #888; padding: 6px 8px 4px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  #canvas-ctx-menu .ctx-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 8px; border-radius: 6px;
+    cursor: pointer; font-size: 13px; color: #fff;
+    transition: background 0.15s;
+  }
+  #canvas-ctx-menu .ctx-item:hover { background: rgba(74,158,255,0.2); }
+  #canvas-ctx-menu .ctx-item.ctx-selected { background: rgba(74,158,255,0.12); }
+  #canvas-ctx-menu .ctx-item .ctx-icon { font-size: 15px; flex-shrink: 0; }
+  #canvas-ctx-menu .ctx-item .ctx-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #canvas-ctx-menu .ctx-item .ctx-z { font-size: 10px; color: #888; flex-shrink: 0; }
+
   #layers-list:empty::before {
     content: 'ยังไม่มี widget — เพิ่มจากด้านบน';
     display: block; padding: 16px; text-align: center;
@@ -2453,7 +2677,7 @@
     <button id="zoom-in" title="ซูมเข้า">+</button>
     <button id="zoom-fit" title="พอดีจอ">⤢</button>
     <button id="zoom-reset" title="รีเซ็ต 100%">1:1</button>
-    <span style="width:1px;height:20px;background:#333;margin:0 4px;"></span>
+    <span style="width:1px;height:20px;background:#333;margin:0 2px;flex-shrink:0;"></span>
     <button id="btn-canvas-bg" title="สลับสีพื้นหลัง Canvas (ดำ/ขาว)" style="font-size:14px;">🎨</button>
     <button id="btn-export-profile" title="บันทึก Profile (สำรอง layout)" style="font-size:14px;">💾</button>
     <button id="btn-import-profile" title="โหลด Profile" style="font-size:14px;">📂</button>
@@ -2928,6 +3152,11 @@ function updateWidgetElement(el, w) {
     classes.push('dir-' + (w.direction || 'bottom'));
     classes.push('anim-' + (w.animation || 'fade'));
     classes.push('align-' + (w.chat_align || 'left'));
+    // ★ Theme / Theme Part 2 (2026-09) — ลวดลายกล่องข้อความ (มี CSS จริงแค่ธีมใน THEME2_KEYS ตอนนี้)
+    if (w.appearance_mode === 'theme') {
+      classes.push('theme-' + (w.theme || 'default'));
+      classes.push('box-' + (w.box_width === 'wide' ? 'wide' : 'fit'));
+    }
   }
   if (w.type === 'clock') {
     classes.push('clock-theme-' + (w.clock_theme || 'default'));
@@ -3885,6 +4114,11 @@ function createWidgetElement(w) {
     classes.push('dir-' + (w.direction || 'bottom'));
     classes.push('anim-' + (w.animation || 'fade'));
     classes.push('align-' + (w.chat_align || 'left'));
+    // ★ Theme / Theme Part 2 (2026-09) — ลวดลายกล่องข้อความ (มี CSS จริงแค่ธีมใน THEME2_KEYS ตอนนี้)
+    if (w.appearance_mode === 'theme') {
+      classes.push('theme-' + (w.theme || 'default'));
+      classes.push('box-' + (w.box_width === 'wide' ? 'wide' : 'fit'));
+    }
   }
   if (w.type === 'clock') {
     classes.push('clock-theme-' + (w.clock_theme || 'default'));
@@ -6151,6 +6385,70 @@ function bringToFront(id) {
   renderLayersList();
 }
 
+// ★ คลิกขวาบน canvas — โชว์เมนูเลือก widget ที่ซ้อนทับกันอยู่ตรงจุดนั้น (บนสุด→ล่างสุดตาม z)
+//   กันต้องไปกดแท็บ 📚 Layers เวลาอยาก select widget ที่จมอยู่ด้านล่างสุดของกอง
+function closeCanvasCtxMenu() {
+  const m = document.getElementById('canvas-ctx-menu');
+  if (m) m.remove();
+  document.removeEventListener('click', closeCanvasCtxMenu);
+  document.removeEventListener('contextmenu', closeCanvasCtxMenu);
+  document.removeEventListener('keydown', _ctxMenuEscHandler);
+}
+function _ctxMenuEscHandler(e) { if (e.key === 'Escape') closeCanvasCtxMenu(); }
+
+function showCanvasContextMenu(e) {
+  // ★ elementsFromPoint คืนลำดับบนสุด→ล่างสุดตามที่เรนเดอร์จริงบนจอ (รองรับ zoom/scroll ถูกต้องเสมอ
+  //   ไม่ต้องคำนวณ x/y/w/h เทียบเอง) กรองเอาเฉพาะ .widget เอง (ไม่ใช่ลูกข้างในของมัน) + กันซ้ำ
+  const seen = new Set();
+  const stack = document.elementsFromPoint(e.clientX, e.clientY)
+    .filter(el => el.classList && el.classList.contains('widget') && el.dataset.id)
+    .filter(el => (seen.has(el.dataset.id) ? false : (seen.add(el.dataset.id), true)))
+    .map(el => el.dataset.id);
+  if (!stack.length) return; // ไม่มี widget ตรงนี้ → ปล่อยเมนูเบราว์เซอร์ปกติไป
+  e.preventDefault();
+  closeCanvasCtxMenu();
+  const menu = document.createElement('div');
+  menu.id = 'canvas-ctx-menu';
+  let html = '<div class="ctx-title">Widget ตรงนี้ (' + stack.length + ')</div>';
+  stack.forEach(id => {
+    const w = config.widgets.find(x => x.id === id);
+    if (!w) return;
+    const displayName = w.name || WIDGET_LABELS[w.type] || w.type;
+    const sel = id === selectedWidget ? ' ctx-selected' : '';
+    html += '<div class="ctx-item' + sel + '" data-id="' + escapeHtml(id) + '">'
+      + '<span class="ctx-icon">' + (WIDGET_ICONS[w.type] || '▣') + '</span>'
+      + '<span class="ctx-name">' + escapeHtml(displayName) + '</span>'
+      + '<span class="ctx-z">z:' + (w.z || 1) + '</span>'
+      + '</div>';
+  });
+  menu.innerHTML = html;
+  document.body.appendChild(menu);
+  // ★ วางตำแหน่งกันล้นขอบจอ (คำนวณหลัง append เพราะต้องรู้ขนาดจริงของเมนูก่อน)
+  const mw = menu.offsetWidth, mh = menu.offsetHeight;
+  let left = e.clientX, top = e.clientY;
+  if (left + mw > window.innerWidth) left = Math.max(8, window.innerWidth - mw - 8);
+  if (top + mh > window.innerHeight) top = Math.max(8, window.innerHeight - mh - 8);
+  menu.style.left = left + 'px';
+  menu.style.top = top + 'px';
+  menu.querySelectorAll('.ctx-item').forEach(item => {
+    item.addEventListener('click', () => {
+      selectWidget(item.dataset.id);
+      closeCanvasCtxMenu();
+    });
+  });
+  // ★ ปิดเมนูเมื่อคลิกที่อื่น/คลิกขวาที่อื่น/กด Escape — setTimeout กันคลิกขวาครั้งนี้เองทริกเกอร์ close ทันที
+  setTimeout(() => {
+    document.addEventListener('click', closeCanvasCtxMenu);
+    document.addEventListener('contextmenu', closeCanvasCtxMenu);
+    document.addEventListener('keydown', _ctxMenuEscHandler);
+  }, 0);
+}
+
+document.getElementById('canvas').addEventListener('contextmenu', (e) => {
+  if (!document.body.classList.contains('edit-mode')) return;
+  showCanvasContextMenu(e);
+});
+
 // ★ บันทึก layout ทันทีไม่หน่วง (ยิง POST เลย) — ใช้ตอน add/delete widget
 //   เพื่อให้ Overlay OBS ได้รับ widget ใหม่/ที่ลบ ทันทีผ่าน config push
 //   ★ แก้บั๊ก: เดิมตอน "เพิ่ม" widget ไม่ได้ save เลย → กด Demo เลยไม่มีอะไรขึ้น
@@ -6215,13 +6513,20 @@ function renderLayersList() {
     if (selectedWidget === w.id) row.classList.add('selected');
     // ★ ใช้ custom name ถ้ามี ไม่งั้นใช้ type label
     const displayName = w.name || WIDGET_LABELS[w.type] || w.type;
+    const isHidden = w.enabled === false;
+    // ★ tooltip บอกสถานะปัจจุบัน + สิ่งที่จะเกิดขึ้นถ้ากด (ไม่ใช่แค่ชื่อปุ่มเฉยๆ กันสับสนว่า "show/hide" หมายถึงอะไร)
+    const visTitle = isHidden ? 'ซ่อนอยู่ตอนนี้ — คลิกเพื่อแสดง' : 'กำลังแสดงอยู่ — คลิกเพื่อซ่อน';
     row.innerHTML = '<span class="layer-icon">' + (WIDGET_ICONS[w.type] || '▣') + '</span>'
       + '<span class="layer-name" title="ดับเบิ้ลคลิกเพื่อเปลี่ยนชื่อ">' + escapeHtml(displayName)
       + '<span class="sub">z:' + (w.z || 1) + '</span></span>'
-      + '<button class="layer-settings-btn" title="ตั้งค่า Widget">⚙</button>'
-      + '<button class="layer-vis-btn" title="show/hide">' + (w.enabled === false ? '🚫' : '👁') + '</button>'
-      + '<button class="layer-up-btn" title="เลื่อนขึ้นหนึ่งชั้น"' + (idx === 0 ? ' disabled' : '') + '>▲</button>'
-      + '<button class="layer-down-btn" title="เลื่อนลงหนึ่งชั้น"' + (idx === sorted.length - 1 ? ' disabled' : '') + '>▼</button>';
+      + '<div class="layer-actions">'
+      + '<button class="layer-settings-btn" title="เปิดหน้าต่างตั้งค่า Widget นี้">⚙</button>'
+      + '<button class="layer-vis-btn ' + (isHidden ? 'is-hidden' : 'is-visible') + '" title="' + visTitle + '">' + (isHidden ? '🚫' : '👁') + '</button>'
+      + '</div>'
+      + '<div class="layer-reorder">'
+      + '<button class="layer-up-btn" title="เลื่อนขึ้นหนึ่งชั้น (มาอยู่หน้าตัวอื่น)"' + (idx === 0 ? ' disabled' : '') + '>▲</button>'
+      + '<button class="layer-down-btn" title="เลื่อนลงหนึ่งชั้น (ไปอยู่หลังตัวอื่น)"' + (idx === sorted.length - 1 ? ' disabled' : '') + '>▼</button>'
+      + '</div>';
     // click row → select widget (ไม่เปลี่ยน z-index)
     // ★ ใช้ timer แยก single click จาก double click (กัน renderLayersList ทำลาย dblclick)
     let _clickTimer = null;
@@ -6903,19 +7208,41 @@ function applyWidgetStyle(inner, w) {
     inner.style.fontWeight = fw;
     inner.style.color = fc;
     inner.style.textShadow = stroke;
-    // พื้นหลัง (ถ้ามี opacity > 0)
-    if (w.bg_opacity > 0) {
+    // ★ กล่องหลังข้อความ (2026-09) — ค่าพวกนี้ถูกเก็บมานานแล้วแต่ไม่เคย apply จริง (เก็บไว้เฉยๆ)
+    //   ระยะห่างจากกรอบ Widget / ระยะห่างระหว่างข้อความ ใช้ได้ทุกโหมดที่ box_enabled (Theme mode)
+    if (w.appearance_mode === 'theme') {
+      inner.style.padding = (w.chat_padding != null ? w.chat_padding : 12) + 'px';
+      inner.style.gap = (w.msg_spacing != null ? w.msg_spacing : 4) + 'px';
+    } else {
+      inner.style.padding = '';
+      inner.style.gap = '';
+    }
+    // พื้นหลังทึบสีเดียว (ถ้ามี opacity > 0) — ★ ข้ามถ้าธีมที่เลือกมีลวดลายของตัวเองอยู่แล้ว (THEME2_KEYS)
+    //   กันพื้นดำทับลวดลายของธีม — ธีมพวกนี้คุมพื้นหลังเองผ่าน CSS .theme-<key>
+    const hasPatternTheme = w.appearance_mode === 'theme' && THEME2_KEYS.has(w.theme);
+    if (!hasPatternTheme && w.bg_opacity > 0) {
       const hex = w.bg_color || '#000000';
       const r = parseInt(hex.slice(1,3), 16);
       const g = parseInt(hex.slice(3,5), 16);
       const b = parseInt(hex.slice(5,7), 16);
       inner.style.background = `rgba(${r},${g},${b},${w.bg_opacity})`;
+    } else if (hasPatternTheme) {
+      inner.style.background = '';
     }
   } else if (w.type === 'viewer') {
     inner.style.fontSize = fs + 'px';
     inner.style.fontWeight = fw;
-    inner.style.color = fc;
-    inner.style.textShadow = stroke;
+    // ★ viewer theme (ไม่ใช่ default) คุมสีตัวอักษร/text-shadow (เรืองแสง ฯลฯ) เองผ่าน CSS
+    //   .viewer-theme-<key> .widget-inner — ห้าม apply inline ทับ ไม่งั้นสี/เอฟเฟกต์ของธีมจะไม่มีวันเห็นผล
+    //   เลย (เจอบั๊กนี้ตอนเพิ่มธีมชุดที่ 3 — จริงๆ กระทบธีมเก่าทั้ง 18 แบบมาตั้งแต่แรกด้วย ไม่ใช่แค่ชุดใหม่)
+    const viewerThemeActive = w.viewer_theme && w.viewer_theme !== 'default';
+    if (viewerThemeActive) {
+      inner.style.color = '';
+      inner.style.textShadow = '';
+    } else {
+      inner.style.color = fc;
+      inner.style.textShadow = stroke;
+    }
   } else if (w.type === 'text') {
     // ★ text widget — apply bg (ถ้า signature เหมือนเดิม แต่ bg เปลี่ยน)
     const _textWidgetEl = inner.closest('.widget');
@@ -7017,6 +7344,29 @@ const THEME_OPTS = [
   ['paper-torn','📄 Paper Torn'],['crimson','🔴 Crimson'],['custom','✏️ Custom CSS'],
 ];
 
+// ★ Theme Part 2 (2026-09) — ชุดแยกต่างหาก ไม่รวมกับ THEME_OPTS ด้านบน (คนละ dropdown ในหน้าตั้งค่า)
+//   เลือกโดยเจ้าของจาก mockup ที่ทำให้ดู — คีย์ (t.theme) มาจากรายการเดียวกันนี้ ไม่ชนกับ THEME_OPTS
+const THEME_OPTS_2 = [
+  ['coral-reef','🐠 Coral Reef Splash'],['bio-forest','🍄 Bioluminescent Forest'],
+  ['desert-dune','🏜️ Desert Dune'],['frozen-lake','🧊 Frozen Lake Crack'],
+  ['denim-patch','🧵 Denim Patch'],['steampunk','⚙️ Steampunk Brass Gear'],
+  ['ramen-steam','🍜 Ramen Bowl Steam'],['knit-sweater','🧶 Knitted Wool Sweater'],
+  ['equalizer','🎧 Music Equalizer Waveform'],['holo-badge','🪪 Holographic ID Badge'],
+  ['cross-stitch','🧵 Embroidered Cross-stitch'],['frost-window','❄️ Winter Frost Window'],
+  ['lunar-lantern','🏮 Lunar New Year Lantern'],
+  ['retrowave-sunset-grid','🌇 Retrowave Sunset Grid'],['obsidian-prism','🖤 Obsidian Prism'],
+  ['washi-paper','🎏 Washi Paper'],['midnight-aquarium','🐟 Midnight Aquarium'],
+  ['esports-hud','🎮 Esports HUD'],['vinyl-record','💿 Vinyl Record'],
+  ['royal-velvet-curtain','🎭 Royal Velvet Curtain'],['neon-arcade-cabinet','🕹️ Neon Arcade Cabinet'],
+  ['storm-cloud-thunder','⛈️ Storm Cloud Thunder'],['lucky-red-envelope','🧧 Lucky Red Envelope'],
+  ['origami-crane-fold','🕊️ Origami Crane Fold'],['vintage-film-strip','🎞️ Vintage Film Strip'],
+  ['thai-silk','🧵 Thai Silk'],['holo-foil-sticker','🌈 Holo Foil Sticker'],
+];
+// ★ ใช้เช็คว่า theme ที่เลือกอยู่เป็นชุด Theme Part 2 (13 แบบ) หรือชุดเดิม (51 แบบ)
+// ★ ทั้งสองชุด render จริงผ่าน overlay.html (chat widget = iframe) → game_overlay_themes.py (server-side)
+//   ไม่ใช่ CSS ในไฟล์นี้ — .chat-line/.theme-* ด้านล่างเป็น preview ของหน้า editor เท่านั้น ไม่ใช่ path ที่ OBS เห็นจริง
+const THEME2_KEYS = new Set(THEME_OPTS_2.map(([k]) => k));
+
 // ★ แสดง/ซ่อน section ตาม appearance_mode — เครื่องมือแยกสนิทตามโหมด (ห้ามข้ามโหมด)
 function updateChatModeSections() {
   const modeSel = document.getElementById('f-appearance_mode');
@@ -7025,17 +7375,19 @@ function updateChatModeSections() {
     const el = document.getElementById(id);
     if (el) el.style.display = condition ? '' : 'none';
   };
-  const dt = (mode === 'default' || mode === 'theme');
-  // Theme picker = เฉพาะโหมด Theme
+  const dt = (mode === 'default' || mode === 'theme' || mode === 'theme2');
+  // Theme picker = เฉพาะโหมด Theme / Theme Part 2 = เฉพาะโหมดตัวเอง (แยกหมวดสนิท ไม่ปนกับ Theme)
   show('sec-t-theme', mode === 'theme');
-  // เนื้อหา/ตัวอักษร/อนิเมชั่น = Default + Theme (Layout บรรทัดเดียวล็อคเฉพาะ Default)
+  show('sec-t-theme2', mode === 'theme2');
+  // เนื้อหา/ตัวอักษร/อนิเมชั่น/สีชื่อตามแพลตฟอร์ม = Default + Theme + Theme Part 2 (Layout บรรทัดเดียวล็อคเฉพาะ Default)
   show('sec-dt-content', dt);
   show('wrap-layout-default', mode === 'default');
-  show('wrap-layout-theme', mode === 'theme');
+  show('wrap-layout-theme', mode === 'theme' || mode === 'theme2');
+  show('sec-dt-authorcolor', dt);
   show('sec-dt-font', dt);
   show('sec-dt-anim', dt);
-  // กล่องหลังข้อความ = เฉพาะ Theme / Custom CSS = เฉพาะ Default
-  show('sec-t-box', mode === 'theme');
+  // กล่องหลังข้อความ = Theme / Theme Part 2 / Custom CSS = เฉพาะ Default
+  show('sec-t-box', mode === 'theme' || mode === 'theme2');
   show('sec-d-css', mode === 'default');
   // Balloon
   show('sec-b-dur', mode === 'balloon');
@@ -7333,6 +7685,16 @@ function _openSettingsModalInner(id) {
       <option value="rainbow"${(w.viewer_theme||'default')=='rainbow'?' selected':''}>🏳️ Rainbow (สายรุ้ง)</option>
       <option value="carbon"${(w.viewer_theme||'default')=='carbon'?' selected':''}>🪨 Carbon (คาร์บอน)</option>
       <option value="vapor"${(w.viewer_theme||'default')=='vapor'?' selected':''}>💜 Vaporwave</option>
+      <option value="ice"${(w.viewer_theme||'default')=='ice'?' selected':''}>🧊 Ice (น้ำแข็ง)</option>
+      <option value="rose-gold"${(w.viewer_theme||'default')=='rose-gold'?' selected':''}>🌹 Rose Gold (ทองกุหลาบ)</option>
+      <option value="emerald"${(w.viewer_theme||'default')=='emerald'?' selected':''}>💚 Emerald (มรกต)</option>
+      <option value="sakura"${(w.viewer_theme||'default')=='sakura'?' selected':''}>🌸 Sakura (ซากุระ)</option>
+      <option value="toxic"${(w.viewer_theme||'default')=='toxic'?' selected':''}>☣️ Toxic (พิษเรืองแสง)</option>
+      <option value="blood-moon"${(w.viewer_theme||'default')=='blood-moon'?' selected':''}>🌑 Blood Moon (จันทร์เลือด)</option>
+      <option value="chrome"${(w.viewer_theme||'default')=='chrome'?' selected':''}>⚙️ Chrome (โครเมียม)</option>
+      <option value="coral"${(w.viewer_theme||'default')=='coral'?' selected':''}>🪸 Coral (ปะการัง)</option>
+      <option value="galaxy"${(w.viewer_theme||'default')=='galaxy'?' selected':''}>🌌 Galaxy (กาแล็กซี่)</option>
+      <option value="amber"${(w.viewer_theme||'default')=='amber'?' selected':''}>🟠 Amber (อำพัน)</option>
     </select>`);
     fields.innerHTML += `<div class="section-title">🔤 ฟอนต์</div>`;
     fields.innerHTML += fldSlider('ขนาด Font', 'f-font_size', w.font_size || 20, 10, 48, 1, 'px');
@@ -8454,6 +8816,7 @@ function _openSettingsModalInner(id) {
   fields.innerHTML += fld('Appearance (โหมดแสดงผล)', `<select id="f-appearance_mode">
     <option value="default"${(w.appearance_mode||'')=='default'?' selected':''}>Default (แชทบรรทัดเดียว ไม่มีกล่อง)</option>
     <option value="theme"${(w.appearance_mode||'')=='theme'?' selected':''}>Theme (มีกล่องหลัง + ลวดลาย)</option>
+    <option value="theme2"${(w.appearance_mode||'')=='theme2'?' selected':''}>Theme Part 2 (ชุดธีมใหม่ — กล่องหลัง + ลวดลาย)</option>
     <option value="balloon"${(w.appearance_mode||'')=='balloon'?' selected':''}>Balloon (Comic Style สุ่มตำแหน่ง)</option>
     <option value="character"${(w.appearance_mode||'')=='character'?' selected':''}>Character Talk (ตัวละคร + ช่องคำพูด)</option>
     <option value="slider"${(w.appearance_mode||'')=='slider'?' selected':''}>Danmaku Chat (ข้อความไหลแบบ Niconico)</option>
@@ -8478,11 +8841,26 @@ function _openSettingsModalInner(id) {
     themeOptsHtml += `<option value="${k}">${label}</option>`;
   }
   fields.innerHTML += section('sec-t-theme', '🎭 Theme',
-    fld('เลือก Theme', `<select id="f-theme">` +
+    fld('เลือก Theme', `<select id="f-theme" onchange="document.getElementById('f-theme2').value=''">` +
       ((THEME_OPTS.find(([k]) => k === currentTheme) || []).length
         ? `<option value="${currentTheme}" selected>⬆️ ${(THEME_OPTS.find(([k]) => k === currentTheme) || ['','(ปัจจุบัน)'])[1]} (ปัจจุบัน)</option><option disabled>──────────</option>`
         : ``) + themeOptsHtml + `</select>`) +
     `<div class="hint-text">Theme กำหนดลวดลาย/พื้นหลังให้แล้ว — ปรับเพิ่มได้จากหัวข้อด้านล่าง</div>`);
+
+  // ═══ THEME mode : Theme Part 2 (ชุดแยกต่างหาก 2026-09 — ไม่รวมกับชุดบน) ═══
+  //   ★ เลือกจากตรงนี้ = เขียนทับค่า f-theme (เคลียร์กลับเป็นว่างตอนเปลี่ยน — กันสองช่องชนกันตอนเซฟ)
+  //   ★ ตอนเซฟ (_collectFields): w.theme = get('f-theme2') || get('f-theme') || 'default' — ช่องนี้ชนะถ้ามีค่า
+  let theme2OptsHtml = '';
+  for (const [k, label] of THEME_OPTS_2) {
+    if (k === currentTheme) continue;
+    theme2OptsHtml += `<option value="${k}">${label}</option>`;
+  }
+  fields.innerHTML += section('sec-t-theme2', '🎨 Theme Part 2',
+    fld('เลือก Theme (ชุดที่ 2)', `<select id="f-theme2" onchange="document.getElementById('f-theme').value=''">` +
+      (THEME2_KEYS.has(currentTheme)
+        ? `<option value="${currentTheme}" selected>⬆️ ${(THEME_OPTS_2.find(([k]) => k === currentTheme) || ['','(ปัจจุบัน)'])[1]} (ปัจจุบัน)</option><option disabled>──────────</option>`
+        : `<option value="" selected>— (ยังไม่ได้เลือกจากชุดนี้) —</option>`) + theme2OptsHtml + `</select>`) +
+    `<div class="hint-text">ชุดใหม่แยกจาก Theme ด้านบน — เลือกได้ครั้งละ 1 ธีมจากชุดใดชุดหนึ่งเท่านั้น</div>`);
 
   // ═══ DEFAULT + THEME : เนื้อหา & Layout ═══
   let _ct = '';
@@ -8504,6 +8882,23 @@ function _openSettingsModalInner(id) {
     {v:'center', l:'↔ กลาง', c:w.chat_align==='center'},
     {v:'right', l:'➡ ขวา', c:w.chat_align==='right'}]));
   fields.innerHTML += section('sec-dt-content', '📝 เนื้อหา & Layout', _ct);
+
+  // ═══ DEFAULT + THEME + THEME PART 2 : สีชื่อผู้พูดตามแพลตฟอร์ม ═══
+  // ★ ปกติ (auto) ใช้สีจากแพลตฟอร์มจริง (สีที่ผู้ชมตั้งเองบน Twitch ฯลฯ, ถ้าไม่มีค่อย fallback ตาม platform)
+  // ★ กำหนดเอง (custom) เขียนทับด้วยสีที่เลือกไว้ ต่อแพลตฟอร์ม
+  const _acPlatforms = [
+    ['twitch','Twitch','#a855f7'], ['youtube','YouTube','#ef4444'], ['tiktok','TikTok','#00f2ea'],
+    ['kick','KICK','#53fc18'], ['mylive','MyLive','#60a5fa'], ['soop','SOOP','#00d9ff'],
+  ];
+  const _acMap = w.author_color_map || {};
+  let _acInner = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;">` +
+    _acPlatforms.map(([k,label,def]) =>
+      `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <span style="font-size:13px;color:#e2e8f0;">${label}</span>
+        <input type="color" id="f-author_color_${k}" value="${_acMap[k] || def}">
+      </div>`).join('') + `</div>`;
+  fields.innerHTML += section('sec-dt-authorcolor', '🎨 สีชื่อผู้พูดตามแพลตฟอร์ม',
+    _grp('f-author_color_custom', 'กำหนดสีเอง (ปิด = ใช้สีอัตโนมัติตามปัจจุบัน)', w.author_color_mode === 'custom', _acInner));
 
   // ═══ DEFAULT + THEME : ตัวอักษร ═══
   let _ft = '';
@@ -8549,7 +8944,7 @@ function _openSettingsModalInner(id) {
       <option value="fit"${(w.box_width||'')=='fit'?' selected':''}>ชิดข้อความ (fit)</option>
       <option value="wide"${(w.box_width||'')=='wide'?' selected':''}>กว้างเต็ม (wide)</option>
     </select>`) +
-    fldSlider('ความโปร่งใสของกล่อง', 'f-bg_opacity', w.bg_opacity != null ? w.bg_opacity : 0, 0, 1, 0.05, '') +
+    fldSlider('ความโปร่งใสของกล่อง', 'f-bg_opacity', w.bg_opacity != null ? w.bg_opacity : 1, 0, 1, 0.05, '') +
     fldSlider('ระยะห่างจากกรอบ Widget', 'f-chat_padding', w.chat_padding != null ? w.chat_padding : 12, 0, 60, 1, 'px') +
     fldSlider('ระยะห่างระหว่างกล่องข้อความ', 'f-msg_spacing', w.msg_spacing != null ? w.msg_spacing : 4, 0, 30, 1, 'px'));
 
@@ -9215,7 +9610,8 @@ function readModalFields(w) {
     w.appearance_mode = get('f-appearance_mode') || 'default';
     const _m = w.appearance_mode;
     // ★ การตั้งค่าของใครของมัน — อ่านเฉพาะ field ของโหมดนั้น (ห้ามข้ามโหมด)
-    if (_m === 'default' || _m === 'theme') {
+    // ★ theme2 = "Theme Part 2" ใช้เครื่องมือ (Layout/Font/Animation/กล่องหลัง) ร่วมกับ theme ทั้งหมด
+    if (_m === 'default' || _m === 'theme' || _m === 'theme2') {
       if (get('f-show_logo') !== null) {
         w.show_logo = getChecked('f-show_logo');
         w.show_timestamp = getChecked('f-show_timestamp');
@@ -9223,9 +9619,20 @@ function readModalFields(w) {
         if (_dir) w.direction = _dir.value;
         const _al = document.querySelector('input[name="f-chat_align"]:checked');
         if (_al) w.chat_align = _al.value;
-        // ★ Default = บรรทัดเดียวเท่านั้น + ไม่มีกล่อง / Theme = layout เลือกได้ + มีกล่อง
+        // ★ Default = บรรทัดเดียวเท่านั้น + ไม่มีกล่อง / Theme, Theme Part 2 = layout เลือกได้ + มีกล่อง
         if (_m === 'default') { w.layout = 'inline'; w.box_enabled = false; }
-        if (_m === 'theme')   { w.layout = get('f-layout') || 'inline'; w.box_enabled = true; }
+        if (_m === 'theme' || _m === 'theme2') { w.layout = get('f-layout') || 'inline'; w.box_enabled = true; }
+      }
+      if (document.getElementById('f-author_color_custom')) {
+        w.author_color_mode = getChecked('f-author_color_custom') ? 'custom' : 'auto';
+        w.author_color_map = {
+          twitch: get('f-author_color_twitch') || '#a855f7',
+          youtube: get('f-author_color_youtube') || '#ef4444',
+          tiktok: get('f-author_color_tiktok') || '#00f2ea',
+          kick: get('f-author_color_kick') || '#53fc18',
+          mylive: get('f-author_color_mylive') || '#60a5fa',
+          soop: get('f-author_color_soop') || '#00d9ff',
+        };
       }
       if (get('f-font_family')) {
         w.font_family = get('f-font_family');
@@ -9246,9 +9653,9 @@ function readModalFields(w) {
         w.hide_after = getNum('f-hide_after', 8);
         w.exit_animation = get('f-exit_animation') || 'fade_out';
       }
-      if (_m === 'theme' && get('f-box_width')) {
+      if ((_m === 'theme' || _m === 'theme2') && get('f-box_width')) {
         w.box_width = get('f-box_width') || 'fit';
-        w.bg_opacity = getNum('f-bg_opacity', 0);
+        w.bg_opacity = getNum('f-bg_opacity', 1);
         w.chat_padding = getNum('f-chat_padding', 12);
         w.msg_spacing = getNum('f-msg_spacing', 4);
       }
@@ -9260,8 +9667,13 @@ function readModalFields(w) {
         }
       }
       if (_m === 'theme') {
-        // ★ เซฟชื่อ theme ที่เลือก (เคยหลุดไปตอน rework → Theme ไม่ถูก apply)
+        // ★ เซฟชื่อ theme ที่เลือกจากชุดเดิม (51 แบบ)
         w.theme = get('f-theme') || 'default';
+        w.custom_css_enabled = false;
+      }
+      if (_m === 'theme2') {
+        // ★ เซฟชื่อ theme ที่เลือกจากชุด Theme Part 2 (13 แบบ)
+        w.theme = get('f-theme2') || 'default';
         w.custom_css_enabled = false;
       }
     }
@@ -9360,7 +9772,7 @@ function readModalFields(w) {
   } else if (w.type === 'chat') {
     // ★ chat — อ่าน fields ตาม mode (บาง field อาจไม่แสดงในบาง mode)
     w.appearance_mode = get('f-appearance_mode') || 'default';
-    w.theme = get('f-theme') || 'default';
+    w.theme = get('f-theme2') || get('f-theme') || 'default';
     w.custom_css = get('f-custom_css') || '';
     // content
     if (get('f-show_logo') !== null) w.show_logo = getChecked('f-show_logo');
@@ -9394,7 +9806,7 @@ function readModalFields(w) {
       w.box_enabled = getChecked('f-box_width') ? getChecked('f-box_enabled') : w.box_enabled;
       w.box_width = get('f-box_width');
       w.bg_color = get('f-bg_color') || '#0a0e1a';
-      w.bg_opacity = getNum('f-bg_opacity', 0);
+      w.bg_opacity = getNum('f-bg_opacity', 1);
       w.box_radius = getNum('f-box_radius', 8);
       w.box_padding = getNum('f-box_padding', 8);
       w.chat_padding = getNum('f-chat_padding', 12);

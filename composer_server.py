@@ -286,7 +286,9 @@ class ComposerServer:
                 "text_shadow_color": str(w.get("text_shadow_color", "#000000")),
                 "text_shadow_blur": int(w.get("text_shadow_blur", 3)),
                 "bg_color": str(w.get("bg_color", "#0a0e1a")) if wt == "chat" else "#0a0e1a",
-                "bg_opacity": max(0.0, min(1.0, float(w.get("bg_opacity", 0.0)))) if wt == "chat" else 0.0,
+                # ★ default 1.0 (ทึบ) ไม่ใช่ 0.0 — ค่านี้มีผลจริงแค่ตอน Theme/Theme Part 2 active เท่านั้น
+                #   (Default mode บังคับ box_enabled=false เสมออยู่แล้ว ไม่สนค่านี้) ธีมควรทึบเป็นค่าเริ่มต้น
+                "bg_opacity": max(0.0, min(1.0, float(w.get("bg_opacity", 1.0)))) if wt == "chat" else 0.0,
                 "max_messages": int(w.get("max_messages", 30)) if wt == "chat" else 30,
                 "clock_format": str(w.get("clock_format", "HH:MM")) if wt == "clock" else "HH:MM",
                 # ── chat-specific (ย้ายจาก overlay_* settings เดิม) ──
@@ -302,6 +304,12 @@ class ComposerServer:
                 # ── chat appearance mode + theme (iframe overlay.html reuse) ──
                 "appearance_mode": str(w.get("appearance_mode", "default")) if wt == "chat" else "default",
                 "theme": str(w.get("theme", "default")) if wt == "chat" else "default",
+                # ── สีชื่อผู้พูดตามแพลตฟอร์ม (2026-09-25) ──
+                "author_color_mode": str(w.get("author_color_mode", "auto")) if wt == "chat" else "auto",
+                "author_color_map": ({
+                    k: str(v) for k, v in (w.get("author_color_map") or {}).items()
+                    if k in ("twitch", "youtube", "tiktok", "kick", "mylive", "soop") and isinstance(v, str)
+                } if wt == "chat" else {}),
                 "custom_css": str(w.get("custom_css", "")) if wt == "chat" else "",
                 "custom_css_enabled": bool(w.get("custom_css_enabled", False)) if wt == "chat" else False,
                 "emote_size": int(w.get("emote_size", 28)) if wt == "chat" else 28,
@@ -2027,9 +2035,10 @@ class ComposerServer:
         custom_css = w.get("custom_css", "")
         # compute theme_css (raw CSS string)
         # ★ theme ใช้ได้ในทุก mode (ไม่ใช่แค่ mode=theme)
+        # ★ theme2 = "Theme Part 2" (ชุดธีมใหม่ 2026-09, appearance_mode แยกจาก theme แต่ใช้ pipeline เดียวกัน)
         try:
             theme_css = ""
-            if appearance == "theme" and theme and theme != "default":
+            if appearance in ("theme", "theme2") and theme and theme != "default":
                 theme_css = get_theme_css(theme, "")
             elif appearance == "default" and w.get("custom_css_enabled") and custom_css:
                 # ★ Custom CSS ย้ายมาโหมด Default (เปิดผ่าน checkbox)
@@ -2045,7 +2054,7 @@ class ComposerServer:
         config = {
             # mode
             "appearance_mode": appearance,
-            "theme": theme if appearance == "theme" else "default",
+            "theme": theme if appearance in ("theme", "theme2") else "default",
             "theme_css": theme_css,
             "custom_css": custom_css if theme == "custom" else "",
             "balloon_mode": balloon_mode,
@@ -2075,10 +2084,14 @@ class ComposerServer:
             "text_shadow": w.get("text_shadow", True),
             "text_shadow_color": w.get("text_shadow_color", "#000000"),
             "text_shadow_blur": w.get("text_shadow_blur", 3),
+            # ★ สีชื่อผู้พูดตามแพลตฟอร์ม (2026-09-25) — auto = สีจริงจากแพลตฟอร์ม (msg.color/platformColor เดิม)
+            #   custom = เขียนทับด้วย author_color_map ต่อแพลตฟอร์ม (ดู overlay.html resolveAuthorColor())
+            "author_color_mode": w.get("author_color_mode", "auto"),
+            "author_color_map": w.get("author_color_map") or {},
             # box (จาก widget — ครบทุก field)
             "box_enabled": w.get("box_enabled", True),
             "box_bg_color": w.get("bg_color", "#0a0e1a"),
-            "box_bg_opacity": w.get("bg_opacity", 0.0),
+            "box_bg_opacity": w.get("bg_opacity", 1.0),
             "box_radius": w.get("box_radius", 8),
             "box_padding": w.get("box_padding", 8),
             "chat_padding": w.get("chat_padding", 12),

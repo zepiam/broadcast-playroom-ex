@@ -1,16 +1,16 @@
 {
-  "version": "2.8.2",
-  "changelog": "- หน้า User Manager ใหม่ (แบ่งหน้า / ซ่อนบอทและคนที่ถูกบล็อก / ค้นหา)\n- กดดูรายละเอียดโดเนท/ซับ/เมมเบอร์ได้ (เดือน, ผู้รับ, ข้อความแนบ)\n- ไอคอนในแชทบอกว่าใครถูกบล็อก\n- ธีมใหม่ 12 แบบ (รวม 16 ธีม)\n- ปิดเสียงแล้วหยุดอ่านทันที (รวมปิดเสียงรายแพลตฟอร์ม)\n- ข้ามข้อความที่ยาวเกินกำหนด (ตั้งได้ใน Settings) — โดเนท/อีเวนต์ไม่ถูกข้าม\n- แปลภาษาแล้วค่อยอ่าน: แชทขึ้นต้นฉบับก่อน แล้วเปลี่ยนเป็นไทยเมื่อแปลเสร็จ\n- เก็บแชท 5 วัน (ผู้ใช้ใหม่) + ปุ่มล้างแชทใน User Manager + แจ้งเตือนเมื่อประวัติแชทเกิน 1 GB\n- แก้ Prime sub ถูกอ่านเป็น Tier 1 / อ่านชื่อแบบ \"ชื่อ พูดว่า ข้อความ\"\n- ถอดระบบเสียง OmniVoice (ย้ายมาใช้เสียง Edge ให้อัตโนมัติ)",
+  "version": "2.8.3",
+  "changelog": "- เพิ่ม Theme ของ Chat Widget เพิ่ม 27 รูปแบบ (อยู่ใน Theme Part 2)\n- แก้บัคกล่องแชทไม่โปร่งใส เมื่อตั้งค่าให้โปร่งใส\n- เพิ่ม Theme ของ Viewer Widget 10 รูปแบบ\n- แก้ไขหน้าตา Layer ของ Composer Editor",
   "lite": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.2/patch_lite.zip",
-    "size": 17043360,
-    "sha256": "d58c14077e11715fad52cbd1dcf6210b80a08c6543156f7fbda931b7c45f6c98"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.3/patch_lite.zip",
+    "size": 17055416,
+    "sha256": "9c1962ba3a4485d181e3ba71e331574adf811201f79896fdf7903bc3a0ae4152"
   },
   "full": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.2/patch_full.zip",
-    "size": 70896764,
-    "sha256": "a134f45bec227ed95fd06850a8cf2486de7fdfe2e297fcd692385f5207ee7d26"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.3/patch_full.zip",
+    "size": 70908940,
+    "sha256": "e2dba9d82a7cb5cdb140ced9f8374781c14623ea3a701d455d63849ebc986763"
   }
 }

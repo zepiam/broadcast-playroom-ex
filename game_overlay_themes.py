@@ -291,7 +291,7 @@ THEMES: dict[str, dict] = {
 
     # ── Comic Speech (กรอบคำพูดการ์ตูน + หาง) ──
     "comic": _t("🗨️ Comic Speech (กรอบคำพูดการ์ตูน)", """
-.msg {
+.msg-bg {
   background: #ffffff !important;
   border: 3px solid #1a1a1a !important;
   border-radius: 18px !important;
@@ -309,9 +309,6 @@ THEMES: dict[str, dict] = {
     # ── Retro RPG (กรอบ dialog box เกม Famicom คลาสสิก — มุม pixel staircase) ──
     "retro": _t("🎮 Retro RPG (dialog box Famicom)", """
 .msg {
-  background: #000000 !important;
-  border: 4px solid #ffffff !important;
-  border-radius: 0 !important;
   font-family: "Courier New", monospace !important;
   /* มุม pixel staircase 4 มุม — เหมือนกรอบเกม Famicom (ขั้นละ 4px) */
   clip-path: polygon(
@@ -323,6 +320,11 @@ THEMES: dict[str, dict] = {
     0 calc(100% - 4px),
     0 4px
   ) !important;
+}
+.msg-bg {
+  background: #000000 !important;
+  border: 4px solid #ffffff !important;
+  border-radius: 0 !important;
 }
 /* ▼ กระพริบมุมขวาล่าง — เหมือน cursor รอกดไปต่อ */
 .msg::before {
@@ -338,10 +340,12 @@ THEMES: dict[str, dict] = {
     # ── Pixel Block (กรอบบล็อกพิกเซล มุมบันได) ──
     "pixel": _t("🧱 Pixel Block (มุมบันไดพิกเซล)", """
 .msg {
+  clip-path: polygon(0 4px, 4px 4px, 4px 0, calc(100% - 4px) 0, calc(100% - 4px) 4px, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 4px calc(100% - 4px), 0 calc(100% - 4px)) !important;
+}
+.msg-bg {
   background: #2d1b69 !important;
   border: 3px solid #9d4edd !important;
   border-radius: 0 !important;
-  clip-path: polygon(0 4px, 4px 4px, 4px 0, calc(100% - 4px) 0, calc(100% - 4px) 4px, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 4px calc(100% - 4px), 0 calc(100% - 4px)) !important;
 }
 .msg .author { color: #c77dff !important; text-shadow: 2px 2px 0 #240046 !important; }
 .msg .text { color: #e0aaff !important; }
@@ -350,11 +354,13 @@ THEMES: dict[str, dict] = {
     # ── Sticky Note (กระดาษโน้ตเหลือง) ──
     "sticky": _t("📝 Sticky Note (กระดาษโน้ต)", """
 .msg {
+  font-family: "Comic Sans MS", "Segoe Print", cursive !important;
+}
+.msg-bg {
   background: #fff9c4 !important;
   border: none !important;
   border-radius: 2px !important;
   box-shadow: 2px 4px 8px rgba(0,0,0,0.3) !important;
-  font-family: "Comic Sans MS", "Segoe Print", cursive !important;
 }
 .msg .author { color: #c62828 !important; text-shadow: none !important; }
 .msg .text { color: #4e342e !important; text-shadow: none !important; }
@@ -363,11 +369,13 @@ THEMES: dict[str, dict] = {
     # ── Terminal (จอคอมโบราณ) ──
     "terminal": _t("💻 Terminal (จอคอมเขียว)", """
 .msg {
+  font-family: "Consolas", "Courier New", monospace !important;
+}
+.msg-bg {
   background: #0a0a0a !important;
   border: 1px solid #00ff00 !important;
   border-radius: 0 !important;
   box-shadow: 0 0 8px rgba(0,255,0,0.4) !important;
-  font-family: "Consolas", "Courier New", monospace !important;
 }
 .msg .text { color: #00ff00 !important; text-shadow: 0 0 4px rgba(0,255,0,0.6) !important; }
 .msg .author { color: #7fff00 !important; text-shadow: 0 0 4px rgba(127,255,0,0.6) !important; }
@@ -377,11 +385,13 @@ THEMES: dict[str, dict] = {
     # ── Shield Frame (กรอบโล่หกเหลี่ยม) ──
     "shield": _t("🛡️ Shield Frame (กรอบโล่)", """
 .msg {
+  clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 10px 100%, 0 50%) !important;
+  filter: drop-shadow(0 0 6px rgba(255,215,0,0.6)) !important;
+}
+.msg-bg {
   background: rgba(30, 40, 60, 0.85) !important;
   border: none !important;
   border-radius: 0 !important;
-  clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 10px 100%, 0 50%) !important;
-  filter: drop-shadow(0 0 6px rgba(255,215,0,0.6)) !important;
 }
 .msg .author { color: #ffd700 !important; text-shadow: 1px 1px 2px #000 !important; }
 .msg .text { color: #f0f0f0 !important; }
@@ -389,7 +399,7 @@ THEMES: dict[str, dict] = {
 
     # ── Neon Pill (แคปซูลมนโค้งเต็ม) ──
     "neon-pill": _t("💊 Neon Pill (แคปซูลนีออน)", """
-.msg {
+.msg-bg {
   background: rgba(20, 5, 30, 0.7) !important;
   border: 2px solid #ff00ff !important;
   border-radius: 50px !important;
@@ -401,7 +411,7 @@ THEMES: dict[str, dict] = {
 
     # ── Scroll (กรอบม้วนคัมภีร์) ──
     "scroll": _t("📜 Scroll (ม้วนคัมภีร์)", """
-.msg {
+.msg-bg {
   background: linear-gradient(90deg, #8b6914 0%, #8b6914 6px, #f4e4bc 6px, #f4e4bc calc(100% - 6px), #8b6914 calc(100% - 6px)) !important;
   border: 1px solid #5c4515 !important;
   border-radius: 0 !important;
@@ -413,7 +423,7 @@ THEMES: dict[str, dict] = {
 
     # ── Ticket (ตั๋วขอบหยัก) ──
     "ticket": _t("🎫 Ticket (ตั๋วขอบหยัก)", """
-.msg {
+.msg-bg {
   background: #e91e63 !important;
   border: 2px dashed #ffffff !important;
   border-radius: 4px !important;
@@ -425,7 +435,7 @@ THEMES: dict[str, dict] = {
 
     # ── Game Card (การ์ดเกมขอบทองคู่) ──
     "gamecard": _t("🃏 Game Card (การ์ดเกม)", """
-.msg {
+.msg-bg {
   background: linear-gradient(145deg, #2a2a4a 0%, #1a1a2e 100%) !important;
   border: 2px solid #ffd700 !important;
   border-radius: 12px !important;
@@ -442,12 +452,14 @@ THEMES: dict[str, dict] = {
     # ── Hologram (โฮโลแกรมมีเส้น scanline) ──
     "hologram": _t("🔮 Hologram (โฮโลแกรม)", """
 .msg {
+  position: relative !important;
+  overflow: hidden !important;
+}
+.msg-bg {
   background: linear-gradient(180deg, rgba(0,80,120,0.55), rgba(0,120,160,0.4)) !important;
   border: 1px solid #00e5ff !important;
   border-radius: 4px !important;
   box-shadow: 0 0 12px rgba(0,229,255,0.5) !important;
-  position: relative !important;
-  overflow: hidden !important;
 }
 .msg::before {
   content: ""; position: absolute; inset: 0; pointer-events: none;
@@ -460,11 +472,13 @@ THEMES: dict[str, dict] = {
     # ── Graffiti (สpray paint เอียง outline) ──
     "graffiti": _t("🎨 Graffiti (สpray paint)", """
 .msg {
+  transform: rotate(-1.5deg) !important;
+}
+.msg-bg {
   background: #1a1a1a !important;
   border: none !important;
   border-radius: 6px !important;
   box-shadow: 3px 3px 0 #ff006e, 6px 6px 0 #8338ec !important;
-  transform: rotate(-1.5deg) !important;
 }
 .msg .author {
   color: #ff006e !important;
@@ -476,7 +490,7 @@ THEMES: dict[str, dict] = {
 
     # ── Wooden (กรอบไม้) ──
     "wooden": _t("🪵 Wooden (กรอบไม้)", """
-.msg {
+.msg-bg {
   background: #d4a373 !important;
   border: 4px solid #6b3410 !important;
   border-radius: 6px !important;
@@ -488,7 +502,7 @@ THEMES: dict[str, dict] = {
 
     # ── Bubble (ฟองน้ำโปร่งกลม) ──
     "bubble": _t("🫧 Bubble (ฟองน้ำโปร่ง)", """
-.msg {
+.msg-bg {
   background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.4), rgba(150,200,255,0.25)) !important;
   border: 2px solid rgba(255,255,255,0.6) !important;
   border-radius: 50px !important;
@@ -500,7 +514,7 @@ THEMES: dict[str, dict] = {
 
     # ── Stamp (แสตมป์ขอบหยัก) ──
     "stamp": _t("📮 Stamp (แสตมป์)", """
-.msg {
+.msg-bg {
   background: #fff5e6 !important;
   border: 3px dashed #c0392b !important;
   border-radius: 0 !important;
@@ -513,10 +527,12 @@ THEMES: dict[str, dict] = {
     # ── Crystal (คริสตัลมุมเอียง) ──
     "crystal": _t("💎 Crystal (คริสตัล)", """
 .msg {
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px) !important;
+}
+.msg-bg {
   background: linear-gradient(135deg, rgba(180,220,255,0.35), rgba(220,200,255,0.25)) !important;
   border: 1px solid rgba(255,255,255,0.7) !important;
   border-radius: 0 !important;
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px) !important;
   box-shadow: 4px 4px 12px rgba(100,150,255,0.4) !important;
 }
 .msg .author { color: #6c5ce7 !important; text-shadow: 0 0 4px rgba(255,255,255,0.8) !important; }
@@ -526,10 +542,12 @@ THEMES: dict[str, dict] = {
     # ── Paper Torn (กระดาษฉีกขอบ) ──
     "paper-torn": _t("📄 Paper Torn (กระดาษฉีก)", """
 .msg {
+  clip-path: polygon(0 2px, 3px 0, 8px 3px, 14px 0, 20px 2px, 30px 0, 100% 3px, calc(100% - 4px) 0, calc(100% - 12px) 3px, calc(100% - 20px) 0, calc(100% - 4px) calc(100% - 3px), calc(100% - 10px) 100%, calc(100% - 18px) calc(100% - 3px), 20px 100%, 12px calc(100% - 2px), 4px 100%, 8px calc(100% - 3px), 0 calc(100% - 4px)) !important;
+}
+.msg-bg {
   background: #fafafa !important;
   border: none !important;
   border-radius: 0 !important;
-  clip-path: polygon(0 2px, 3px 0, 8px 3px, 14px 0, 20px 2px, 30px 0, 100% 3px, calc(100% - 4px) 0, calc(100% - 12px) 3px, calc(100% - 20px) 0, calc(100% - 4px) calc(100% - 3px), calc(100% - 10px) 100%, calc(100% - 18px) calc(100% - 3px), 20px 100%, 12px calc(100% - 2px), 4px 100%, 8px calc(100% - 3px), 0 calc(100% - 4px)) !important;
   box-shadow: 2px 4px 10px rgba(0,0,0,0.15) !important;
 }
 .msg .author { color: #2c3e50 !important; text-shadow: none !important; }
@@ -538,7 +556,7 @@ THEMES: dict[str, dict] = {
 
     # ── Neon Sign (ป้ายนีออนขอบคู่) ──
     "neon-sign": _t("💡 Neon Sign (ป้ายนีออน)", """
-.msg {
+.msg-bg {
   background: #0d0d0d !important;
   border: 1px solid #ff0080 !important;
   border-radius: 2px !important;
@@ -561,10 +579,12 @@ THEMES: dict[str, dict] = {
     # ── Ribbon (ป้ายโบว์ผูก มีหางเฉียง) ──
     "ribbon": _t("🎀 Ribbon (ป้ายโบว์)", """
 .msg {
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 10px), 0 100%) !important;
+}
+.msg-bg {
   background: #e11d48 !important;
   border: none !important;
   border-radius: 4px !important;
-  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 10px), 0 100%) !important;
   box-shadow: 0 3px 6px rgba(0,0,0,0.3) !important;
 }
 .msg .author { color: #fff1f2 !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.4) !important; }
@@ -573,7 +593,7 @@ THEMES: dict[str, dict] = {
 
     # ── Cloud (ก้อนเมฆมุมกลมซ้อน) ──
     "cloud": _t("☁️ Cloud (ก้อนเมฆ)", """
-.msg {
+.msg-bg {
   background: #ffffff !important;
   border: none !important;
   border-radius: 24px 12px 30px 16px / 16px 28px 12px 24px !important;
@@ -585,7 +605,7 @@ THEMES: dict[str, dict] = {
 
     # ── Circuit (วงจรไฟฟ้า + จุดต่อ) ──
     "circuit": _t("🔌 Circuit (วงจรไฟฟ้า)", """
-.msg {
+.msg-bg {
   background: #0a1929 !important;
   border: 1px solid #00ff88 !important;
   border-radius: 0 !important;
@@ -603,10 +623,12 @@ THEMES: dict[str, dict] = {
     # ── Tag (ป้าย tag มีรูเสียบซ้าย) ──
     "tag": _t("🏷️ Tag (ป้ายมีรู)", """
 .msg {
+  clip-path: polygon(12px 0, 100% 0, 100% 100%, 12px 100%, 0 50%) !important;
+}
+.msg-bg {
   background: #6366f1 !important;
   border: none !important;
   border-radius: 0 8px 8px 0 !important;
-  clip-path: polygon(12px 0, 100% 0, 100% 100%, 12px 100%, 0 50%) !important;
   box-shadow: 0 2px 6px rgba(0,0,0,0.2) !important;
 }
 .msg::before {
@@ -621,12 +643,14 @@ THEMES: dict[str, dict] = {
     # ── Receipt (ใบเสร็จขอบฟันปลา) ──
     "receipt": _t("🧾 Receipt (ใบเสร็จ)", """
 .msg {
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), 96% 100%, 92% calc(100% - 6px), 88% 100%, 84% calc(100% - 6px), 80% 100%, 76% calc(100% - 6px), 72% 100%, 68% calc(100% - 6px), 64% 100%, 60% calc(100% - 6px), 56% 100%, 52% calc(100% - 6px), 48% 100%, 44% calc(100% - 6px), 40% 100%, 36% calc(100% - 6px), 32% 100%, 28% calc(100% - 6px), 24% 100%, 20% calc(100% - 6px), 16% 100%, 12% calc(100% - 6px), 8% 100%, 4% calc(100% - 6px), 0 100%) !important;
+  font-family: "Consolas", monospace !important;
+}
+.msg-bg {
   background: #fffbeb !important;
   border: none !important;
   border-radius: 0 !important;
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), 96% 100%, 92% calc(100% - 6px), 88% 100%, 84% calc(100% - 6px), 80% 100%, 76% calc(100% - 6px), 72% 100%, 68% calc(100% - 6px), 64% 100%, 60% calc(100% - 6px), 56% 100%, 52% calc(100% - 6px), 48% 100%, 44% calc(100% - 6px), 40% 100%, 36% calc(100% - 6px), 32% 100%, 28% calc(100% - 6px), 24% 100%, 20% calc(100% - 6px), 16% 100%, 12% calc(100% - 6px), 8% 100%, 4% calc(100% - 6px), 0 100%) !important;
   box-shadow: 2px 4px 8px rgba(0,0,0,0.15) !important;
-  font-family: "Consolas", monospace !important;
 }
 .msg .author { color: #92400e !important; text-shadow: none !important; }
 .msg .text { color: #1f2937 !important; text-shadow: none !important; }
@@ -634,7 +658,7 @@ THEMES: dict[str, dict] = {
 
     # ── TV (จอทีวีเก่า กรอบหนามุมโค้ง) ──
     "tv": _t("📺 TV (จอทีวีเก่า)", """
-.msg {
+.msg-bg {
   background: #1a1a1a !important;
   border: 6px solid #6b7280 !important;
   border-radius: 18px !important;
@@ -655,7 +679,7 @@ THEMES: dict[str, dict] = {
 
     # ── Sakura (กลีบซากุระร่วง พื้นชมพูอ่อน) ──
     "sakura": _t("🌸 Sakura (ซากุระ)", """
-.msg {
+.msg-bg {
   background: linear-gradient(135deg, rgba(255, 240, 245, 0.85), rgba(255, 218, 230, 0.8)) !important;
   border: 1px solid rgba(255, 105, 180, 0.4) !important;
   border-radius: 16px !important;
@@ -667,7 +691,7 @@ THEMES: dict[str, dict] = {
 
     # ── Princess (เจ้าหญิง ชมพู+ทอง+sparkle) ──
     "princess": _t("👑 Princess (เจ้าหญิง)", """
-.msg {
+.msg-bg {
   background: linear-gradient(145deg, #fff0f5 0%, #ffe4ec 100%) !important;
   border: 2px solid #ffd700 !important;
   border-radius: 20px !important;
@@ -679,7 +703,7 @@ THEMES: dict[str, dict] = {
 
     # ── Macaron (ขนมหวานสีพาสเทล) ──
     "macaron": _t("🍬 Macaron (พาสเทลหวาน)", """
-.msg {
+.msg-bg {
   background: linear-gradient(135deg, #fce4ec 0%, #e3f2fd 50%, #f3e5f5 100%) !important;
   border: 2px solid #f8bbd0 !important;
   border-radius: 24px !important;
@@ -691,7 +715,7 @@ THEMES: dict[str, dict] = {
 
     # ── Galaxy Girl (อวกาศสาว ม่วง-ชมพู-ดาว) ──
     "galaxy-girl": _t("🌙 Galaxy Girl (อวกาศสาว)", """
-.msg {
+.msg-bg {
   background: linear-gradient(135deg, #2d1b4e 0%, #4a2456 50%, #6b2d5c 100%) !important;
   border: 1px solid rgba(255, 192, 203, 0.5) !important;
   border-radius: 14px !important;
@@ -703,7 +727,7 @@ THEMES: dict[str, dict] = {
 
     # ── Cotton Candy (ฝ้ายขนมหวาน ชมพู+ฟ้า pastel) ──
     "cotton-candy": _t("🍭 Cotton Candy (ฝ้ายขนมหวาน)", """
-.msg {
+.msg-bg {
   background: linear-gradient(135deg, #ffc0cb 0%, #b0e0e6 100%) !important;
   border: 2px solid rgba(255, 255, 255, 0.6) !important;
   border-radius: 18px !important;
@@ -715,7 +739,7 @@ THEMES: dict[str, dict] = {
 
     # ── Kawaii (โมเอะ ชมพูสด โค้งมน โบว์) ──
     "kawaii": _t("🎀 Kawaii (โมเอะ)", """
-.msg {
+.msg-bg {
   background: #ffe0ec !important;
   border: 3px solid #ff69b4 !important;
   border-radius: 24px !important;
@@ -730,7 +754,7 @@ THEMES: dict[str, dict] = {
 
     # ── Mermaid (นางเงือก เขียวมินต์+ม่วง) ──
     "mermaid": _t("🧜‍♀️ Mermaid (นางเงือก)", """
-.msg {
+.msg-bg {
   background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%) !important;
   border: 2px solid rgba(72, 209, 204, 0.5) !important;
   border-radius: 20px !important;
@@ -742,7 +766,7 @@ THEMES: dict[str, dict] = {
 
     # ── Rose Gold (ทองกุหลาบ metallic gradient) ──
     "rose-gold": _t("🌹 Rose Gold (ทองกุหลาบ)", """
-.msg {
+.msg-bg {
   background: linear-gradient(135deg, #f5d0c5 0%, #e8b4a0 50%, #f7cac9 100%) !important;
   border: 2px solid #b76e79 !important;
   border-radius: 14px !important;
@@ -755,13 +779,15 @@ THEMES: dict[str, dict] = {
     # ── Pip-Boy (จอ CRT เขียว phosphor สไตล์ Fallout) ──
     "pipboy": _t("☢️ Pip-Boy (จอเขียว Fallout)", """
 .msg {
+  font-family: "Consolas", "Courier New", monospace !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+.msg-bg {
   background: #0a1a0a !important;
   border: 2px solid #2d5a2d !important;
   border-radius: 0 !important;
   box-shadow: inset 0 0 12px rgba(46, 220, 46, 0.25), 0 0 8px rgba(46, 220, 46, 0.3) !important;
-  font-family: "Consolas", "Courier New", monospace !important;
-  position: relative !important;
-  overflow: hidden !important;
 }
 /* scanline เหมือนจอ CRT */
 .msg::before {
@@ -778,6 +804,426 @@ THEMES: dict[str, dict] = {
   text-shadow: 0 0 3px rgba(95, 255, 58, 0.7), 0 0 6px rgba(46, 220, 46, 0.4) !important;
 }
 .msg .author::before { content: "> "; color: #2edc2e; }
+""", "fade"),
+
+    # ══ Theme Part 2 (2026-09) — กล่องหลังข้อความจริง ต่อธีม ══
+    # ── Coral Reef ──
+    "coral-reef": _t("🪸 Coral Reef (แนวปะการัง)", """
+.msg {
+  position: relative !important; overflow: hidden !important;
+}
+.msg-bg {
+  background: linear-gradient(120deg,#ff7a59 0%,#ff5f9e 45%,#22c3c8 100%) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 3px 8px rgba(255,90,140,.3) !important;
+}
+.msg::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(circle 2px at 18% 30%,rgba(255,240,180,.8),transparent), radial-gradient(circle 2px at 75% 65%,rgba(255,255,255,.7),transparent);
+}
+""", "fade"),
+
+    # ── Bio Forest ──
+    "bio-forest": _t("🍃 Bio Forest (ป่าเรืองแสง)", """
+.msg {
+  position: relative !important; overflow: hidden !important;
+}
+.msg-bg {
+  background: radial-gradient(circle at 25% 60%,#0d2b1a 0%,#04120a 85%) !important;
+  border: 1px solid rgba(120,255,180,.28) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 0 10px rgba(80,220,150,.2) !important;
+}
+.msg::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(circle 2px at 30% 35%,rgba(130,255,190,.6),transparent), radial-gradient(circle 2px at 78% 55%,rgba(130,255,190,.45),transparent);
+}
+""", "fade"),
+
+    # ── Desert Dune ──
+    "desert-dune": _t("🏜️ Desert Dune (เนินทราย)", """
+.msg-bg {
+  background: repeating-linear-gradient(100deg,rgba(255,255,255,.12) 0 2px,transparent 2px 22px), linear-gradient(180deg,#f3d9a4 0%,#e0b578 55%,#c99a5c 100%) !important;
+  border: 1px solid #b8895a !important;
+  border-radius: 10px !important;
+}
+""", "fade"),
+
+    # ── Frozen Lake ──
+    "frozen-lake": _t("🧊 Frozen Lake (ทะเลสาบน้ำแข็ง)", """
+.msg-bg {
+  background: repeating-linear-gradient(35deg,rgba(190,235,255,.1) 0 1px,transparent 1px 26px), repeating-linear-gradient(-50deg,rgba(190,235,255,.08) 0 1px,transparent 1px 34px), linear-gradient(160deg,#0c2430 0%,#173a4a 100%) !important;
+  border: 1px solid rgba(180,230,255,.3) !important;
+  border-radius: 6px !important;
+}
+""", "fade"),
+
+    # ── Denim Patch ──
+    "denim-patch": _t("🧵 Denim Patch (ผ้ายีนส์ปะ)", """
+.msg-bg {
+  background: repeating-linear-gradient(45deg,#3a5a8a 0 3px,#33517d 3px 6px) !important;
+  border: 2px dashed #f0e6c8 !important;
+  border-radius: 4px !important;
+}
+""", "fade"),
+
+    # ── Steampunk ──
+    "steampunk": _t("⚙️ Steampunk (จักรกลไอน้ำ)", """
+.msg {
+  padding-right: 26px !important;
+  position: relative !important; overflow: hidden !important;
+}
+.msg-bg {
+  background: linear-gradient(160deg,#3a2a18 0%,#241a0e 100%) !important;
+  border: 2px solid #b8863a !important;
+  border-radius: 5px !important;
+}
+.msg::after {
+  content: ""; position: absolute; top: 5px; right: 5px; width: 14px; height: 14px; pointer-events: none;
+  border-radius: 50%; border: 2px dashed #b8863a; opacity: .75;
+}
+""", "fade"),
+
+    # ── Ramen Steam ──
+    "ramen-steam": _t("🍜 Ramen Steam (ราเมงร้อนๆ)", """
+.msg-bg {
+  background: linear-gradient(180deg,#5a1a12 0%,#8a2a12 100%) !important;
+  border-radius: 6px 6px 18px 18px !important;
+}
+""", "fade"),
+
+    # ── Knit Sweater ──
+    "knit-sweater": _t("🧶 Knit Sweater (ไหมพรมถัก)", """
+.msg-bg {
+  background: repeating-linear-gradient(-45deg,rgba(0,0,0,.08) 0 8px,transparent 8px 16px), repeating-linear-gradient(45deg,#c94f4f 0 8px,#b23e3e 8px 16px) !important;
+  border: 2px solid #8a2e2e !important;
+  border-radius: 10px !important;
+}
+""", "fade"),
+
+    # ── Equalizer ──
+    "equalizer": _t("🎚️ Equalizer (คลื่นเสียง)", """
+.msg {
+  padding-left: 16px !important;
+  position: relative !important; overflow: hidden !important;
+}
+.msg-bg {
+  background: #0a0a0f !important;
+  border: 1px solid #2a2a35 !important;
+  border-radius: 6px !important;
+}
+.msg::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 8px; pointer-events: none;
+  background: repeating-linear-gradient(0deg,#22d3ee 0 4px,#7c3aed 4px 5px,transparent 5px 8px);
+}
+""", "fade"),
+
+    # ── Holo Badge ──
+    "holo-badge": _t("🎫 Holo Badge (บัตรโฮโลแกรม)", """
+.msg {
+  padding-bottom: 10px !important;
+  position: relative !important; overflow: hidden !important;
+}
+.msg-bg {
+  background: linear-gradient(100deg,#dce8ff 0%,#ffe8f5 25%,#e8fff5 50%,#fff8dc 75%,#dce8ff 100%) !important;
+  border: 1px solid #c9c9d9 !important;
+  border-radius: 4px !important;
+}
+.msg::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 5px; pointer-events: none;
+  background: repeating-linear-gradient(90deg,#1a1a1a 0 2px,transparent 2px 5px); opacity: .5;
+}
+""", "fade"),
+
+    # ── Cross Stitch ──
+    "cross-stitch": _t("🪡 Cross Stitch (ปักครอสติช)", """
+.msg {
+  padding-top: 11px !important;
+  position: relative !important; overflow: hidden !important;
+}
+.msg-bg {
+  background: #f2ead9 !important;
+  border: 2px dashed #b23a4a !important;
+  border-radius: 5px !important;
+}
+.msg::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 5px; pointer-events: none;
+  background: repeating-linear-gradient(90deg,#b23a4a 0 5px,#3a6a9a 5px 10px);
+}
+""", "fade"),
+
+    # ── Frost Window ──
+    "frost-window": _t("🌬️ Frost Window (กระจกเกาะน้ำแข็ง)", """
+.msg {
+  position: relative !important; overflow: hidden !important;
+}
+.msg-bg {
+  background: linear-gradient(160deg,#eaf6ff 0%,#cfe9fb 100%) !important;
+  border: 1px solid #a9d4ec !important;
+  border-radius: 8px !important;
+}
+.msg::after {
+  content: ""; position: absolute; left: 0; bottom: 0; width: 26px; height: 26px; pointer-events: none;
+  background: radial-gradient(circle at 0% 100%,rgba(255,255,255,.65),transparent 70%);
+}
+""", "fade"),
+
+    # ── Lunar Lantern ──
+    "lunar-lantern": _t("🏮 Lunar Lantern (โคมจันทร์)", """
+.msg {
+  padding-bottom: 9px !important;
+  position: relative !important; overflow: hidden !important;
+}
+.msg-bg {
+  background: radial-gradient(circle at 50% 20%,#ff5a3c 0%,#c2181b 80%) !important;
+  border-top: 3px solid #f0c65e !important;
+  border-radius: 10px !important;
+}
+.msg::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; pointer-events: none;
+  background: repeating-linear-gradient(90deg,#f0c65e 0 3px,transparent 3px 8px);
+}
+""", "fade"),
+
+    # ══ Theme Part 2 — batch 2 (2026-09-25) ══
+    # ── Retrowave Sunset Grid ──
+    "retrowave-sunset-grid": _t("🌇 Retrowave Sunset Grid (คลื่นวิทยุย้อนยุค)", """
+.msg {
+  position: relative !important; overflow: hidden !important;
+}
+.msg-bg {
+  background: linear-gradient(180deg,#2d1b4e 0%,#7b2d6e 50%,#ff6b35 100%) !important;
+  border-bottom: 3px solid #ffb347 !important;
+  border-radius: 4px !important;
+  box-shadow: 0 0 16px rgba(255,107,53,.4) !important;
+}
+.msg::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 50%; pointer-events: none;
+  background: repeating-linear-gradient(90deg, rgba(255,255,255,.25) 0 1px, transparent 1px 14px), repeating-linear-gradient(0deg, rgba(255,255,255,.2) 0 1px, transparent 1px 8px);
+  -webkit-mask-image: linear-gradient(180deg, transparent, black);
+  mask-image: linear-gradient(180deg, transparent, black);
+}
+""", "fade"),
+
+    # ── Obsidian Prism ──
+    "obsidian-prism": _t("🖤 Obsidian Prism (แก้วภูเขาไฟปริซึม)", """
+.msg {
+  position: relative !important; overflow: hidden !important;
+}
+.msg-bg {
+  background: linear-gradient(135deg,#0a0a0f 0%,#1a1a2e 100%) !important;
+  border: 1px solid rgba(255,255,255,.15) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,.5) !important;
+}
+.msg::before {
+  content: ""; position: absolute; top: 0; left: 0; width: 3px; height: 100%; pointer-events: none;
+  background: linear-gradient(180deg,#ff6b9d,#ffb347,#7ee787,#58a6ff,#a78bfa);
+}
+.msg::after {
+  content: ""; position: absolute; top: -20%; left: -10%; width: 40%; height: 140%; pointer-events: none;
+  background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,.12) 48%, rgba(255,255,255,.03) 52%, transparent 60%);
+  transform: skewX(-15deg);
+}
+""", "fade"),
+
+    # ── Washi Paper ──
+    "washi-paper": _t("🎏 Washi Paper (กระดาษวาชิญี่ปุ่น)", """
+.msg {
+  position: relative !important; overflow: hidden !important;
+}
+.msg-bg {
+  background: #f4ede0 !important;
+  background-image: repeating-linear-gradient(90deg, rgba(180,150,110,.06) 0 2px, transparent 2px 5px), repeating-linear-gradient(0deg, rgba(180,150,110,.05) 0 2px, transparent 2px 5px) !important;
+  border: 1px solid #d8c8a8 !important;
+  border-radius: 3px !important;
+  box-shadow: 0 2px 6px rgba(120,90,50,.15) !important;
+}
+.msg::after {
+  content: ""; position: absolute; top: 6px; right: 6px; width: 16px; height: 16px; border-radius: 50%; pointer-events: none;
+  background: rgba(178,42,58,.75);
+}
+""", "fade"),
+
+    # ── Midnight Aquarium ──
+    "midnight-aquarium": _t("🐟 Midnight Aquarium (ตู้ปลายามดึก)", """
+.msg {
+  position: relative !important; overflow: hidden !important;
+}
+.msg-bg {
+  background: linear-gradient(180deg,#031225 0%,#062a4a 100%) !important;
+  border: 1px solid rgba(100,200,255,.25) !important;
+  border-radius: 12px !important;
+  box-shadow: inset 0 0 20px rgba(0,50,100,.4), 0 0 10px rgba(50,150,255,.2) !important;
+}
+.msg::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(circle 3px at 15% 75%,rgba(150,230,255,.5),transparent), radial-gradient(circle 2px at 40% 30%,rgba(150,230,255,.4),transparent), radial-gradient(circle 2px at 70% 60%,rgba(150,230,255,.35),transparent), radial-gradient(circle 4px at 88% 20%,rgba(150,230,255,.3),transparent);
+}
+""", "fade"),
+
+    # ── Esports HUD ──
+    "esports-hud": _t("🎮 Esports HUD (จอเกมมิ่ง HUD)", """
+.msg {
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px) !important;
+  position: relative !important; overflow: hidden !important;
+}
+.msg-bg {
+  background: linear-gradient(90deg,#0d0d14 0%,#151522 100%) !important;
+  border: 1px solid #2effc7 !important;
+  border-radius: 0 !important;
+  box-shadow: 0 0 10px rgba(46,255,199,.35) !important;
+}
+.msg::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; pointer-events: none;
+  background: linear-gradient(180deg,#2effc7,#ff2e6c);
+}
+""", "fade"),
+
+    # ── Vinyl Record ──
+    "vinyl-record": _t("💿 Vinyl Record (แผ่นเสียงไวนิล)", """
+.msg-bg {
+  background: radial-gradient(circle at 85% 50%, #b0202f 0 8%, #111 9% 100%) !important;
+  background-image: repeating-radial-gradient(circle at 85% 50%, rgba(255,255,255,.05) 0 2px, transparent 2px 5px), radial-gradient(circle at 85% 50%, #b0202f 0 8%, #111 9% 100%) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 3px 10px rgba(0,0,0,.4) !important;
+}
+""", "fade"),
+
+    # ── Royal Velvet Curtain ──
+    "royal-velvet-curtain": _t("🎭 Royal Velvet Curtain (ม่านกำมะหยี่ราชวงศ์)", """
+.msg {
+  position: relative !important; overflow: hidden !important;
+}
+.msg-bg {
+  background: repeating-linear-gradient(90deg,#5a1030 0 14px,#4a0c26 14px 28px) !important;
+  border-top: 4px solid #d4af37 !important;
+  border-radius: 4px 4px 10px 10px !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,.4) !important;
+}
+.msg::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 5px; pointer-events: none;
+  background: repeating-linear-gradient(90deg,#d4af37 0 4px,transparent 4px 10px);
+}
+""", "fade"),
+
+    # ── Neon Arcade Cabinet ──
+    "neon-arcade-cabinet": _t("🕹️ Neon Arcade Cabinet (ตู้เกมอาเขตนีออน)", """
+.msg {
+  position: relative !important; overflow: hidden !important;
+}
+.msg-bg {
+  background: #0a0512 !important;
+  border: 3px solid #ff2ec4 !important;
+  border-radius: 10px !important;
+  box-shadow: 0 0 8px #ff2ec4, inset 0 0 8px rgba(255,46,196,.3), 0 0 16px rgba(46,200,255,.3) !important;
+}
+.msg::before {
+  content: ""; position: absolute; inset: 2px; border-radius: 8px; pointer-events: none;
+  border: 1px solid #2ec8ff;
+}
+""", "fade"),
+
+    # ── Storm Cloud Thunder ──
+    "storm-cloud-thunder": _t("⛈️ Storm Cloud Thunder (เมฆพายุฟ้าผ่า)", """
+.msg {
+  position: relative !important; overflow: hidden !important;
+}
+.msg-bg {
+  background: linear-gradient(180deg,#2a3038 0%,#4a5560 60%,#5a6570 100%) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 4px 14px rgba(0,0,0,.35) !important;
+}
+.msg::after {
+  content: ""; position: absolute; top: -10%; right: 12%; width: 3px; height: 130%; pointer-events: none;
+  background: #ffe066; clip-path: polygon(50% 0,20% 45%,50% 45%,10% 100%,60% 50%,35% 50%);
+  filter: drop-shadow(0 0 4px rgba(255,224,102,.8));
+}
+""", "fade"),
+
+    # ── Lucky Red Envelope ──
+    "lucky-red-envelope": _t("🧧 Lucky Red Envelope (อั่งเปาโชคดี)", """
+.msg {
+  position: relative !important; overflow: hidden !important;
+}
+.msg-bg {
+  background: linear-gradient(160deg,#b8202c 0%,#8f1620 100%) !important;
+  border: 1px solid #f0c65e !important;
+  border-radius: 6px !important;
+  box-shadow: 0 3px 10px rgba(140,20,20,.4) !important;
+}
+.msg::before {
+  content: ""; position: absolute; inset: 4px; border-radius: 3px; pointer-events: none;
+  background-image: repeating-linear-gradient(45deg, rgba(240,198,94,.12) 0 2px, transparent 2px 14px);
+}
+.msg::after {
+  content: ""; position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 26px; height: 10px; pointer-events: none;
+  background: #f0c65e; border-radius: 0 0 8px 8px;
+}
+""", "fade"),
+
+    # ── Origami Crane Fold ──
+    "origami-crane-fold": _t("🕊️ Origami Crane Fold (นกกระเรียนกระดาษพับ)", """
+.msg {
+  clip-path: polygon(0 12px, 12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%) !important;
+  position: relative !important; overflow: hidden !important;
+}
+.msg-bg {
+  background: linear-gradient(135deg,#fef3e2 0%,#fcd5ce 50%,#f8a8c8 100%) !important;
+  box-shadow: 0 3px 10px rgba(248,168,200,.35) !important;
+}
+.msg::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(45deg, transparent 48%, rgba(255,255,255,.5) 50%, transparent 52%), linear-gradient(-45deg, transparent 48%, rgba(180,120,140,.15) 50%, transparent 52%);
+}
+""", "fade"),
+
+    # ── Vintage Film Strip ──
+    "vintage-film-strip": _t("🎞️ Vintage Film Strip (ฟิล์มหนังย้อนยุค)", """
+.msg {
+  padding-left: 18px !important; padding-right: 18px !important;
+  position: relative !important; overflow: hidden !important;
+}
+.msg-bg {
+  background: #1c1a17 !important;
+  border-radius: 4px !important;
+  box-shadow: 0 3px 10px rgba(0,0,0,.4) !important;
+}
+.msg::before, .msg::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 14px; pointer-events: none;
+  background: repeating-linear-gradient(180deg, #0a0908 0 6px, #3a3530 6px 14px);
+}
+.msg::before { left: 0; }
+.msg::after { right: 0; }
+""", "fade"),
+
+    # ── Thai Silk ──
+    "thai-silk": _t("🧵 Thai Silk (ผ้าไหมไทย)", """
+.msg-bg {
+  background: linear-gradient(120deg,#7a1f3d 0%,#b8860b 45%,#1a5f4a 100%) !important;
+  background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.08) 0 3px, transparent 3px 9px), linear-gradient(120deg,#7a1f3d 0%,#b8860b 45%,#1a5f4a 100%) !important;
+  border: 1px solid #d4af37 !important;
+  border-radius: 6px !important;
+  box-shadow: 0 3px 12px rgba(184,134,11,.3) !important;
+}
+""", "fade"),
+
+    # ── Holo Foil Sticker ──
+    "holo-foil-sticker": _t("🌈 Holo Foil Sticker (สติกเกอร์โฮโลแกรม)", """
+.msg {
+  position: relative !important; overflow: hidden !important;
+}
+.msg-bg {
+  background: linear-gradient(120deg,#ff9a9e 0%,#fecfef 20%,#a1c4fd 40%,#c2e9fb 60%,#fbc2eb 80%,#ff9a9e 100%) !important;
+  border: 1px solid rgba(255,255,255,.7) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 3px 10px rgba(160,140,255,.35) !important;
+}
+.msg::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(115deg, rgba(255,255,255,.35) 0 2px, transparent 2px 18px);
+  mix-blend-mode: overlay;
+}
 """, "fade"),
 
     # ── Custom ──

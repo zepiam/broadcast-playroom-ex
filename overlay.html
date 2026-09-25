@@ -75,15 +75,35 @@ html, body {
   margin-bottom: var(--msg-gap);
   width: var(--box-width);
   max-width: 100%;
-  border-radius: var(--box-radius);
-  background: var(--box-bg);
-  border: var(--box-border);
-  box-shadow: var(--box-shadow), 0 0 var(--box-glow);
+  border-radius: var(--box-radius);  /* ★ ไม่ได้วาดอะไรเอง (พื้น/ขอบย้ายไป .msg-bg แล้ว) แค่ไว้ให้ pseudo-element ลูก inherit ทรงกล่องถูกต้อง */
   font-size: var(--font-size);
   color: var(--text-color);
   animation-fill-mode: both;
   animation-duration: 0.45s;
   will-change: transform, opacity;
+  position: relative;
+  /* ★ overflow ไม่ตั้ง hidden ที่นี่ (ทุกธีม) — บางธีม (เช่น Comic Speech, Kawaii) มีของตกแต่งที่ตั้งใจ
+     ล้นออกนอกกรอบ (หางบอลลูน, โบว์) ธีมที่ต้องการ clip เอง (ส่วนใหญ่ใน Theme Part 2) ใส่
+     overflow:hidden !important ของตัวเองแล้วในแต่ละธีม */
+  /* ★ กัน flexbox บีบทุกข้อความให้เล็กลงเพื่อยัดทั้งหมดลงในกรอบ (เจอเมื่อมีข้อความสะสมเยอะ)
+     ไม่มีบรรทัดนี้ #chat (flex column, height คงที่, overflow:hidden) จะบีบทุก .msg ให้เล็กลง
+     ตามค่า default flex-shrink:1 แทนที่จะปล่อยให้ข้อความเก่าล้นออกนอกกรอบแล้วโดนตัดตามปกติ */
+  flex-shrink: 0;
+}
+/* ★ พื้นหลัง/ขอบ/เงา แยกเป็น element ลูกต่างหาก (ไม่ใช่พื้นหลังของ .msg เอง)
+   เหตุผล: ต้องปรับ "ความโปร่งใสของกล่อง" ได้แม้ตอนเปิด Theme/Theme Part 2 อยู่
+   (theme CSS วาดพื้นหลังทับ .msg-bg นี้แทนที่จะวาดบน .msg ตรงๆ — ตัวอักษร/โลโก้ที่อยู่ใน .msg
+   ไม่ใช่ลูกของ .msg-bg เลยไม่โดน opacity ของกล่องด้วย ยังชัด 100% เสมอ) */
+.msg-bg {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: var(--box-radius);
+  background: var(--box-bg);
+  border: var(--box-border);
+  box-shadow: var(--box-shadow), 0 0 var(--box-glow);
+  opacity: var(--t2-box-opacity, 1);
 }
 /* box-glow: ใช้ ::after pseudo-element แยกออกจาก animation property ของ .msg
    (เดิมใช้ animation shorthand บน .msg → ทับ entry/exit animation ทำให้ไม่แสดง) */
@@ -740,6 +760,11 @@ function applyConfig(c) {
     root.setProperty('--box-glow', config.box_glow ? config.box_glow_color : 'transparent');
   }
   // else: theme active → skip box overrides (Theme CSS controls)
+  // ★ ความโปร่งใสของกล่อง ต้องใช้ได้แม้ theme active (ปกติ theme_css จะ set background ตรงๆ
+  //   ไม่ผ่าน --box-bg เลย) → คุมผ่าน .msg-bg's opacity แทน (ตัวอักษร/โลโก้ไม่ใช่ลูกของ .msg-bg
+  //   เลยไม่โดนด้วย) โหมดไม่มีธีม ความโปร่งใสฝังอยู่ใน --box-bg (rgba alpha) อยู่แล้ว จึงตั้ง 1 ที่นี่
+  //   กันซ้อนทบกัน 2 ชั้น
+  root.setProperty('--t2-box-opacity', themeActive ? (config.box_bg_opacity != null ? config.box_bg_opacity : 1) : 1);
   // box width: fit (ชิดข้อความ) หรือ wide (กว้างเต็ม)
   root.setProperty('--box-width', config.box_width === 'wide' ? '100%' : 'fit-content');
   root.setProperty('--msg-gap', (config.msg_spacing || 4) + 'px');
@@ -1060,6 +1085,9 @@ function addMessage(msg) {
   const el = document.createElement('div');
   el.className = 'msg anim-' + (config.animation || 'fade');
   if (config.box_glow) el.classList.add('box-glow-on');
+  // ★ พื้นหลัง/ขอบ/เงาของกล่อง วาดบน element ลูกนี้แยกจากเนื้อหา (ดู .msg-bg ใน <style>)
+  //   เพื่อให้ "ความโปร่งใสของกล่อง" ปรับได้แม้ธีมกำลังทำงานอยู่ โดยตัวอักษร/โลโก้ยังชัด 100%
+  el.appendChild(document.createElement('div')).className = 'msg-bg';
   // layout: stacked สองบรรทัด
   const layout = config.layout || 'inline';
   if (layout === 'stacked' || layout === 'stacked_no_logo') el.classList.add('layout-stacked');
@@ -1102,7 +1130,7 @@ function addMessage(msg) {
     const badge = msg.badge ? `<span class="badge">${esc(msg.badge)}</span>` : '';
     const amount = msg.amount ? ` [${esc(String(msg.amount))}]` : '';
     author.innerHTML = badge + esc(msg.author) + amount;
-    author.style.color = msg.color || platformColor(msg.platform);
+    author.style.color = resolveAuthorColor(msg);
     parent0.appendChild(author);
   }
 
@@ -1570,6 +1598,15 @@ function removeMessage(el) {
 
 function platformColor(p) {
   return { twitch: '#a855f7', youtube: '#ef4444', mylive: '#60a5fa' }[p] || '#e5e7eb';
+}
+// ★ สีชื่อผู้พูดตามแพลตฟอร์ม (2026-09-25) — auto (ค่าเดิม) = msg.color (สีจริงที่ผู้ชมตั้งเอง เช่น Twitch)
+//   ไม่มีค่อย fallback platformColor() / custom = เขียนทับด้วย config.author_color_map ต่อแพลตฟอร์ม
+function resolveAuthorColor(msg) {
+  if (config.author_color_mode === 'custom') {
+    const c = (config.author_color_map || {})[msg.platform];
+    if (c) return c;
+  }
+  return msg.color || platformColor(msg.platform);
 }
 function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
 

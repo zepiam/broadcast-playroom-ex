@@ -17,9 +17,11 @@ Routes:
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
 import os
 import threading
+import time
 from typing import Optional
 
 from aiohttp import web, WSMsgType
@@ -113,6 +115,8 @@ class ComposerServer:
         app.router.add_get("/editor", self._handle_editor)
         app.router.add_get("/config", self._handle_config)
         app.router.add_post("/save", self._handle_save)
+        app.router.add_get("/pages", self._handle_pages_get)
+        app.router.add_post("/pages", self._handle_pages_post)
         app.router.add_get("/export-profile", self._handle_export_profile)
         app.router.add_post("/import-profile", self._handle_import_profile)
         app.router.add_post("/upload-character-image", self._handle_upload_char_image)
@@ -222,7 +226,8 @@ class ComposerServer:
         }
 
     async def _handle_config(self, request):
-        return web.json_response(self._build_config())
+        # ★ ?p=N → config ของหน้าที่ N (OBS source ปักหน้าตายตัว) / ไม่มี p → หน้าที่ active
+        return web.json_response(self._build_config(request.query.get("p")))
 
     async def _handle_save(self, request):
         """รับ widget layout ใหม่จาก editor → เซฟผ่าน callback → push config ใหม่"""
@@ -566,6 +571,8 @@ class ComposerServer:
         # ★ sync character_default_image จาก client (ถ้าส่งมา)
         if "character_default_image" in data:
             self.settings.character_default_image = str(data.get("character_default_image") or "")
+        # ★ หน้าที่ active เก็บ widgets ชุดล่าสุดเสมอ (สลับหน้าแล้วกลับมาได้ของเดิม)
+        self._active_page()["widgets"] = copy.deepcopy(clean_widgets)
         # ★ persist settings ผ่าน callback
         if self.on_save_widgets is not None:
             try:
@@ -581,6 +588,81 @@ class ComposerServer:
             if w.get("type") == "chat":
                 await self._push_widget_config(w["id"])
         return web.json_response({"ok": True, "widgets": clean_widgets})
+
+    # ── หลายหน้า (layout แยกชุด) ──
+    def _pages(self) -> list:
+        """คืนรายการหน้า — ถ้ายังไม่มี (ผู้ใช้เดิม) สร้าง 'หน้า 1' จาก layout ปัจจุบัน"""
+        pages = getattr(self.settings, "composer_pages", None)
+        if not isinstance(pages, list) or not pages:
+            pages = [{"id": "p1", "name": "หน้า 1",
+                      "widgets": copy.deepcopy(list(getattr(self.settings, "composer_widgets", []) or []))}]
+            self.settings.composer_pages = pages
+            self.settings.composer_active_page = "p1"
+        return pages
+
+    def _active_page(self) -> dict:
+        pages = self._pages()
+        aid = getattr(self.settings, "composer_active_page", "")
+        for p in pages:
+            if p.get("id") == aid:
+                return p
+        self.settings.composer_active_page = pages[0]["id"]
+        return pages[0]
+
+    def _pages_payload(self) -> dict:
+        return {"ok": True, "active": self._active_page()["id"],
+                "pages": [{"id": p["id"], "name": p.get("name", ""), "count": len(p.get("widgets") or [])}
+                          for p in self._pages()]}
+
+    async def _handle_pages_get(self, request):
+        """GET /pages → รายการหน้า + หน้าที่ active"""
+        return web.json_response(self._pages_payload(), headers=self._no_cache_headers())
+
+    async def _handle_pages_post(self, request):
+        """POST /pages {action: switch|new|duplicate|rename|delete, id, name}
+        สลับหน้า = เอา widgets ของหน้านั้นมาเป็น layout ปัจจุบัน → push config → OBS เปลี่ยนตามทันที"""
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "bad json"}, status=400)
+        action = str(data.get("action", ""))
+        name = str(data.get("name", "") or "").strip()[:40]
+        pages = self._pages()
+        cur = self._active_page()
+        cur["widgets"] = copy.deepcopy(list(self.settings.composer_widgets or []))   # เก็บของหน้าเดิมก่อน
+        target = next((p for p in pages if p.get("id") == data.get("id")), None)
+        new_id = "p%d" % int(time.time() * 1000)
+        if action == "switch" and target:
+            self.settings.composer_active_page = target["id"]
+        elif action == "new":
+            pages.append({"id": new_id, "name": name or "หน้า %d" % (len(pages) + 1), "widgets": []})
+            self.settings.composer_active_page = new_id
+        elif action == "duplicate":
+            pages.append({"id": new_id, "name": name or (cur.get("name", "") + " (สำเนา)"),
+                          "widgets": copy.deepcopy(cur["widgets"])})
+            self.settings.composer_active_page = new_id
+        elif action == "rename" and target and name:
+            target["name"] = name
+        elif action == "delete" and target:
+            if len(pages) <= 1:
+                return web.json_response({"ok": False, "error": "ต้องมีอย่างน้อย 1 หน้า"})
+            pages.remove(target)
+            if target is cur:
+                self.settings.composer_active_page = pages[0]["id"]
+        else:
+            return web.json_response({"ok": False, "error": "bad action"}, status=400)
+        widgets = copy.deepcopy(self._active_page()["widgets"])
+        self.settings.composer_widgets = widgets
+        if self.on_save_widgets is not None:
+            try:
+                self.on_save_widgets(widgets, getattr(self.settings, "composer_canvas_size", None))
+            except Exception:
+                pass
+        await self._broadcast_safe({"type": "config", "config": self._build_config()})
+        for w in widgets:
+            if w.get("type") == "chat":
+                await self._push_widget_config(w["id"])
+        return web.json_response(self._pages_payload())
 
     async def _handle_export_profile(self, request):
         """GET /export-profile → ดาวน์โหลด layout เป็นไฟล์ JSON"""
@@ -707,7 +789,7 @@ class ComposerServer:
         overlay.html จะเรียก endpoint นี้แทน /config ปกติ (ปรับใน overlay.html เล็กน้อย)
         """
         widget_id = request.query.get("id", "")
-        return web.json_response(self._build_chat_widget_config(widget_id))
+        return web.json_response(self._build_chat_widget_config(widget_id, request.query.get("p")))
 
     async def _handle_character_img(self, request):
         """GET /character/{job} → character image (สำหรับ Character Talk) — คลอนจาก overlay_server"""
@@ -1953,13 +2035,27 @@ class ComposerServer:
         self.push_viewer_counts(1234, {"twitch": 500, "youtube": 300, "mylive": 200, "tiktok": 234})
 
     # ── config builder ──
-    def _build_config(self) -> dict:
+    def _widgets_for(self, page=None) -> list:
+        """widgets ของหน้าที่ page (เลข 1-based ตามลำดับในรายการ) — ไม่ระบุ/เลขผิด → layout ที่ active"""
+        try:
+            idx = int(page) - 1
+            pages = self._pages()
+            if 0 <= idx < len(pages):
+                p = pages[idx]
+                if p is self._active_page():   # หน้าที่ active ใช้ของสด (composer_widgets)
+                    return list(getattr(self.settings, "composer_widgets", []) or [])
+                return list(p.get("widgets") or [])
+        except (TypeError, ValueError):
+            pass
+        return list(getattr(self.settings, "composer_widgets", []) or [])
+
+    def _build_config(self, page=None) -> dict:
         s = self.settings
         canvas = getattr(s, "composer_canvas_size", "1080p")
         # ★ mask dg_api_key ก่อน broadcast — /config ถูก push ไปทุก WS client
         #   (รวมเว็บที่เปิดใน browser สามารถเชื่อม WS แบบ cross-origin ได้) → ห้ามส่ง API key จริง
         widgets_out = []
-        for _w in list(getattr(s, "composer_widgets", []) or []):
+        for _w in self._widgets_for(page):
             if isinstance(_w, dict) and _w.get("type") == "donate_goal" and _w.get("dg_api_key"):
                 _w = dict(_w)  # copy — ไม่แต้ข้อมูลต้นทาง
                 _w["dg_api_key"] = "__MASKED__"
@@ -2039,20 +2135,20 @@ class ComposerServer:
         except Exception:
             return 0
 
-    def _find_widget(self, widget_id: str) -> dict:
-        """หา widget ใน settings.composer_widgets ตาม id"""
-        for w in getattr(self.settings, "composer_widgets", []):
+    def _find_widget(self, widget_id: str, page=None) -> dict:
+        """หา widget ตาม id ในหน้าที่ page (ไม่ระบุ = หน้าที่ active)"""
+        for w in self._widgets_for(page):
             if w.get("id") == widget_id:
                 return w
         return {}
 
-    def _build_chat_widget_config(self, widget_id: str) -> dict:
+    def _build_chat_widget_config(self, widget_id: str, page=None) -> dict:
         """build config สำหรับ overlay.html ที่อยู่ใน chat widget iframe
 
         แปลง widget settings → config format ที่ overlay.html เข้าใจ (overlay_* fields)
         + inject theme_css (จาก game_overlay_themes)
         """
-        w = self._find_widget(widget_id)
+        w = self._find_widget(widget_id, page)
         s = self.settings
         appearance = w.get("appearance_mode", "default")
         theme = w.get("theme", "default")

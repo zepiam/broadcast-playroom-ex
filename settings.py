@@ -623,6 +623,9 @@ class AppSettings:
     composer_port: int = 8801              # port ใหม่ (หลีกเลี่ยงช่วง 8765-8800)
     composer_canvas_size: str = "1080p"    # "720p" | "1080p"
     composer_widgets: list = field(default_factory=list)
+    # ★ หลายหน้า (layout แยกชุด) — [{"id","name","widgets"}]; composer_widgets = widgets ของหน้าที่ active เสมอ
+    composer_pages: list = field(default_factory=list)
+    composer_active_page: str = ""
 
     # ---- Playroom overlay (มินิเกมวิดีโอ — multi-trigger) ----
     playroom_enabled: bool = False
@@ -984,6 +987,8 @@ class AppSettings:
             "composer_port": self.composer_port,
             "composer_canvas_size": self.composer_canvas_size,
             "composer_widgets": list(self.composer_widgets),
+            "composer_pages": list(self.composer_pages),
+            "composer_active_page": self.composer_active_page,
             "playroom_enabled": self.playroom_enabled,
             "playroom_port": self.playroom_port,
             "playroom_triggers": list(self.playroom_triggers),
@@ -1587,6 +1592,11 @@ class AppSettings:
             s.composer_canvas_size = v if v in ("720p", "1080p") else "1080p"
         if "composer_widgets" in data:
             s.composer_widgets = list(data["composer_widgets"])
+        if isinstance(data.get("composer_pages"), list):
+            s.composer_pages = [p for p in data["composer_pages"]
+                                if isinstance(p, dict) and p.get("id") and isinstance(p.get("widgets"), list)]
+        if "composer_active_page" in data:
+            s.composer_active_page = str(data["composer_active_page"] or "")
         if "game_overlay_show_logo" in data:
             s.game_overlay_show_logo = bool(data["game_overlay_show_logo"])
         if "game_overlay_show_timestamp" in data:

@@ -624,13 +624,15 @@ let sliderLanes = [];   // [laneIndex] = {el, until(ms)}
 
 // ★ อ่าน widget_id จาก query string (ถ้าถูกโหลดใน chat widget iframe ของ composer)
 const _WIDGET_ID = new URLSearchParams(location.search).get('id') || '';
+// ★ หน้า Composer ที่ OBS ปักไว้ (?p=N) — ต้องอ่าน config ของ widget ในหน้านั้น ไม่ใช่หน้าที่ active
+const _PAGE = new URLSearchParams(location.search).get('p') || '';
 
 async function loadConfig() {
   // ★ retry loop — OBS browser source อาจเปิดก่อน server (เปิด OBS ก่อนโปรแกรม)
   // ลอง fetch config ทุก 3 วิจนกว่าจะสำเร็จ → แล้วค่อยเชื่อม WS
   while (true) {
     try {
-      const url = _WIDGET_ID ? `/chat-config?id=${encodeURIComponent(_WIDGET_ID)}` : '/config';
+      const url = _WIDGET_ID ? `/chat-config?id=${encodeURIComponent(_WIDGET_ID)}${_PAGE ? '&p=' + encodeURIComponent(_PAGE) : ''}` : '/config';
       const r = await fetch(url);
       if (!r.ok) throw new Error('HTTP ' + r.status);
       applyConfig(await r.json());
@@ -1054,7 +1056,8 @@ function connectWs() {
   ws.onmessage = (ev) => {
     try {
       const data = JSON.parse(ev.data);
-      if (data.type === 'config') applyConfig(data.config);
+      // ★ ปักหน้าไว้ → config ที่ push มาอาจเป็นของ widget id เดียวกันในหน้าที่ active → ดึงของหน้าตัวเองใหม่แทน
+      if (data.type === 'config') { if (_PAGE) loadConfig(); else applyConfig(data.config); }
       else if (data.type === 'message') {
         if (data.event === 'system') {
           addStatusMarquee(data.system_text || data.text || '');

@@ -77,6 +77,22 @@
     flex-shrink: 0;
   }
 
+  /* ★ แถบเลือกหน้า (หลาย layout) */
+  #page-bar { display: flex; gap: 4px; margin: 0 0 4px 0; }
+  #page-bar select {
+    flex: 1; min-width: 0; padding: 6px 8px; border-radius: 6px;
+    background: #10182e; color: #fff; border: 1px solid rgba(255,255,255,0.15);
+    font-family: inherit; font-size: 13px;
+  }
+  #page-bar button {
+    flex-shrink: 0; width: 30px; border-radius: 6px; cursor: pointer;
+    background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.12);
+    font-size: 13px; line-height: 1;
+  }
+  #page-bar button:hover { background: rgba(74,158,255,0.3); border-color: #4a9eff; }
+  #page-bar #page-del:hover { background: rgba(248,113,113,0.3); border-color: #f87171; }
+  #sidebar #page-hint { margin: 0 0 10px 0; }
+
   /* ═══════════════════════════════════════════════════
      Widget ทั่วไป — กล่อง absolute ที่ตำแหน่ง x/y/w/h/z
      ═══════════════════════════════════════════════════ */
@@ -2686,6 +2702,15 @@
     <button id="btn-export-profile" title="บันทึก Profile (สำรอง layout)" style="font-size:14px;">💾</button>
     <button id="btn-import-profile" title="โหลด Profile" style="font-size:14px;">📂</button>
   </div>
+  <!-- ★ หลายหน้า — แต่ละหน้าคือ layout แยกชุด สลับแล้ว OBS เปลี่ยนตาม / OBS ปักหน้าได้ด้วย ?p=เลขหน้า -->
+  <div id="page-bar">
+    <select id="page-select" title="สลับหน้า — OBS ที่ไม่ได้ใส่ ?p= จะเปลี่ยนตามหน้าที่เลือกตรงนี้"></select>
+    <button id="page-new" title="สร้างหน้าใหม่ (ว่าง)">＋</button>
+    <button id="page-dup" title="ทำสำเนาหน้านี้">⧉</button>
+    <button id="page-rename" title="เปลี่ยนชื่อหน้านี้">✎</button>
+    <button id="page-del" title="ลบหน้านี้">🗑</button>
+  </div>
+  <div id="page-hint" class="hint">OBS ปักหน้าตายตัว: ต่อท้ายลิงก์ด้วย <b style="white-space:nowrap">?p=เลขหน้า</b> เช่น <b style="white-space:nowrap">?p=2</b></div>
   <!-- ★ Tab bar — สลับ Widgets / Layers -->
   <div class="sidebar-tabs">
     <button class="sidebar-tab active" data-tab="widgets">🖼️ Widgets</button>
@@ -2915,6 +2940,9 @@ let config = {
 let isEditor = new URLSearchParams(location.search).has('edit');
 // ★ เวอร์ชันของหน้านี้ (server แทนค่าตอนเสิร์ฟ) — server เทียบตอนต่อ WS ถ้าไม่ตรงไฟล์ปัจจุบันจะสั่ง reload
 window.__composerPageVersion = /*__COMPOSER_PAGE_VERSION__*/0;
+// ★ OBS ปักหน้าตายตัวด้วย ?p=N (เลขหน้าตามลำดับใน Composer) — ไม่มี p = ตามหน้าที่เลือกใน editor
+const _pinnedPage = !isEditor ? new URLSearchParams(location.search).get('p') : null;
+const _pageQS = _pinnedPage ? 'p=' + encodeURIComponent(_pinnedPage) : '';
 let selectedWidget = null;
 let ws = null;
 let _lastWsConfigHash = '';  // ★ hash ของ config ล่าสุดจาก WS (กัน renderAll ซ้ำเมื่อ config เหมือนเดิม)
@@ -2942,6 +2970,8 @@ function connectWs() {
     let data;
     try { data = JSON.parse(ev.data); } catch(e) { return; }
     if (data.type === 'config') {
+      // ★ หน้าที่ปัก ?p=N ไว้: config ที่ push มาเป็นของหน้าที่ active → ไม่ใช้ (poll /config?p=N ทุก 0.7 วิแทน)
+      if (_pinnedPage) return;
       // ★ ถ้า modal settings เปิดอยู่ → ข้าม config push (กันทับค่าที่ user กำลังแก้)
       //    server จะ push ใหม่อีกครั้งหลัง modal ปิด + save
       const modalOpen = document.getElementById('settings-modal');
@@ -3250,7 +3280,7 @@ function updateWidgetElement(el, w) {
       if (newVer && curVer && newVer != curVer) {
         // ★ overlay.html เปลี่ยน → reload iframe (เพื่อโหลด CSS/JS ใหม่)
         iframe.dataset.overlayVersion = newVer;
-        iframe.src = `/chat-widget?id=${encodeURIComponent(w.id)}&_v=${newVer}&_t=${Date.now()}`;
+        iframe.src = `/chat-widget?id=${encodeURIComponent(w.id)}&_v=${newVer}&_t=${Date.now()}${_pageQS ? '&' + _pageQS : ''}`;
       }
     }
     return;
@@ -4208,7 +4238,7 @@ function createWidgetElement(w) {
     // _v = overlay_version (mtime ของ overlay.html) → เมื่อแก้ไฟล์, version เปลี่ยน → iframe reload อัตโนมัติ
     const ov = config.overlay_version || 0;
     const iframe = document.createElement('iframe');
-    iframe.src = `/chat-widget?id=${encodeURIComponent(w.id)}&_v=${ov}&_t=${Date.now()}`;
+    iframe.src = `/chat-widget?id=${encodeURIComponent(w.id)}&_v=${ov}&_t=${Date.now()}${_pageQS ? '&' + _pageQS : ''}`;
     iframe.allow = 'autoplay; fullscreen';
     iframe.style.cssText = 'width:100%;height:100%;border:none;background:transparent;';
     iframe.dataset.overlayVersion = ov;
@@ -6455,7 +6485,7 @@ function saveLayoutNow() {
     character_jobs: _jobsToSave,
     character_default_image: config.character_default_image || ''
   }));
-  fetch('/save?t=' + Date.now(), {
+  return fetch('/save?t=' + Date.now(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(snapshot),
@@ -10097,17 +10127,63 @@ if (isEditor) {
 }
 
 // ════════════════════════════════════════════════════════════
+// หลายหน้า (layout แยกชุด) — แก้ได้เฉพาะหน้าที่เลือกอยู่ (active)
+// ════════════════════════════════════════════════════════════
+async function loadPages() {
+  const sel = document.getElementById('page-select');
+  if (!sel) return;
+  try {
+    const d = await fetch('/pages?t=' + Date.now()).then(r => r.json());
+    sel.innerHTML = d.pages.map((p, i) =>
+      `<option value="${escapeHtml(p.id)}"${p.id === d.active ? ' selected' : ''}>${i + 1}. ${escapeHtml(p.name)} (${p.count})</option>`).join('');
+  } catch (e) {}
+}
+
+async function pageAction(action, extra) {
+  // ★ เซฟงานของหน้าเดิมให้เสร็จก่อนเสมอ — ไม่งั้น save ที่ค้างอยู่อาจไปทับหน้าใหม่ทีหลัง
+  await saveLayoutNow();
+  const sel = document.getElementById('page-select');
+  const body = Object.assign({ action, id: sel ? sel.value : '' }, extra || {});
+  const r = await fetch('/pages', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  }).then(res => res.json()).catch(() => null);
+  if (!r || !r.ok) { alert((r && r.error) || 'ทำรายการไม่สำเร็จ'); loadPages(); return; }
+  // ★ editor โหลดใหม่ให้ตรงกับหน้าที่ active (editor เก็บตำแหน่ง widget เดิมไว้เวลารับ config — ข้ามหน้าไม่ได้)
+  location.reload();
+}
+
+function _currentPageName() {
+  const sel = document.getElementById('page-select');
+  const o = sel && sel.options[sel.selectedIndex];
+  return o ? o.textContent.replace(/^\d+\.\s*/, '').replace(/\s*\(\d+\)$/, '') : '';
+}
+
+// ════════════════════════════════════════════════════════════
 // Init
 // ════════════════════════════════════════════════════════════
 if (isEditor) {
   document.body.classList.add('edit-mode');
+  loadPages();
+  document.getElementById('page-select').onchange = () => pageAction('switch');
+  document.getElementById('page-new').onclick = () => {
+    const n = prompt('ชื่อหน้าใหม่ (เว้นว่าง = ตั้งชื่อให้อัตโนมัติ)', '');
+    if (n !== null) pageAction('new', { name: n });
+  };
+  document.getElementById('page-dup').onclick = () => pageAction('duplicate');
+  document.getElementById('page-rename').onclick = () => {
+    const n = prompt('ชื่อหน้า', _currentPageName());
+    if (n && n.trim()) pageAction('rename', { name: n });
+  };
+  document.getElementById('page-del').onclick = () => {
+    if (confirm('ลบหน้า "' + _currentPageName() + '" ? (widget ในหน้านี้จะหายไปด้วย)')) pageAction('delete');
+  };
 } else {
   // ★ overlay mode (OBS) — ซ่อน editor UI ทั้งหมด (กัน cache ค้าง)
   const previewBtn = document.getElementById('preview-toggle-btn');
   if (previewBtn) previewBtn.style.display = 'none';
 }
 // โหลด config ครั้งแรก
-fetch('/config').then(r => r.json()).then(c => {
+fetch('/config' + (_pageQS ? '?' + _pageQS : '')).then(r => r.json()).then(c => {
   config = c;
   renderAll();
   // ★ editor mode → auto fit หลังโหลด (กัน canvas ใหญ่เกิน viewport)
@@ -10129,7 +10205,7 @@ if (!isEditor) {
     } else if (ws && ws.readyState === 1) {
       _wsReconnectTries = 0;
     }
-    fetch('/config?t=' + Date.now()).then(r => r.json()).then(c => {
+    fetch('/config?t=' + Date.now() + (_pageQS ? '&' + _pageQS : '')).then(r => r.json()).then(c => {
       const hash = JSON.stringify(c);
       if (hash === _lastConfigHash) return;
       _lastConfigHash = hash;

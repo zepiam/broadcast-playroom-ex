@@ -80,6 +80,13 @@
 const video = document.getElementById('player');
 const imgEl = document.getElementById('imgplayer');
 const statusEl = document.getElementById('status');
+// ★ ข้อความสถานะ/ดีบัก ให้เห็นแค่ตอนเปิดใน Composer editor (?edit) — ห้ามขึ้นบน OBS
+//   และซ่อนในโหมด Preview ของ editor ด้วย (หน้า parent เป็น origin เดียวกัน อ่าน class ได้)
+function showStatus() {
+  if (!new URLSearchParams(location.search).has('edit')) return;
+  try { if (window.parent.document.body.classList.contains('preview-mode')) return; } catch (e) {}
+  statusEl.classList.add('show');
+}
 const ckCanvas = document.getElementById('ckcanvas');
 const ckCtx = ckCanvas.getContext('2d', { willReadFrequently: true });
 let hideTimer = null;
@@ -184,18 +191,18 @@ function connectWs() {
     try { ws.send(JSON.stringify({type:'hello', client:'playroom', widget_id: _prWidgetId})); } catch(e) {}
     // ★ debug — แสดง state บน overlay (เห็นทันทีว่าเชื่อมได้ไหม + อยู่ bucket ไหน)
     statusEl.textContent = 'WS เชื่อมแล้ว (id:' + (_prWidgetId || '_all') + ')';
-    statusEl.classList.add('show');
+    showStatus();
   };
   ws.onmessage = (ev) => {
     const data = JSON.parse(ev.data);
     // ★ debug — เห็นว่าได้รับอะไรจริง
     statusEl.textContent = 'ได้รับ: ' + (data.type || '?') + ' → ' + (data.name || data.url || '');
-    statusEl.classList.add('show');
+    showStatus();
     if (data.type === 'clip') enqueueClip(data.url, data.name);
   };
   ws.onclose = () => {
     statusEl.textContent = 'WS หลุด — กำลังเชื่อมใหม่...';
-    statusEl.classList.add('show');
+    showStatus();
     setTimeout(connectWs, 1500);
   };
   ws.onerror = () => ws.close();
@@ -363,7 +370,7 @@ function hidePlayer(onDone) {
 
 // ── เริ่มต้น ──
 // แสดง status สักครู่ตอนเปิด แล้วซ่อน
-statusEl.classList.add('show');
+showStatus();
 setTimeout(() => statusEl.classList.remove('show'), 3000);
 
 connectWs();

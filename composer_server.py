@@ -178,7 +178,8 @@ class ComposerServer:
         """serve composer.html (overlay ปกติ ใส่ใน OBS)
         ★ gzip ถ้า client รองรับ — ลด 467KB → ~100KB (OBS โหลดเร็วขึ้นมาก)
         """
-        html = self._read_composer_html()
+        html = self._read_composer_html().replace(
+            "/*__COMPOSER_PAGE_VERSION__*/0", str(self._composer_version()))
         body = html.encode('utf-8')
         ae = request.headers.get('Accept-Encoding', '')
         if 'gzip' in ae and len(body) > 1024:
@@ -1364,6 +1365,8 @@ class ComposerServer:
             # composer editor/overlay ปกติ → add เข้า _clients (รับ message/config ทั่วไป)
             self._clients.add(ws)
             try:
+                # ★ หน้าเวอร์ชันเก่า (เช่นค้างใน OBS หลังอัปเดตโปรแกรม) → reload ตัวเอง
+                await ws.send_json({"type": "eval_js", "js": self._page_version_check_js()})
                 await ws.send_json({"type": "config", "config": self._build_config()})
                 # ★ ASK state ล่าสุด — client ใหม่ (เช่น OBS refresh) ได้โพลปัจจุบันทันที
                 if self._last_ask_state:
@@ -2003,6 +2006,27 @@ class ComposerServer:
                 return f.read()
         except Exception:
             return "<!DOCTYPE html><html><body><h1>overlay.html not found</h1></body></html>"
+
+    def _composer_version(self) -> int:
+        """mtime ของ composer.html — ฝังลงหน้าเว็บตอนเสิร์ฟ และใช้เช็คตอน client ต่อ WS
+        (หน้าเก่าที่ค้างอยู่ใน OBS หลังอัปเดตโปรแกรม → reload ตัวเองได้โดยไม่ต้องล้าง cache เอง)"""
+        try:
+            return int(os.path.getmtime(os.path.join(get_base_dir(), "composer.html")))
+        except Exception:
+            return 0
+
+    def _page_version_check_js(self) -> str:
+        """JS ที่ส่งทาง eval_js ให้หน้า composer ตอนต่อ WS: เวอร์ชันไม่ตรงกับไฟล์ปัจจุบัน → reload
+        ★ ใช้ eval_js เพราะหน้าเก่า (≤ v2.8.3) ที่ไม่รู้จักระบบนี้รองรับ eval_js อยู่แล้ว
+        ★ reload ได้ครั้งเดียวต่อเวอร์ชัน (sessionStorage) กัน loop ถ้ามีอะไรผิดพลาด"""
+        v = self._composer_version()
+        return (
+            "(function(v){if(window.__composerPageVersion===v)return;"
+            "try{if(sessionStorage.getItem('__cpvReload')===String(v))return;"
+            "sessionStorage.setItem('__cpvReload',String(v));}catch(e){}"
+            "var u=new URL(location.href);u.searchParams.set('_pv',v);location.replace(u.toString());"
+            "})(%d)" % v
+        )
 
     def _overlay_version(self) -> int:
         """mtime ของ overlay.html → ใช้เป็น cache-bust version

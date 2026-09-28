@@ -632,6 +632,14 @@ class ChatPanel(QFrame):
             except Exception:
                 pass
 
+    def refresh_display_names(self):
+        """อัปเดตชื่อที่แสดงของทุก row (หลังตั้งชื่อใหม่ใน User Manager)"""
+        for row in self._rows:
+            try:
+                row.refresh_display_name()
+            except Exception:
+                pass
+
     def clear_messages(self):
         """ล้าง chat ทั้งหมด"""
         for row in self._rows:

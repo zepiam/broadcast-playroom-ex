@@ -1639,11 +1639,11 @@ class ChatPipeline:
                     except Exception:
                         pass  # RVC fail → ใช้ audio ต้นฉบับ (ไม่ convert)
                 return audio_np, 44100
-            # fallback → ใช้ Premwadee ปกติ
-            voice = "th-TH-PremwadeeNeural"
+            # fallback → ใช้ edge_voice ปกติ
+            voice = self._resolve_edge_voice_name("th-TH-PremwadeeNeural")
         elif rvc_on and not self.config.multilang_enabled:
-            # RVC + ไม่เปิด multilang → ใช้ Premwadee เป็น base + skip ต่างภาษา (Premwadee อ่านไม่ได้)
-            voice = "th-TH-PremwadeeNeural"
+            # RVC + ไม่เปิด multilang → ใช้ base voice + skip ต่างภาษา (base voice อ่านไม่ได้)
+            voice = self._resolve_edge_voice_name("th-TH-PremwadeeNeural")
             # ★★ ถ้าเปิด auto_translate → ข้ามการตรวจภาษา (เพราะแปลเป็นไทยแล้ว)
             if not getattr(self.config, "auto_translate_enabled", False):
                 from language_detect import detect_language
@@ -1807,19 +1807,25 @@ class ChatPipeline:
         """แปลง edge_voice config ("premwadee"/"niwat") → edge-tts voice id
 
         ★ fallback_voice = voice ที่ pipeline เลือกไว้แล้ว (เช่น multilang voice)
-          ถ้า config.edge_voice ว่าง → ใช้ fallback
+          ถ้าเป็นเสียงไทย หรือ fallback ว่าง → ใช้ edge_voice ที่ผู้ใช้เลือก ("premwadee" หรือ "niwat")
+          ถ้าเป็นภาษาต่างประเทศ และเปิด multilang → ใช้ fallback_voice ของภาษานั้น
         """
         edge_voice = getattr(self.config, "edge_voice", "premwadee")
-        # ★ map config value → edge-tts voice id
         voice_map = {
             "premwadee": "th-TH-PremwadeeNeural",
             "niwat": "th-TH-NiwatNeural",
         }
-        # ★ ถ้า multilang → ใช้ fallback (ภาษา-specific voice)
+        th_voice = voice_map.get(edge_voice, "th-TH-PremwadeeNeural")
+
+        # ถ้า fallback_voice เป็นเสียงภาษาไทย (หรือว่าง) → เคารพเสียงไทยที่ user เลือก (Premwadee / Niwat)
+        if not fallback_voice or fallback_voice in ("th-TH-PremwadeeNeural", "th-TH-NiwatNeural"):
+            return th_voice
+
+        # ถ้า multilang_enabled และเป็นภาษาต่างชาติ (en, ja, ko, etc.) → ใช้ fallback (ภาษา-specific voice)
         if getattr(self.config, "multilang_enabled", False):
             return fallback_voice
-        # ★ default → ใช้ edge_voice จาก config (user เลือกชาย/หญิง)
-        return voice_map.get(edge_voice, fallback_voice)
+
+        return th_voice
 
     def _speak_name(self, author: str) -> str:
         """ชื่อที่จะอ่านออกเสียง — ชื่อที่ตั้งเองใน User Manager ถ้ามี ไม่งั้นชื่อเดิม"""
@@ -1945,7 +1951,7 @@ class ChatPipeline:
             edge_voice = "th-TH-PremwadeeNeural"
         mp3 = self._synth_sync(TTSParams(
             text=text, voice=edge_voice, rate=f"{rate:+d}%",
-            volume=f"{volume:+d}%", pitch=f"{pitch:+d}Hz"))
+            volume=f"{volume:+d}%", pitch=f"{pitch:+d}Hz"), timeout=8.0)
         audio = self._decode_mp3(mp3) if mp3 else None
         if audio is None or len(audio) == 0:
             return None
@@ -2030,7 +2036,7 @@ class ChatPipeline:
         if not parts or (msg.extra or {}).get("_intro_done") or audio_np is None or len(audio_np) == 0:
             return audio_np
         for th in (prefetch or []):   # รอท่อนที่ synth ขนานไว้ให้เสร็จ (ส่วนใหญ่เสร็จไปแล้วตอนข้อความหลักเสร็จ)
-            th.join(timeout=35)
+            th.join(timeout=5.0)
         try:
             sr = 44100
             gap = np.zeros(int(sr * max(0.0, float(getattr(self.config, "intro_gap", 0.5)))), dtype=np.float32)
@@ -2129,7 +2135,7 @@ class ChatPipeline:
         # ── 2. TTS แต่ละ segment ──
         audios = []
         for seg_text, seg_lang in segments:
-            voice = VOICE_BY_LANG.get(seg_lang, "th-TH-PremwadeeNeural")
+            voice = self._resolve_edge_voice_name(VOICE_BY_LANG.get(seg_lang, "th-TH-PremwadeeNeural"))
             tts_params = TTSParams(
                 text=seg_text,
                 voice=voice,

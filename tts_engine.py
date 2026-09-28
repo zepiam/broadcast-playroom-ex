@@ -19,6 +19,9 @@ import threading
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
+import socket
+
+import aiohttp
 import edge_tts
 import numpy as np
 
@@ -169,17 +172,38 @@ class TTSEngine:
     # Synthesis (core)
     # ------------------------------------------------------------------ #
     async def _synthesize_segment(
-        self, text: str, voice: str, rate: str, volume: str, pitch: str
+        self, text: str, voice: str, rate: str, volume: str, pitch: str, retries: int = 2
     ) -> bytes:
-        """สร้างเสียงให้ segment เดียว → คืน MP3 bytes"""
-        communicate = edge_tts.Communicate(
-            text, voice=voice, rate=rate, volume=volume, pitch=pitch,
-        )
-        buffer = bytearray()
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                buffer.extend(chunk["data"])
-        return bytes(buffer)
+        """สร้างเสียงให้ segment เดียว → คืน MP3 bytes (บังคับ IPv4 + Auto-Retry)"""
+        last_exc: Exception | None = None
+        for attempt in range(retries):
+            try:
+                # บังคับใช้ IPv4 (AF_INET) เพื่อเลี่ยงปัญหาเน็ตบ้านไทยค้าง IPv6 กับ Microsoft CDN
+                conn = aiohttp.TCPConnector(family=socket.AF_INET)
+                communicate = edge_tts.Communicate(
+                    text,
+                    voice=voice,
+                    rate=rate,
+                    volume=volume,
+                    pitch=pitch,
+                    connector=conn,
+                    connect_timeout=8,
+                    receive_timeout=20,
+                )
+                buffer = bytearray()
+                async for chunk in communicate.stream():
+                    if chunk["type"] == "audio":
+                        buffer.extend(chunk["data"])
+                if buffer:
+                    return bytes(buffer)
+            except Exception as exc:
+                last_exc = exc
+                if attempt < retries - 1:
+                    await asyncio.sleep(0.3)
+                    continue
+        if last_exc:
+            raise last_exc
+        return b""
 
     async def _synthesize_with_prosody(self, params: TTSParams) -> bytes:
         """สร้างเสียงพร้อม prosody tags → คืน MP3 bytes ที่ concat แล้ว
@@ -265,7 +289,8 @@ class TTSEngine:
         on_error: Callable[[str], None],
     ) -> None:
         async def _fetch() -> list[dict]:
-            voices = await edge_tts.list_voices()
+            conn = aiohttp.TCPConnector(family=socket.AF_INET)
+            voices = await edge_tts.list_voices(connector=conn)
             return list(voices)
 
         def _task_done(fut: asyncio.Future) -> None:

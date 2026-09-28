@@ -108,5 +108,12 @@ class PopoutWindow(QDialog):
             except Exception:
                 pass
 
+    def refresh_display_names(self):
+        for row in self._rows:
+            try:
+                row.refresh_display_name()
+            except Exception:
+                pass
+
     def update_viewers(self, total):
         self.viewers_label.setText(f"👥 {total:,}")

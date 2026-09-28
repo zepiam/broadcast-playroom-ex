@@ -1,5 +1,7 @@
 # 🧠 SESSION CONTEXT — v2.7.1 dev (Save before compact)
 
+> ⚠️ **ไฟล์นี้หยุดอัปเดตที่ v2.7.1** — สถานะ/เวอร์ชันปัจจุบันและกฎการทำงานล่าสุดอยู่ใน [`HANDOFF.md`](HANDOFF.md) (อ่านไฟล์นั้นก่อน) · ไฟล์นี้ยังมีรายละเอียดของ Composer/ASK/Danmaku/Twitch reconnect ที่มีค่า
+
 > **อัปเดต**: 2026-08-18
 > **สถานะ**: ✅ v2.7.1 RELEASED (2026-08-18 ~20:55) — https://github.com/zepiam/broadcast-playroom-ex/releases/tag/v2.7.1
 > **งานใหม่หลัง 2.7.1**: ★ System message สรุปผลโหวต ASK หลายบรรทัด + โลโก้แพลตฟอร์มบรรทัดเดียว (แก้แล้ว — Lite rebuilt 22:36 พร้อมทดสอบ)

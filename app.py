@@ -906,7 +906,7 @@ class TTSForLivestreamApp(QMainWindow):
                 elif eid is not None:
                     twitch_emotes.append({"name": em.get("name", ""), "url": f"/emote/{eid}", "start": em.get("start", 0), "end": em.get("end", 0)})
             return {
-                "author": msg.author or "",
+                "author": self._tts_display_name(msg.author) or msg.author or "",
                 "text": text,
                 "raw_text": extra.get("raw_text", ""),
                 "twitch_emotes": twitch_emotes,
@@ -1294,8 +1294,9 @@ class TTSForLivestreamApp(QMainWindow):
         self.events_panel.event_clicked.connect(self._open_event_detail)
         self.chat_panel.unblock_user_requested.connect(self._unblock_user)
         try:
-            from ui.widgets.chat_row import set_block_status_provider
+            from ui.widgets.chat_row import set_block_status_provider, set_display_name_provider
             set_block_status_provider(self._get_block_status)   # ★ ไอคอน 🚫/🔇 ข้างชื่อคนที่ถูกบล็อก
+            set_display_name_provider(self._tts_display_name)   # ★ แปลง author -> ชื่อใหม่ใน User Manager
         except Exception:
             pass
         self.chat_panel.author_clicked.connect(self._open_author_modal)
@@ -3548,6 +3549,19 @@ class TTSForLivestreamApp(QMainWindow):
                     row.refresh_block_status()
                 except Exception:
                     pass
+
+    def _refresh_chat_display_names(self):
+        """อัปเดตชื่อที่แสดงในแชทเมื่อมีการเปลี่ยนชื่อใน User Manager (ทั้งหน้าหลักและ popout)"""
+        try:
+            self.chat_panel.refresh_display_names()
+        except Exception:
+            pass
+        popout = getattr(self, '_popout_window', None)
+        if popout and hasattr(popout, 'refresh_display_names'):
+            try:
+                popout.refresh_display_names()
+            except Exception:
+                pass
 
     def _update_viewer_ui(self):
         """อัปเดตยอดคนดู — chat panel + popout + viewer overlay + composer + การ์ดแพลตฟอร์ม

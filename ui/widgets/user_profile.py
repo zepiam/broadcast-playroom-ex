@@ -293,6 +293,8 @@ class UserProfilePanel(QFrame):
         self._editing = False
         self.reload()
         self.toast.show_message(msg)
+        if hasattr(self.app, "_refresh_chat_display_names"):
+            self.app._refresh_chat_display_names()
         self.changed.emit()
 
     # Tiles ──────────────────────────────────────────────

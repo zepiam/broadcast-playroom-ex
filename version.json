@@ -1,16 +1,16 @@
 {
-  "version": "2.8.5",
-  "changelog": "- เพิ่ม Theme ของ Chat Widget เพิ่ม 27 รูปแบบ (อยู่ใน Theme Part 2)\n- แก้บัคกล่องแชทไม่โปร่งใส เมื่อตั้งค่าให้โปร่งใส\n- เพิ่ม Theme ของ Viewer Widget 10 รูปแบบ\n- แก้ไขหน้าตา Layer ของ Composer Editor\n- แก้บัค composer แสดงพื้นหลัง widget\n- เพิ่มฟีเจอร์ เพิ่มจำนวนหน้า Overlay กดเปลี่ยนได้ใน Composer",
+  "version": "2.8.6",
+  "changelog": "- แก้ไขปัญหาเสียง Niwat (ชาย) ไม่อ่านตามที่เลือก โดยระบบดีดกลับไปเป็น Premwadee (หญิง)\n- ปรับปรุงการเชื่อมต่อเสียง Edge-TTS บังคับใช้ IPv4 แก้ปัญหาเชื่อมต่อค้าง/ช้าสำหรับเน็ตบ้านไทย\n- เพิ่มระบบเชื่อมต่อใหม่อัตโนมัติ (Auto-Retry) ลดปัญหาข้อความข้ามเมื่อสัญญาณเน็ตกระตุก\n- แก้ไขให้แสดงชื่อที่ตั้งเองใน User Manager บนกล่องแชทและ Overlay\n- แก้ไขอาการค้างเมื่ออ่านชื่อแบบ [ชื่อ] พูดว่า [ข้อความ]",
   "lite": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.5/patch_lite.zip",
-    "size": 17059755,
-    "sha256": "94c8aea6dc21570081cadf1996c9a6cdc8f6de0cdd1243fac8d8bac1f5cd9a78"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.6/patch_lite.zip",
+    "size": 17060903,
+    "sha256": "d34fbec177af7fccb3be7c8d87c1c62c54680a59063b8ba234aec4e3a639904e"
   },
   "full": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.5/patch_full.zip",
-    "size": 70913690,
-    "sha256": "ce3213d6c6da5328b70a3818fce17ed49b67f0d8352234d7f2714486b9f92f84"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.6/patch_full.zip",
+    "size": 70915175,
+    "sha256": "f7b03452ff4fb3c4b475f07fa6b1ef619c196676d9271d58dc14f3e752833e06"
   }
 }

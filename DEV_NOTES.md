@@ -1,5 +1,7 @@
 # 📝 Developer Notes — Broadcast Playroom v2
 
+> 📌 **ภาพรวมโปรเจกต์ สถานะปัจจุบัน กฎการทำงาน และ runbook การ build/release อยู่ใน [`HANDOFF.md`](HANDOFF.md)** — ไฟล์นี้เก็บบทเรียน/ปัญหาที่เจอเชิงลึก
+
 > จดบันทึกการพัฒนา ปัญหาที่เจอ และวิธีแก้ เพื่อไม่ให้ลืม
 
 > **2026-09-20 — ถอดระบบ OmniVoice ออกจากโปรแกรมแล้ว** (อ่านคำสั้นๆ พังบ่อย): ลบ `omnivoice_engine.py`, `ui/dialogs/omni_skip.py`,

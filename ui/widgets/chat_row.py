@@ -51,6 +51,26 @@ def set_chat_settings(show_platform_icon=None, author_color_mode=None,
 # ★ ผู้ให้สถานะบล็อกของผู้ใช้ (app.py ตั้งให้) — fn(author) → None | "block_all" | "block_tts"
 _block_status_provider = None
 
+# ★ ผู้ให้ชื่อที่เปลี่ยนใหม่ (app.py ตั้งให้) — fn(author) → str
+_display_name_provider = None
+
+
+def set_display_name_provider(fn):
+    """ตั้งฟังก์ชันสำหรับแปลง author -> display_name (ชื่อที่ตั้งเองใน User Manager)"""
+    global _display_name_provider
+    _display_name_provider = fn
+
+
+def _lookup_display_name(author: str) -> str:
+    if _display_name_provider and author:
+        try:
+            name = _display_name_provider(author)
+            if name and str(name).strip():
+                return str(name).strip()
+        except Exception:
+            pass
+    return author
+
 _BLOCK_ICONS = {
     "block_all": "ผู้ใช้นี้ถูกบล็อก (ไม่อ่าน TTS + ไม่แสดงใน overlay) — คลิกขวาที่ข้อความเพื่อปลดบล็อก",
     "block_tts": "ผู้ใช้นี้ถูกบล็อก TTS (ไม่อ่านออกเสียง แต่ยังแสดงในแชท) — คลิกขวาที่ข้อความเพื่อปลดบล็อก",
@@ -283,6 +303,29 @@ class ChatRow(QWidget):
             return
         self.set_block_status(_lookup_block_status(getattr(self.msg, 'author', '') or ''))
 
+    def refresh_display_name(self):
+        """อัปเดตชื่อที่แสดง (เมื่อมีการเปลี่ยนชื่อใน User Manager)"""
+        author = getattr(self.msg, 'author', '') or ''
+        if not author or not hasattr(self, 'author_label') or not self.author_label:
+            return
+        display_name = _lookup_display_name(author)
+        ts_html = ''
+        if _chat_settings.get('show_timestamp', False):
+            ts = self._get_timestamp()
+            if ts:
+                ts_html = f' <span style="color:#6b7280; font-size:{max(10, self._font_size-2)}px;">{ts}</span>'
+        is_bot_response = (getattr(self.msg, 'event', '') == 'bot_response')
+        platform = getattr(self.msg, 'platform', '')
+        if is_bot_response:
+            author_color = "#facc15"
+        elif _chat_settings.get('author_color_mode', 'platform') == 'random':
+            author_color = _color_for_author(author)
+        else:
+            author_color = self._get_platform_color(platform)
+        self.author_label.setText(
+            f'<span style="color:{author_color}; font-weight:600;">{display_name}</span>:{ts_html}'
+        )
+
     def _build_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 4, 8, 4)
@@ -366,7 +409,7 @@ class ChatRow(QWidget):
             author_color = _color_for_author(author)
         else:
             author_color = self._get_platform_color(platform)
-        display_name = author
+        display_name = _lookup_display_name(author)
         # ★ timestamp (ถ้าเปิด)
         ts_html = ''
         if _chat_settings.get('show_timestamp', False):
@@ -489,7 +532,7 @@ class ChatRow(QWidget):
             icon = _ev_info['icon']
         text = f"{icon} "
         if author:
-            text += f"<b style='color:#f47fff'>{author}</b> "
+            text += f"<b style='color:#f47fff'>{_lookup_display_name(author)}</b> "
         if system_text:
             text += system_text
         elif event == 'bits' and amount:

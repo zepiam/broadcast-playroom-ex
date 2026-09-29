@@ -730,17 +730,24 @@ class NGReplaceDialog(QDialog):
 
         restore_deleted = False
         if found_deleted_in_incoming:
-            sample_words = ", ".join(found_deleted_in_incoming[:5])
+            sample_words = ", ".join(f'"{w}"' for w in found_deleted_in_incoming[:5])
             if len(found_deleted_in_incoming) > 5:
                 sample_words += f" และอีก {len(found_deleted_in_incoming) - 5} คำ"
-            reply = QMessageBox.question(
-                self, "พบคำศัพท์ที่เคยลบ",
-                f"พบคำศัพท์จำนวน {len(found_deleted_in_incoming)} คำ ที่คุณเคยลบออกจากเครื่องไปแล้ว:\n"
-                f"({sample_words})\n\n"
-                "ต้องการโหลดคำเหล่านี้กลับมาใช้งานใหม่หรือไม่?",
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+
+            box = QMessageBox(self)
+            box.setWindowTitle("พบคำศัพท์ที่เคยลบในคลังออนไลน์")
+            box.setIcon(QMessageBox.Question)
+            box.setText(f"<b>พบคำศัพท์ {len(found_deleted_in_incoming)} คำ ที่คุณเคยลบออกจากเครื่องไปแล้ว:</b>")
+            box.setInformativeText(
+                f"<p style='color: #fbbf24; font-size: 13px; font-weight: bold;'>👉 {sample_words}</p>"
+                "<p>คุณต้องการ<b>กู้คืนคำเหล่านี้กลับมาใช้งานใหม่</b> หรือ<b>ข้ามไป</b> (ไม่ดาวน์โหลดคำที่เคยลบ)?</p>"
             )
-            if reply == QMessageBox.Yes:
+            btn_restore = box.addButton("🔄 กู้คืนกลับมาใช้", QMessageBox.YesRole)
+            btn_skip = box.addButton("🚫 ข้าม (ไม่โหลดคำนี้)", QMessageBox.NoRole)
+            box.setDefaultButton(btn_skip)
+            box.exec()
+
+            if box.clickedButton() == btn_restore:
                 restore_deleted = True
                 # ลบออกจาก replace_deleted_words
                 for w in found_deleted_in_incoming:

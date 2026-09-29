@@ -174,12 +174,53 @@ THEMES = {
         "TEXT": "#ececf1", "TEXT_DIM": "#a0a0ad", "TEXT_FAINT": "#6a6a78",
         "BORDER": "#1f1f27", "BORDER_LIGHT": "#2c2c36",
     },
+    "arctic_ice": {     # ฟ้าไอซ์บลูประกายหิมะ หรูหรา สะอาดตา
+        "BG": "#080e18", "BG_DARK": "#04070d", "CARD": "#0e1828",
+        "CARD_HI": "#142238", "CARD_HOVER": "#1a2b47",
+        "ACCENT": "#38bdf8", "ACCENT_HOVER": "#0284c7", "ACCENT_2": "#a5f3fc",
+        "HEADING": "#bae6fd",
+        "DANGER": "#f87171", "DANGER_HOVER": "#ef4444",
+        "SUCCESS": "#34d399", "SUCCESS_HOVER": "#10b981",
+        "TEXT": "#e0f2fe", "TEXT_DIM": "#93c5fd", "TEXT_FAINT": "#5b7b9d",
+        "BORDER": "#1c2e4a", "BORDER_LIGHT": "#284269",
+    },
+    "sunset_coral": {   # ส้มพีชคอรัล อบอุ่น มีชีวิตชีวา
+        "BG": "#150d12", "BG_DARK": "#0e070b", "CARD": "#22141c",
+        "CARD_HI": "#2e1b26", "CARD_HOVER": "#3b2230",
+        "ACCENT": "#fb7185", "ACCENT_HOVER": "#e11d48", "ACCENT_2": "#fb923c",
+        "HEADING": "#fecdd3",
+        "DANGER": "#ef4444", "DANGER_HOVER": "#dc2626",
+        "SUCCESS": "#34d399", "SUCCESS_HOVER": "#10b981",
+        "TEXT": "#fdf2f4", "TEXT_DIM": "#cca5b0", "TEXT_FAINT": "#8f6b76",
+        "BORDER": "#432233", "BORDER_LIGHT": "#592e44",
+    },
+    "cyber_matrix": {   # เขียวเมทริกซ์นีออน สไตล์แฮกเกอร์ ดุดัน
+        "BG": "#070e0a", "BG_DARK": "#030705", "CARD": "#0e1c14",
+        "CARD_HI": "#14271c", "CARD_HOVER": "#1a3325",
+        "ACCENT": "#22c55e", "ACCENT_HOVER": "#16a34a", "ACCENT_2": "#06b6d4",
+        "HEADING": "#86efac",
+        "DANGER": "#f87171", "DANGER_HOVER": "#ef4444",
+        "SUCCESS": "#4ade80", "SUCCESS_HOVER": "#22c55e",
+        "TEXT": "#e6f9ed", "TEXT_DIM": "#9dc4a9", "TEXT_FAINT": "#5b7e66",
+        "BORDER": "#1b3826", "BORDER_LIGHT": "#275237",
+    },
+    "matcha_mellow": {  # มัทฉะชาเขียวมินิมอล ผ่อนคลาย สบายตา
+        "BG": "#11140e", "BG_DARK": "#0a0d08", "CARD": "#1a2016",
+        "CARD_HI": "#232c1e", "CARD_HOVER": "#2d3827",
+        "ACCENT": "#84cc16", "ACCENT_HOVER": "#65a30d", "ACCENT_2": "#eab308",
+        "HEADING": "#d9f99d",
+        "DANGER": "#f87171", "DANGER_HOVER": "#ef4444",
+        "SUCCESS": "#4ade80", "SUCCESS_HOVER": "#22c55e",
+        "TEXT": "#f2f7ec", "TEXT_DIM": "#b3c2a6", "TEXT_FAINT": "#738267",
+        "BORDER": "#303b29", "BORDER_LIGHT": "#425239",
+    },
 }
 
 THEME_ORDER = ["default", "aurora_violet", "ember_dusk", "nightwave_cyan",
                "sakura_night", "forest_moss", "ocean_royal", "golden_hour", "graphite_mist",
                "teal_lagoon", "midnight_indigo", "neon_fuchsia", "crimson_noir",
-               "lavender_mist", "mocha_latte", "oled_black"]
+               "lavender_mist", "mocha_latte", "oled_black",
+               "arctic_ice", "sunset_coral", "cyber_matrix", "matcha_mellow"]
 THEME_LABELS = {
     "default": "ค่าเริ่มต้น (ม่วง-กรมท่า)",
     "aurora_violet": "Aurora Violet",
@@ -197,6 +238,10 @@ THEME_LABELS = {
     "lavender_mist": "Lavender Mist (ลาเวนเดอร์)",
     "mocha_latte": "Mocha Latte (น้ำตาลกาแฟ)",
     "oled_black": "Pure Black (ดำสนิท)",
+    "arctic_ice": "Arctic Ice (ธารน้ำแข็ง)",
+    "sunset_coral": "Sunset Coral (ส้มคอรัล)",
+    "cyber_matrix": "Cyber Matrix (นีออนเขียว)",
+    "matcha_mellow": "Matcha Mellow (มัทฉะ)",
 }
 # ★ swatch สีเด่นของแต่ละธีม (ใช้โชว์ preview ใน Settings)
 THEME_SWATCH = {k: v["ACCENT"] for k, v in THEMES.items()}

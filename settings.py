@@ -1690,7 +1690,7 @@ class AppSettings:
         if "replace_auto_sync" in data:
             s.replace_auto_sync = bool(data["replace_auto_sync"])
         if "replace_deleted_words" in data:
-            s.replace_deleted_words = list(data["replace_deleted_words"])
+            s.replace_deleted_words = [w for w in list(data["replace_deleted_words"]) if isinstance(w, str) and w.strip()]
         if "secret_codes" in data:
             s.secret_codes = list(data["secret_codes"])
             # ── migrate: secret_code prefix บังคับ "!" ──

@@ -1729,19 +1729,23 @@ class SettingsDialog(QDialog):
         btn_del = QPushButton("❌"); btn_del.setFixedSize(30, 26); btn_del.setToolTip("ลบแถวนี้")
         btn_del.setCursor(Qt.PointingHandCursor)
         btn_del.setStyleSheet("border: none; background: transparent; font-size: 14px; padding: 0px;")
-        def _del(s=src):
+        def _del(_, s=src, ed=edit0):
+            target = ed.text().strip() if (ed and hasattr(ed, 'text')) else s
+            if not target:
+                target = s
             reply = QMessageBox.question(
                 self.replace_table, "ยืนยันการลบ",
-                f'ต้องการลบ "{s}" ใช่ไหม?',
+                f'ต้องการลบ "{target}" ใช่ไหม?',
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes,
             )
             if reply == QMessageBox.Yes:
-                if self.settings and s:
+                if self.settings and target:
                     del_list = list(getattr(self.settings, 'replace_deleted_words', []) or [])
-                    if s not in del_list:
-                        del_list.append(s)
-                        self.settings.replace_deleted_words = del_list
-                self._replace_data = [e for e in self._replace_data if e['src'] != s]
+                    del_list = [w for w in del_list if isinstance(w, str) and w]
+                    if target not in del_list:
+                        del_list.append(target)
+                    self.settings.replace_deleted_words = del_list
+                self._replace_data = [e for e in self._replace_data if e['src'] != target and e['src'] != s]
                 self._replace_render()
                 self._auto_save()
         btn_del.clicked.connect(_del)
@@ -2054,17 +2058,24 @@ class SettingsDialog(QDialog):
 
         restore_deleted = False
         if found_deleted_in_incoming:
-            sample_words = ", ".join(found_deleted_in_incoming[:5])
+            sample_words = ", ".join(f'"{w}"' for w in found_deleted_in_incoming[:5])
             if len(found_deleted_in_incoming) > 5:
                 sample_words += f" และอีก {len(found_deleted_in_incoming) - 5} คำ"
-            reply = QMessageBox.question(
-                self, "พบคำศัพท์ที่เคยลบ",
-                f"พบคำศัพท์จำนวน {len(found_deleted_in_incoming)} คำ ที่คุณเคยลบออกจากเครื่องไปแล้ว:\n"
-                f"({sample_words})\n\n"
-                "ต้องการโหลดคำเหล่านี้กลับมาใช้งานใหม่หรือไม่?",
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+
+            box = QMessageBox(self)
+            box.setWindowTitle("พบคำศัพท์ที่เคยลบในคลังออนไลน์")
+            box.setIcon(QMessageBox.Question)
+            box.setText(f"<b>พบคำศัพท์ {len(found_deleted_in_incoming)} คำ ที่คุณเคยลบออกจากเครื่องไปแล้ว:</b>")
+            box.setInformativeText(
+                f"<p style='color: #fbbf24; font-size: 13px; font-weight: bold;'>👉 {sample_words}</p>"
+                "<p>คุณต้องการ<b>กู้คืนคำเหล่านี้กลับมาใช้งานใหม่</b> หรือ<b>ข้ามไป</b> (ไม่ดาวน์โหลดคำที่เคยลบ)?</p>"
             )
-            if reply == QMessageBox.Yes:
+            btn_restore = box.addButton("🔄 กู้คืนกลับมาใช้", QMessageBox.YesRole)
+            btn_skip = box.addButton("🚫 ข้าม (ไม่โหลดคำนี้)", QMessageBox.NoRole)
+            box.setDefaultButton(btn_skip)
+            box.exec()
+
+            if box.clickedButton() == btn_restore:
                 restore_deleted = True
                 if self.settings:
                     for w in found_deleted_in_incoming:

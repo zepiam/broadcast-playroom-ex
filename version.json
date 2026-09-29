@@ -1,16 +1,16 @@
 {
-  "version": "2.8.6",
-  "changelog": "- แก้ไขปัญหาเสียง Niwat (ชาย) ไม่อ่านตามที่เลือก โดยระบบดีดกลับไปเป็น Premwadee (หญิง)\n- ปรับปรุงการเชื่อมต่อเสียง Edge-TTS บังคับใช้ IPv4 แก้ปัญหาเชื่อมต่อค้าง/ช้าสำหรับเน็ตบ้านไทย\n- เพิ่มระบบเชื่อมต่อใหม่อัตโนมัติ (Auto-Retry) ลดปัญหาข้อความข้ามเมื่อสัญญาณเน็ตกระตุก\n- แก้ไขให้แสดงชื่อที่ตั้งเองใน User Manager บนกล่องแชทและ Overlay\n- แก้ไขอาการค้างเมื่ออ่านชื่อแบบ [ชื่อ] พูดว่า [ข้อความ]",
+  "version": "2.8.7",
+  "changelog": "- เพิ่มระบบโหลดคำศัพท์ใหม่จากคลังศัพท์ทุกครั้งที่เปิดโปรแกรม\n- เพิ่มปุ่ม ช่วยเพิ่มคำศัพท์ ภายในหน้า Setting > Replace",
   "lite": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.6/patch_lite.zip",
-    "size": 17060903,
-    "sha256": "d34fbec177af7fccb3be7c8d87c1c62c54680a59063b8ba234aec4e3a639904e"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.7/patch_lite.zip",
+    "size": 17448047,
+    "sha256": "3ab1b0d1fd1b0456973ae3c4bc0793cb5407f0e08d01da6382edddb9ecfdf1a4"
   },
   "full": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.6/patch_full.zip",
-    "size": 70915175,
-    "sha256": "f7b03452ff4fb3c4b475f07fa6b1ef619c196676d9271d58dc14f3e752833e06"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.7/patch_full.zip",
+    "size": 71301248,
+    "sha256": "bf25f8c331bf839e3bb839edaaeffabbef8e790d26ec054d0aabc7bd87880cb7"
   }
 }

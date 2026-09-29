@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 logger = logging.getLogger("ngreplace")
 
 DICT_URL = "https://men9ch.com/wiki/ng-replace.php?pid=broadcast-playroom&download=1"
+CONTRIBUTE_URL = "https://www.men9ch.com/wiki/ng-replace.php?pid=broadcast-playroom"
 
 
 class NGReplaceDialog(QDialog):
@@ -26,12 +27,92 @@ class NGReplaceDialog(QDialog):
         self.parent_app = parent_app
         self.settings = getattr(parent_app, 'settings', None)
         self.setWindowTitle("🚫 NG-Replace")
-        self.setGeometry(180, 120, 720, 560)
-        self.setMinimumSize(600, 400)
+        self.setGeometry(180, 120, 780, 580)
+        self.setMinimumSize(660, 440)
         self._build_ui()
         self._load_words()
         # ★ snapshot ข้อมูลตอนเปิด (เพื่อเทียบตอนปิด — เตือนถ้ามีการแก้ไข)
         self._original_data = self._collect_current_data()
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(400, self._auto_sync_on_open)
+
+    def _auto_sync_on_open(self):
+        """ซิงค์คำศัพท์ใหม่อัตโนมัติเมื่อเปิดหน้าต่าง (ถ้าเปิด replace_auto_sync)"""
+        if not getattr(self.settings, 'replace_auto_sync', True):
+            return
+        if getattr(self, '_auto_syncing', False):
+            return
+
+        import time
+        now = time.time()
+        if now - getattr(self, '_last_auto_sync_time', 0) < 10:
+            return
+        self._last_auto_sync_time = now
+        self._auto_syncing = True
+
+        from PySide6.QtCore import QThread
+        DICT_URL = "https://men9ch.com/wiki/ng-replace.php?pid=broadcast-playroom&download=1"
+
+        class _AutoSyncWorker(QThread):
+            success_sig = Signal(dict)
+            done_sig = Signal()
+
+            def run(self):
+                try:
+                    import urllib.request as _urq, ssl, json as _json
+                    ctx = ssl.create_default_context()
+                    ctx.load_default_certs()
+                    req = _urq.Request(DICT_URL, headers={
+                        "User-Agent": "BroadcastPlayroom/2.0",
+                        "Accept": "application/json"
+                    })
+                    with _urq.urlopen(req, timeout=8, context=ctx) as resp:
+                        raw = resp.read().decode("utf-8")
+                    parsed = _json.loads(raw)
+                    incoming = parsed.get("replace_words", parsed) if isinstance(parsed, dict) else {}
+                    if isinstance(incoming, dict) and incoming:
+                        self.success_sig.emit(incoming)
+                except Exception as e:
+                    logger.debug(f"_auto_sync_on_open failed/skipped: {e}")
+                finally:
+                    self.done_sig.emit()
+
+        worker = _AutoSyncWorker(self)
+
+        def _on_success(incoming):
+            from text_filter import TextFilter as _TF
+            deleted_set = set(getattr(self.settings, 'replace_deleted_words', []) or [])
+            existing = set()
+            for r in range(self.table.rowCount()):
+                w0 = self.table.cellWidget(r, 0)
+                if w0 and hasattr(w0, '_edit'):
+                    txt = w0._edit.text().strip()
+                    if txt:
+                        existing.add(txt)
+
+            added_count = 0
+            for k, v in incoming.items():
+                src = str(k).strip()
+                if not src or src in existing or src in deleted_set:
+                    continue
+                norm = _TF._normalize_entry(v)
+                self._add_row_data(src, norm.get('display', ''), norm.get('read', ''))
+                existing.add(src)
+                added_count += 1
+
+            if added_count > 0:
+                self._update_count()
+                self._save_silent()
+                self._original_data = self._collect_current_data()
+                logger.info(f"Auto-synced {added_count} new words in ngreplace dialog")
+
+        def _on_done():
+            self._auto_syncing = False
+
+        worker.success_sig.connect(_on_success)
+        worker.done_sig.connect(_on_done)
+        self._auto_sync_worker = worker
+        worker.start()
 
     def _collect_current_data(self):
         """อ่านข้อมูลทั้งหมดจาก table → dict {src: {display, read}}"""
@@ -72,6 +153,27 @@ class NGReplaceDialog(QDialog):
         else:
             event.accept()  # ไม่มีการเปลี่ยนแปลง → ปิดได้เลย
 
+    def _open_contribute_url(self):
+        """เปิดหน้าเว็บช่วยเพิ่มคำศัพท์เข้าคลังกลาง"""
+        try:
+            from ui.dialogs.replace_contribute import open_replace_contribute_dialog
+            open_replace_contribute_dialog(self)
+        except Exception as e:
+            logger.error(f"Cannot open contribute dialog: {e}")
+            from PySide6.QtGui import QDesktopServices
+            from PySide6.QtCore import QUrl
+            QDesktopServices.openUrl(QUrl(CONTRIBUTE_URL))
+
+    def _on_auto_sync_toggled(self, checked: bool):
+        """บันทึกสถานะเปิด/ปิด Auto-Sync"""
+        if self.settings:
+            self.settings.replace_auto_sync = bool(checked)
+            try:
+                from settings import save_settings
+                save_settings(self.settings)
+            except Exception as e:
+                logger.error(f"_on_auto_sync_toggled save failed: {e}")
+
     def _build_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -98,10 +200,41 @@ class NGReplaceDialog(QDialog):
         hlayout.addWidget(btn_add)
         layout.addWidget(header)
 
-        # ★ Search box (ค้นหาใน คำเดิม + คำที่อ่าน)
+        # ★ Banner ช่วยเพิ่มคำศัพท์ (สีเขียวเด่น)
+        banner = QFrame()
+        banner.setStyleSheet("background-color: #0d121f; border-bottom: 1px solid #1e2436;")
+        banner_layout = QHBoxLayout(banner)
+        banner_layout.setContentsMargins(16, 7, 16, 7)
+        banner_layout.setSpacing(10)
+        btn_contribute = QPushButton("🌐 ช่วยเราเพิ่มคำศัพท์ (แชร์กับทุกคนที่ใช้โปรแกรม)")
+        btn_contribute.setCursor(Qt.PointingHandCursor)
+        btn_contribute.setStyleSheet("""
+            QPushButton {
+                background-color: #059669;
+                color: #ffffff;
+                font-size: 13px;
+                font-weight: 600;
+                border: 1px solid #10b981;
+                border-radius: 6px;
+                padding: 6px 14px;
+            }
+            QPushButton:hover {
+                background-color: #10b981;
+                border-color: #34d399;
+            }
+            QPushButton:pressed {
+                background-color: #047857;
+            }
+        """)
+        btn_contribute.clicked.connect(self._open_contribute_url)
+        banner_layout.addWidget(btn_contribute)
+        banner_layout.addStretch()
+        layout.addWidget(banner)
+
+        # ★ Search box + Auto-sync CheckBox
         search_row = QHBoxLayout()
-        search_row.setContentsMargins(16, 8, 16, 4)
-        search_row.setSpacing(8)
+        search_row.setContentsMargins(16, 8, 16, 6)
+        search_row.setSpacing(12)
         search_lbl = QLabel("🔍")
         search_lbl.setStyleSheet("color: #9ca3af; font-size: 16px;")
         search_row.addWidget(search_lbl)
@@ -110,6 +243,37 @@ class NGReplaceDialog(QDialog):
         self.search_entry.setStyleSheet("QLineEdit { background: #0a0e1a; border: 1px solid #2a2f45; border-radius: 4px; padding: 6px 10px; color: #e5e7eb; }")
         self.search_entry.textChanged.connect(self._filter_rows)
         search_row.addWidget(self.search_entry, 1)
+
+        from PySide6.QtWidgets import QCheckBox
+        self.chk_auto_sync = QCheckBox("ซิงค์คลังศัพท์อัตโนมัติเมื่อเปิดโปรแกรม")
+        self.chk_auto_sync.setToolTip("ดาวน์โหลดคำศัพท์ที่ผ่านการ Approve จากคลังชุมชนอัตโนมัติทุกครั้งที่เปิดโปรแกรม")
+        self.chk_auto_sync.setCursor(Qt.PointingHandCursor)
+        self.chk_auto_sync.setStyleSheet("""
+            QCheckBox {
+                color: #d1d5db;
+                font-size: 13px;
+                spacing: 6px;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border: 1px solid #4b5563;
+                border-radius: 3px;
+                background: #111827;
+            }
+            QCheckBox::indicator:hover {
+                border-color: #7c3aed;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #7c3aed;
+                border-color: #a78bfa;
+            }
+        """)
+        auto_sync_val = getattr(self.settings, 'replace_auto_sync', True) if self.settings else True
+        self.chk_auto_sync.setChecked(bool(auto_sync_val))
+        self.chk_auto_sync.toggled.connect(self._on_auto_sync_toggled)
+        search_row.addWidget(self.chk_auto_sync)
+
         layout.addLayout(search_row)
 
         # ★ Table (4 columns: source+🔊 / display / read+🔊 / ❌ delete)
@@ -247,6 +411,12 @@ class NGReplaceDialog(QDialog):
             QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes,
         )
         if reply == QMessageBox.Yes:
+            # ★ บันทึกคำที่ลบลง replace_deleted_words ป้องกัน auto-sync ดึงกลับมา
+            if self.settings and word and not word.startswith("แถว "):
+                del_list = list(getattr(self.settings, 'replace_deleted_words', []) or [])
+                if word not in del_list:
+                    del_list.append(word)
+                    self.settings.replace_deleted_words = del_list
             # ★ clear cell widgets ก่อน removeRow (กัน crash)
             for col in range(4):
                 w = self.table.cellWidget(row, col)
@@ -376,10 +546,41 @@ class NGReplaceDialog(QDialog):
         """เปิด dialog เพิ่มคำศัพท์ใหม่ (3 ช่อง + ปุ่ม preview)"""
         dlg = QDialog(self)
         dlg.setWindowTitle("➕ เพิ่มคำศัพท์")
-        dlg.setMinimumWidth(420)
+        dlg.setMinimumWidth(440)
         layout = QVBoxLayout(dlg)
-        layout.setSpacing(8)
+        layout.setSpacing(10)
         layout.setContentsMargins(20, 16, 20, 16)
+
+        # ★ ปุ่มสีเขียว ช่วยเพิ่มคำศัพท์ (แชร์กับทุกคนที่ใช้โปรแกรม)
+        btn_contribute = QPushButton("🌐 ช่วยเราเพิ่มคำศัพท์ (แชร์กับทุกคนที่ใช้โปรแกรม)")
+        btn_contribute.setCursor(Qt.PointingHandCursor)
+        btn_contribute.setStyleSheet("""
+            QPushButton {
+                background-color: #059669;
+                color: #ffffff;
+                font-size: 13px;
+                font-weight: 600;
+                border: 1px solid #10b981;
+                border-radius: 6px;
+                padding: 8px 12px;
+            }
+            QPushButton:hover {
+                background-color: #10b981;
+                border-color: #34d399;
+            }
+            QPushButton:pressed {
+                background-color: #047857;
+            }
+        """)
+        btn_contribute.clicked.connect(self._open_contribute_url)
+        layout.addWidget(btn_contribute)
+
+        # เส้นคั่นบางๆ
+        sep = QFrame()
+        sep.setFrameShape(QFrame.HLine)
+        sep.setStyleSheet("color: #2a2f45; margin-top: 2px; margin-bottom: 2px;")
+        layout.addWidget(sep)
+
         # ★ คำเดิม + 🔊 preview
         layout.addWidget(QLabel("คำเดิม:"))
         src_row = QHBoxLayout()
@@ -422,8 +623,15 @@ class NGReplaceDialog(QDialog):
         if dlg.exec():
             src = src_entry.text().strip()
             if src:
+                # ★ ปลดบล็อกหากคำนี้เคยอยู่ใน replace_deleted_words
+                if self.settings:
+                    del_list = list(getattr(self.settings, 'replace_deleted_words', []) or [])
+                    if src in del_list:
+                        del_list.remove(src)
+                        self.settings.replace_deleted_words = del_list
                 self._add_row_data(src, display_entry.text().strip(), read_entry.text().strip())
                 self._update_count()
+                self._save_silent()
 
     def _download_from_wiki(self):
         """ดาวน์โหลด dictionary จากเว็บชุมชน + import"""
@@ -487,8 +695,6 @@ class NGReplaceDialog(QDialog):
         self._reset_download_btn()
         QMessageBox.critical(self, "ล้มเหลว", f"ดาวน์โหลดไม่ได้: {error}")
 
-        threading.Thread(target=_worker, daemon=True).start()
-
     def _reset_download_btn(self):
         if hasattr(self, '_download_btn') and self._download_btn:
             self._download_btn.setText("⬇️ โหลดจากคลัง")
@@ -496,6 +702,7 @@ class NGReplaceDialog(QDialog):
 
     def _on_download_done(self, incoming):
         """import dictionary ที่โหลดมา — merge เข้า table"""
+        self._reset_download_btn()
         from text_filter import TextFilter as _TF
         # ★ normalize incoming → {src: {display, read}}
         normalized = {}
@@ -515,21 +722,61 @@ class NGReplaceDialog(QDialog):
                 if src:
                     existing.add(src)
 
+        deleted_words = list(getattr(self.settings, 'replace_deleted_words', []) or [])
+        deleted_set = set(deleted_words)
+
+        # หาว่ามีคำที่เคยลบใน incoming ที่ยังไม่มีใน existing หรือไม่
+        found_deleted_in_incoming = [src for src in normalized if src in deleted_set and src not in existing]
+
+        restore_deleted = False
+        if found_deleted_in_incoming:
+            sample_words = ", ".join(found_deleted_in_incoming[:5])
+            if len(found_deleted_in_incoming) > 5:
+                sample_words += f" และอีก {len(found_deleted_in_incoming) - 5} คำ"
+            reply = QMessageBox.question(
+                self, "พบคำศัพท์ที่เคยลบ",
+                f"พบคำศัพท์จำนวน {len(found_deleted_in_incoming)} คำ ที่คุณเคยลบออกจากเครื่องไปแล้ว:\n"
+                f"({sample_words})\n\n"
+                "ต้องการโหลดคำเหล่านี้กลับมาใช้งานใหม่หรือไม่?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+            )
+            if reply == QMessageBox.Yes:
+                restore_deleted = True
+                # ลบออกจาก replace_deleted_words
+                for w in found_deleted_in_incoming:
+                    if w in deleted_words:
+                        deleted_words.remove(w)
+                self.settings.replace_deleted_words = deleted_words
+
         # ★ merge: เพิ่มเฉพาะคำใหม่ (คำซ้ำข้าม)
         added = 0
         conflicts = 0
+        skipped_deleted = 0
+        restored = 0
+
         for src, entry in normalized.items():
             if src in existing:
                 conflicts += 1
+            elif src in deleted_set and not restore_deleted:
+                skipped_deleted += 1
             else:
                 self._add_row_data(src, entry.get('display', ''), entry.get('read', ''))
                 existing.add(src)
-                added += 1
+                if src in found_deleted_in_incoming and restore_deleted:
+                    restored += 1
+                else:
+                    added += 1
 
         self._update_count()
+        self._save_silent()
+
         msg = f"✅ เพิ่ม {added} คำใหม่"
+        if restored:
+            msg += f"\n🔄 กู้คืน {restored} คำที่เคยลบกลับมาใช้งาน"
         if conflicts:
-            msg += f"\n⚠️ ข้าม {conflicts} คำซ้ำ (เก็บค่าเดิม)"
+            msg += f"\n⚠️ ข้าม {conflicts} คำเดิมในเครื่อง (ไม่เขียนทับ)"
+        if skipped_deleted:
+            msg += f"\n🚫 ข้าม {skipped_deleted} คำที่คุณเคยลบไว้"
         QMessageBox.information(self, "⬇️ โหลดเสร็จ", msg)
 
     def _delete_selected(self):

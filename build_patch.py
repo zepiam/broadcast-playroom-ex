@@ -33,6 +33,14 @@ import sys
 import zipfile
 from pathlib import Path
 
+# ★ บังคับ encoding utf-8 สำหรับ terminal บน Windows (กัน crash กับ emoji / ภาษาไทย)
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 
 # ── ⚠️ เปลี่ยนเป็น GitHub repo ของคุณ (format: user/repo) ──
 GITHUB_REPO = "zepiam/broadcast-playroom-ex"
@@ -51,6 +59,8 @@ PATCH_PATTERNS = [
     "version.json",
     # assets (recursive — logo, fonts, icon)
     "assets/**",
+    # UI package
+    "ui/**",
     # CSS guide
     "game_overlay_css_guide.md",
     # ★ ภาพตัวละคร default (Character Talk) — bundle ใน exe และ ship ใน patch

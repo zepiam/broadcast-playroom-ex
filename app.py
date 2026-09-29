@@ -336,6 +336,9 @@ class TTSForLivestreamApp(QMainWindow):
         # ★ แจ้งเตือนใน Live Chat เมื่อล็อกอินแพลตฟอร์มหมดอายุ (ตรวจตอนเปิดโปรแกรมแล้ว)
         QTimer.singleShot(5000, self._notify_expired_logins)
 
+        # ★ Auto-sync คลังคำศัพท์ (Replace) จากเซิร์ฟเวอร์ 4 วินาทีหลังเปิดโปรแกรม
+        QTimer.singleShot(4000, self._auto_sync_replace_dict)
+
     # ════════════════════════════════════════════════════════════
     # Subsystem init (events + donate + notification + history)
     # ════════════════════════════════════════════════════════════
@@ -4086,6 +4089,67 @@ class TTSForLivestreamApp(QMainWindow):
             ).start()
         except Exception:
             pass
+
+    def _auto_sync_replace_dict(self):
+        """ซิงค์คลังศัพท์ Replace อัตโนมัติจากเซิร์ฟเวอร์เมื่อเปิดโปรแกรม (ถ้าเปิดใช้งาน)"""
+        if not getattr(self.settings, 'replace_auto_sync', True):
+            return
+
+        def _worker():
+            try:
+                import urllib.request as _urq
+                import ssl, json as _json
+                from text_filter import TextFilter as _TF
+                url = "https://men9ch.com/wiki/ng-replace.php?pid=broadcast-playroom&download=1"
+                ctx = ssl.create_default_context()
+                ctx.load_default_certs()
+                req = _urq.Request(url, headers={
+                    "User-Agent": "BroadcastPlayroom/2.0",
+                    "Accept": "application/json",
+                })
+                with _urq.urlopen(req, timeout=10, context=ctx) as resp:
+                    raw = resp.read().decode("utf-8")
+                parsed = _json.loads(raw)
+                if isinstance(parsed, dict) and "replace_words" in parsed:
+                    incoming = parsed["replace_words"]
+                elif isinstance(parsed, dict):
+                    incoming = parsed
+                else:
+                    return
+                if not isinstance(incoming, dict) or not incoming:
+                    return
+
+                deleted_set = set(getattr(self.settings, 'replace_deleted_words', []) or [])
+                current_words = getattr(self.settings, 'replace_words', {}) or {}
+                added_count = 0
+                new_words = dict(current_words)
+
+                for k, v in incoming.items():
+                    src = str(k).strip()
+                    if not src:
+                        continue
+                    # 1. หากผู้ใช้เคยกดลบคำนี้ไปแล้ว -> ห้ามโหลดกลับมา
+                    if src in deleted_set:
+                        continue
+                    # 2. หากมีคำนี้อยู่ในเครื่องอยู่แล้ว -> ห้ามทับคำเดิมเด็ดขาด
+                    if src in current_words:
+                        continue
+                    # 3. เป็นคำใหม่ -> เพิ่มเข้าเครื่อง
+                    new_words[src] = _TF._normalize_entry(v)
+                    added_count += 1
+
+                if added_count > 0:
+                    self.settings.replace_words = new_words
+                    from settings import save_settings
+                    save_settings(self.settings)
+                    if hasattr(self, 'pipeline') and self.pipeline:
+                        self.pipeline.set_filter(self.settings.to_text_filter())
+                    logger.info(f"Auto-synced {added_count} new words to replace dictionary")
+            except Exception as e:
+                logger.debug(f"_auto_sync_replace_dict skipped/failed: {e}")
+
+        import threading
+        threading.Thread(target=_worker, daemon=True).start()
 
     # ════════════════════════════════════════════════════════════
     # ★ OBS launch — เปิด OBS หรือดึงหน้าต่าง OBS ขึ้นมา

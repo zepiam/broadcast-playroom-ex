@@ -652,6 +652,8 @@ class AppSettings:
     # show_no_tts = แสดงในแชท + ไม่อ่าน TTS + ไม่ขึ้น overlay
     banned_word_modes: dict = field(default_factory=dict)
     replace_words: dict[str, dict] = field(default_factory=lambda: {"55@": {"display": "", "read": "ฮ่าๆ"}})
+    replace_auto_sync: bool = True  # ซิงค์คลังคำศัพท์จากเซิร์ฟเวอร์อัตโนมัติตอนเปิดโปรแกรม
+    replace_deleted_words: list[str] = field(default_factory=list)  # รายการคำที่เคยลบ (ห้าม auto-sync โหลดกลับมา)
     secret_codes: list[dict] = field(default_factory=list)  # [{code, sound_path, volume}]
     secret_code_daily_limit: int = 0  # จำกัดการเล่นเสียงโค้ดลับต่อ user/วัน (0 = ไม่จำกัด)
     code_sound_muted: bool = False  # ปิดเสียงโค้ดลับทั้งหมดชั่วคราว (ไม่เล่น + ไม่ติดคิว)
@@ -1002,6 +1004,8 @@ class AppSettings:
             "banned_words": list(self.banned_words),
             "banned_word_modes": dict(self.banned_word_modes),
             "replace_words": dict(self.replace_words),
+            "replace_auto_sync": bool(self.replace_auto_sync),
+            "replace_deleted_words": list(self.replace_deleted_words),
             "secret_codes": list(self.secret_codes),
             "secret_code_daily_limit": self.secret_code_daily_limit,
             "code_sound_muted": self.code_sound_muted,
@@ -1683,6 +1687,10 @@ class AppSettings:
             s.replace_words = {
                 k: _TF._normalize_entry(v) for k, v in dict(data["replace_words"]).items()
             }
+        if "replace_auto_sync" in data:
+            s.replace_auto_sync = bool(data["replace_auto_sync"])
+        if "replace_deleted_words" in data:
+            s.replace_deleted_words = list(data["replace_deleted_words"])
         if "secret_codes" in data:
             s.secret_codes = list(data["secret_codes"])
             # ── migrate: secret_code prefix บังคับ "!" ──

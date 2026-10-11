@@ -28,6 +28,12 @@ class ChatPanel(QFrame):
     bot_toggle_requested = Signal(bool)  # ★ emit เมื่อ toggle Enable/Disable Chat Bot
     bot_platforms_changed = Signal(dict)  # ★ emit {platform: bool} เมื่อติ๊กเมนูเร็ว
     bot_settings_requested = Signal()  # ★ emit เมื่อกดเฟือง → ไปหน้า Chat Bot settings
+    # ★ Clip marker signals
+    mark_clip_clicked = Signal()
+    mark_clip_settings = Signal()
+    mark_clip_open_file = Signal()
+    mark_clip_open_location = Signal()
+    mark_clip_clear_history = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -98,6 +104,43 @@ class ChatPanel(QFrame):
         self.btn_system.setToolTip("แสดงสถานะเชื่อมต่อ (✅/⚪/⚠️) ในแชท")
         self.btn_system.setStyleSheet("font-size: 15px; padding: 0px;")
         hlayout.addWidget(self.btn_system)
+
+        # ═══ ⭐ Mark Clip (ข้างขวากระดิ่ง — ดาวเดี่ยว + ลูกศร ความสูง 30px เท่าเพื่อน) ═══
+        from ui.widgets.split_button import SplitButton
+        self.btn_mark_clip = SplitButton(
+            text="⭐",
+            parent=self,
+            tooltip="บันทึกเวลาช็อตเด็ด (Clip Marker) ลงไฟล์\nคลิกลูกศรเพื่อตั้งค่าปุ่มลัดหรือเปิดไฟล์",
+        )
+        self.btn_mark_clip.setFixedHeight(30)
+        self.btn_mark_clip._main_btn.setFixedHeight(30)
+        self.btn_mark_clip._main_btn.setFixedWidth(28)
+        self.btn_mark_clip._arrow_btn.setFixedHeight(30)
+        self.btn_mark_clip._arrow_btn.setFixedWidth(14)
+        self.btn_mark_clip._main_btn.setStyleSheet(
+            "QPushButton { background: #1a1f35; color: #ffffff; border: 1px solid #3b4261; "
+            "border-top-left-radius: 6px; border-bottom-left-radius: 6px; border-top-right-radius: 0px; border-bottom-right-radius: 0px; "
+            "font-size: 14px; padding: 0px; margin: 0px; }"
+            "QPushButton:hover { background: #252d4a; border-color: #f59e0b; }"
+            "QPushButton:pressed { background: #131728; }"
+        )
+        self.btn_mark_clip._arrow_btn.setStyleSheet(
+            "QPushButton { background: #1a1f35; color: #94a3b8; border: 1px solid #3b4261; border-left: none; "
+            "border-top-right-radius: 6px; border-bottom-right-radius: 6px; border-top-left-radius: 0px; border-bottom-left-radius: 0px; "
+            "font-size: 10px; padding: 0px; margin: 0px; }"
+            "QPushButton:hover { background: #252d4a; color: #ffffff; border-color: #f59e0b; }"
+            "QPushButton:pressed { background: #131728; }"
+        )
+        self.btn_mark_clip.set_menu_actions([
+            ("⚙️ ตั้งค่าปุ่มลัด (Hotkey)...", self.mark_clip_settings.emit),
+            ("📂 เปิดไฟล์บันทึกคลิป (clip_markers.txt)", self.mark_clip_open_file.emit),
+            ("📁 เปิดโฟลเดอร์ที่เก็บไฟล์ (Open File Location)", self.mark_clip_open_location.emit),
+            ("—", None),
+            ("🗑️ ล้างประวัติมาร์กคลิป (Clear History)", self.mark_clip_clear_history.emit),
+        ])
+        self.btn_mark_clip.main_clicked.connect(self.mark_clip_clicked.emit)
+        hlayout.addWidget(self.btn_mark_clip)
+
         # ★ Code Mute toggle (ปิดเสียงโค้ดลับ)
         self.btn_code_mute = QPushButton("🎟")
         self.btn_code_mute.setObjectName("IconButton")
@@ -634,6 +677,17 @@ class ChatPanel(QFrame):
 
     def refresh_display_names(self):
         """อัปเดตชื่อที่แสดงของทุก row (หลังตั้งชื่อใหม่ใน User Manager)"""
+        for row in self._rows:
+            try:
+                row.refresh_display_name()
+            except Exception:
+                pass
+
+    def update_clip_hotkey_label(self, hotkey_str: str = "f9"):
+        """อัปเดต tooltip ของปุ่มมาร์กคลิปให้แสดงปุ่มลัดปัจจุบัน เช่น ⭐ (F9)"""
+        hk_label = (hotkey_str or "F9").upper()
+        if hasattr(self, "btn_mark_clip"):
+            self.btn_mark_clip.setToolTip(f"บันทึกเวลาช็อตเด็ด Clip Marker ({hk_label})\nคลิกลูกศรเพื่อตั้งค่าปุ่มลัดหรือเปิดไฟล์")
         for row in self._rows:
             try:
                 row.refresh_display_name()

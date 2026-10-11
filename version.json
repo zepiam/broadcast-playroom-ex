@@ -1,16 +1,16 @@
 {
-  "version": "2.8.10",
-  "changelog": "- แก้ไขข้อผิดพลาดเปิดโปรแกรมไม่ขึ้น (Hotfix SplitButton)\n- เพิ่มระบบ Sync เวลา Live อัตโนมัติกับ OBS WebSocket และระบบ Mark Clip\n- เพิ่มปุ่ม 1-Click Windows Defender Exclusion ป้องกันแอนตี้ไวรัสลบไฟล์โปรแกรมใน Setting",
+  "version": "2.8.11",
+  "changelog": "minor bug fix",
   "lite": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.10/patch_lite.zip",
-    "size": 17662780,
-    "sha256": "dfcffa18d077ed07eda98a60db0504694b39e40c4fd81123f38d94a70444d2da"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.11/patch_lite.zip",
+    "size": 17670562,
+    "sha256": "2d3da083058f18c4734a1f0395b41cf13fb65c2d980c2c0f3b395b42bdf5fca0"
   },
   "full": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.10/patch_full.zip",
-    "size": 72428361,
-    "sha256": "717e439a5ca2ebdd0de057b4011690d0fbb694d2c3ab436335ebe81b11560632"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.11/patch_full.zip",
+    "size": 72436532,
+    "sha256": "fb815554858e52d9ee2507eeea6bfaa6589665a583ab4793f99d85823df97257"
   }
 }

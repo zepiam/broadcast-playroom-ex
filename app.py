@@ -1252,12 +1252,12 @@ class TTSForLivestreamApp(QMainWindow):
         self.topbar.update_clicked.connect(self._on_update_button_clicked)
         # ★ OBS launch button — เปิด OBS หรือดึงหน้าต่าง OBS ขึ้นมา
         self.topbar.obs_launch_clicked.connect(self._on_obs_launch)
-        # ★ Mark clip
-        self.topbar.mark_clip_clicked.connect(self._on_mark_clip_clicked)
-        self.topbar.mark_clip_settings.connect(self._open_clip_hotkey_dialog)
-        self.topbar.mark_clip_open_file.connect(self._open_clip_markers_file)
-        self.topbar.mark_clip_open_location.connect(self._open_clip_markers_location)
-        self.topbar.mark_clip_clear_history.connect(self._clear_clip_markers_history)
+        # ★ Mark clip (เชื่อมต่อจาก ChatPanel ที่อยู่ขวากระดิ่ง)
+        self.chat_panel.mark_clip_clicked.connect(self._on_mark_clip_clicked)
+        self.chat_panel.mark_clip_settings.connect(self._open_clip_hotkey_dialog)
+        self.chat_panel.mark_clip_open_file.connect(self._open_clip_markers_file)
+        self.chat_panel.mark_clip_open_location.connect(self._open_clip_markers_location)
+        self.chat_panel.mark_clip_clear_history.connect(self._clear_clip_markers_history)
 
         # ═══ Build platform cards ═══
         self._platform_cards = {}
@@ -5582,13 +5582,16 @@ class TTSForLivestreamApp(QMainWindow):
         self._session_header_written = False
 
     def mark_clip(self, author: str = "Streamer", note: str = "") -> str:
-        """มาร์กช่วงเวลาไฮไลต์ / ช็อตเด็ด (บันทึกเวลาสตรีมลงไฟล์ clip_markers.txt และ settings)"""
+        """มาร์กช่วงเวลาไฮไลต์ / ช็อตเด็ด (บันทึกเวลาสตรีมลงไฟล์ clip_markers.txt และ settings)
+        ★ เงื่อนไขสำคัญ: ต้องเปิด OBS และกด Start Streaming หรือ Start Recording อยู่เท่านั้น
+        เพื่อป้องกันการกดพลาดตอนไม่ได้ไลฟ์ และทำให้ไฟล์บันทึกคลิปสะอาด 100%
+        """
         now = time.time()
         time_str = "00:00"
         elapsed_sec = 0
         source_tag = "Live"
 
-        # 1. ลองดึงเวลาตรงจาก OBS WebSocket ก่อน (แม่นยำที่สุด)
+        # 1. ตรวจสอบสถานะจริงจาก OBS WebSocket
         obs_synced = False
         if getattr(self.settings, 'obs_ws_enabled', False):
             try:
@@ -5609,10 +5612,11 @@ class TTSForLivestreamApp(QMainWindow):
             except Exception as e:
                 logger.debug(f"OBS get_obs_stream_status check failed: {e}")
 
-        # 2. ถ้าไม่ได้ต่อ OBS หรือ OBS ไม่ได้เปิด ให้ใช้เวลาจากการเริ่ม Live Session
+        # ★ ถ้า OBS ไม่ได้ต่อ หรือยังไม่ได้เริ่มสตรีม/อัดคลิป ให้ปฏิเสธการเซฟทันที
         if not obs_synced:
-            live_start = getattr(self, "_live_start_time", None)
-            if live_start:
+            # ตรวจสอบเพิ่มเติมว่ามี Live Session จาก WebSocket Watcher ที่กำลังทำงานอยู่หรือไม่
+            if getattr(self, '_live_session_active', False) and getattr(self, '_live_start_time', None):
+                live_start = self._live_start_time
                 elapsed_sec = max(0, int(now - live_start))
                 hrs = elapsed_sec // 3600
                 mins = (elapsed_sec % 3600) // 60
@@ -5620,14 +5624,10 @@ class TTSForLivestreamApp(QMainWindow):
                 time_str = f"{hrs:02d}:{mins:02d}:{secs:02d}" if hrs > 0 else f"{mins:02d}:{secs:02d}"
                 source_tag = getattr(self, '_live_session_source', 'Live')
             else:
-                # 3. Fallback กรณีไม่ได้เริ่ม live session
-                app_start = getattr(self, "_app_start_time", now)
-                elapsed_sec = max(0, int(now - app_start))
-                hrs = elapsed_sec // 3600
-                mins = (elapsed_sec % 3600) // 60
-                secs = elapsed_sec % 60
-                time_str = f"{hrs:02d}:{mins:02d}:{secs:02d}" if hrs > 0 else f"{mins:02d}:{secs:02d}"
-                source_tag = "Timer"
+                logger.info("mark_clip rejected: OBS is not streaming or recording")
+                if hasattr(self, 'status_bar'):
+                    self.status_bar.set_status("⚠️ ยังไม่ได้เริ่ม Live / บันทึกใน OBS (ไม่สามารถ Mark Clip ได้)")
+                return ""
 
         wall_clock = time.strftime("%Y-%m-%d %H:%M:%S")
         entry = {
@@ -5793,6 +5793,8 @@ class TTSForLivestreamApp(QMainWindow):
         self._update_clip_shortcut()
         if hasattr(self, 'topbar'):
             self.topbar.update_clip_hotkey_label(new_hk)
+        if hasattr(self, 'chat_panel'):
+            self.chat_panel.update_clip_hotkey_label(new_hk)
 
     def _update_clip_shortcut(self):
         """อัปเดต QShortcut ในโปรแกรมตาม clip_hotkey"""

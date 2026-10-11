@@ -527,6 +527,7 @@ def setup_fonts(app: QApplication) -> None:
     font_files = [
         "Kanit-Regular.ttf", "Kanit-Medium.ttf", "Kanit-SemiBold.ttf", "Kanit-Bold.ttf",
         "NotoSansThai-Regular.ttf", "NotoSansThai-Medium.ttf", "NotoSansThai-Bold.ttf",
+        "genxBigPixel.ttf",
     ]
     for fname in font_files:
         p = os.path.join(fonts_dir, fname)

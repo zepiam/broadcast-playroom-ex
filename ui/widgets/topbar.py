@@ -14,8 +14,87 @@ from PySide6.QtWidgets import (
     QFrame, QLabel, QPushButton, QHBoxLayout, QWidget,
     QSlider, QWidgetAction,
 )
+from PySide6.QtGui import QPainter, QColor, QPen, QFont, QPainterPath
 import ui.theme as theme  # ★ อ้าง theme.COLOR_X สดตอนสร้าง widget (ตามธีมที่เลือกไว้จริง)
 from ui.widgets.split_button import SplitButton
+
+
+class NeonButton(QPushButton):
+    """ปุ่มนีออนสไตล์ Motion Reference (Open Neon Sign)
+    - ตัวอักษรและกรอบวาดเป็นหลอดนีออนดัด (Dual-stroke tube)
+    - หลอดแกนในสีขาวสว่างจ้า (Core White Tube)
+    - ขอบนอกและแสงเรืองรอง (Aura Glow) เปลี่ยนสีตามธีม
+    - พื้นหลังโปร่งใส (Hollow Glass Look) สวยงามแบบป้ายนีออนแท้
+    """
+    def __init__(self, text: str = "NEW UPDATE", parent=None):
+        super().__init__(text, parent)
+        self.setFixedHeight(32)
+        self.setCursor(Qt.PointingHandCursor)
+        self.brightness = 1.0
+        self.glow_alpha = 180
+        self.blur_radius = 16
+        self._neon_color = QColor(theme.COLOR_ACCENT)
+        # พื้นหลังโปร่งใส ขอบและตัวอักษรจัดการผ่าน paintEvent
+        self.setStyleSheet("QPushButton { background: transparent; border: none; }")
+
+    def set_neon_state(self, brightness: float, glow_alpha: int, blur_radius: int):
+        self.brightness = brightness
+        self.glow_alpha = glow_alpha
+        self.blur_radius = blur_radius
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.TextAntialiasing)
+
+        rect = self.rect().adjusted(2, 2, -2, -2)
+        accent = getattr(theme, "COLOR_ACCENT", "#7c3aed")
+        ac_color = QColor(accent)
+
+        b = max(0.1, min(1.3, self.brightness))
+        
+        # สีหลอดนีออนภายนอก (Outer Neon Color)
+        neon_outer = QColor(
+            int(min(255, ac_color.red() * b)),
+            int(min(255, ac_color.green() * b)),
+            int(min(255, ac_color.blue() * b)),
+            int(min(255, self.glow_alpha))
+        )
+        # สีแกนหลอดด้านใน (Core Tube - ขาวอมสีนีออนจางๆ)
+        core_white = QColor(
+            int(min(255, 230 + ac_color.red() * 0.1 * b)),
+            int(min(255, 230 + ac_color.green() * 0.1 * b)),
+            int(min(255, 230 + ac_color.blue() * 0.1 * b)),
+            int(min(255, 220 * b))
+        )
+
+        # 1. วาดกรอบหลอดนีออนรอบนอก (Rounded Rect Tube)
+        # ชั้นที่ 1: แสงออร่ารอบเส้นกรอบ (Thick Outer Glow)
+        aura_pen = QPen(neon_outer, 3.5)
+        aura_pen.setJoinStyle(Qt.RoundJoin)
+        painter.setPen(aura_pen)
+        painter.setBrush(QColor(ac_color.red(), ac_color.green(), ac_color.blue(), int(15 * b)))
+        painter.drawRoundedRect(rect, 14, 14)
+
+        # ชั้นที่ 2: แกนหลอดนีออนเส้นคม (Core Tube Line)
+        core_pen = QPen(core_white, 1.5)
+        core_pen.setJoinStyle(Qt.RoundJoin)
+        painter.setPen(core_pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(rect, 14, 14)
+
+        # 2. วาดตัวอักษร Retro Pixel คมกริบ (Razor-Sharp Pure Pixel)
+        font = QFont("genxBigPixel", 10)
+        if not font.exactMatch():
+            font = QFont("Fixedsys", 10)
+        font.setPixelSize(12)
+        font.setLetterSpacing(QFont.AbsoluteSpacing, 1.0)
+        painter.setFont(font)
+
+        # วาดตัวหนังสือพิกเซลเพียวๆ สีขาวสว่างจ้า คมกริบ ไร้เงากวนสายตา
+        painter.setPen(core_white)
+        painter.drawText(rect, Qt.AlignCenter, self.text())
 
 
 class TopBar(QFrame):
@@ -188,28 +267,6 @@ class TopBar(QFrame):
         self.btn_overlay_plus.main_clicked.connect(self.overlay_plus_toggled.emit)
         layout.addWidget(self.btn_overlay_plus)
 
-        # ═══ ⭐ Mark Clip (บันทึกคลิปไฮไลต์) ═══
-        self.btn_mark_clip = SplitButton(
-            text="⭐ Mark",
-            parent=self,
-            tooltip="บันทึกเวลาช็อตเด็ด (Clip Marker) ลงไฟล์\nคลิกลูกศรเพื่อตั้งค่าปุ่มลัดหรือเปิดไฟล์",
-        )
-        self.btn_mark_clip.set_menu_actions([
-            ("⚙️ ตั้งค่าปุ่มลัด (Hotkey)...", self.mark_clip_settings.emit),
-            ("📂 เปิดไฟล์บันทึกคลิป (clip_markers.txt)", self.mark_clip_open_file.emit),
-            ("📁 เปิดโฟลเดอร์ที่เก็บไฟล์ (Open File Location)", self.mark_clip_open_location.emit),
-            ("—", None),
-            ("🗑️ ล้างประวัติมาร์กคลิป (Clear History)", self.mark_clip_clear_history.emit),
-        ])
-        self.btn_mark_clip.main_clicked.connect(self.mark_clip_clicked.emit)
-        self.btn_mark_clip._main_btn.setStyleSheet(
-            "QPushButton { background: #d97706; color: #ffffff; border: 1px solid #f59e0b; "
-            "border-radius: 6px; padding: 4px 10px; font-size: 13px; font-weight: 700; }"
-            "QPushButton:hover { background: #b45309; border-color: #fbbf24; }"
-            "QPushButton:pressed { background: #92400e; }"
-        )
-        layout.addWidget(self.btn_mark_clip)
-
         # ═══ 6. 👤 User Manager ═══
         self.btn_user_manager = QPushButton("👤")
         self.btn_user_manager.setObjectName("IconButton")
@@ -231,65 +288,28 @@ class TopBar(QFrame):
         layout.addWidget(self.btn_settings)
 
         # ═══ 9. 🆕 New Update (ขวาสุด — ซ่อนไว้ แสดงเมื่อมีอัพเดท) ═══
-        self.btn_update = QPushButton("UPDATE")
-        self.btn_update.setFixedHeight(32)
-        self.btn_update.setCursor(Qt.PointingHandCursor)
+        self.btn_update = NeonButton("NEW UPDATE")
         self.btn_update.setToolTip("มีเวอร์ชั่นใหม่ — คลิกเพื่ออัพเดท")
-        self._update_btn_base_style = (
-            # ★ ทรงแคปซูล (border-radius = ครึ่งความสูง) + ไล่เฉดแนวตั้ง + ขอบบาง + เงาใต้
-            "QPushButton { "
-            "background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
-            " stop:0 #ff4757, stop:1 #ff3344);"
-            " color: white; border: 1px solid rgba(255,255,255,0.25); "
-            "border-radius: 16px; padding: 4px 18px; font-size: 12px; font-weight: 700; "
-            "letter-spacing: 1px; "
-            "} "
-            "QPushButton:hover { "
-            "background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
-            " stop:0 #ff5b6a, stop:1 #ff4455);"
-            "border: 1px solid rgba(255,255,255,0.4);"
-            "} "
-            "QPushButton:pressed { "
-            "background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
-            " stop:0 #e03444, stop:1 #cc2a38);"
-            "padding-top: 5px; padding-bottom: 3px;"
-            "}"
-        )
-        self.btn_update.setStyleSheet(self._update_btn_base_style)
 
-        # ★ glow effect (เงาแดงรอบปุ่ม)
+        # ★ glow effect (Pulse Aura รอบปุ่ม)
         from PySide6.QtWidgets import QGraphicsDropShadowEffect
-        # ★ Shimmer — แสงขาววิ่งผ่านปุ่ม (เหมือนปุ่ม "Download" ใน App Store)
-        from PySide6.QtWidgets import QGraphicsDropShadowEffect, QGraphicsOpacityEffect
-        from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPixmap, QBrush, QPen
-        from PySide6.QtCore import QRectF, QPointF
+        from PySide6.QtGui import QColor
 
         self._update_glow = QGraphicsDropShadowEffect()
         self._update_glow.setBlurRadius(20)
-        self._update_glow.setColor(QColor(255, 255, 255, 180))  # ขาวนวล
+        self._update_glow.setColor(QColor(theme.COLOR_ACCENT))
         self._update_glow.setOffset(0, 0)
         self._update_glow.setEnabled(False)
         self.btn_update.setGraphicsEffect(self._update_glow)
 
-        # ★ Shimmer overlay — QLabel โปร่งใสทับบนปุ่ม ให้แสงขาววิ่งผ่าน
-        self._shimmer_label = QLabel(self.btn_update)
-        self._shimmer_label.setGeometry(0, 0, 40, 32)  # แถบแสงกว้าง 40px
-        self._shimmer_label.setStyleSheet(
-            "background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
-            " stop:0, rgba(255,255,255,0),"
-            " stop:0.5, rgba(255,255,255,120),"
-            " stop:1, rgba(255,255,255,0));"
-            "border-radius: 6px;"
-        )
-        self._shimmer_label.setAttribute(Qt.WA_TransparentForMouseEvents)  # ไม่กิน click
-        self._shimmer_label.setVisible(False)
+        self._shimmer_label = None  # ไม่ใช้ label ซ้อนแข็งๆ แทนที่ด้วย Pulse Glow หรูๆ
         self.btn_update.clicked.connect(self.update_clicked.emit)
         self.btn_update.setVisible(False)
         layout.addWidget(self.btn_update)
 
-        # ★ glow pulse animation (เงาขาวนวล)
+        # ★ Motion Reference: Neon Flicker Cycle (2500ms)
         self._update_pulse = QVariantAnimation(self)
-        self._update_pulse.setDuration(700)
+        self._update_pulse.setDuration(2500)
         self._update_pulse.setStartValue(0.0)
         self._update_pulse.setEndValue(1.0)
         self._update_pulse.setLoopCount(-1)
@@ -392,15 +412,52 @@ class TopBar(QFrame):
     # ════════════════════════════════════════════════════════════
     # ★ Update notification button (pulse animation)
     # ════════════════════════════════════════════════════════════
+    def _get_update_btn_style(self, brightness: float = 1.0, border_alpha: float = 0.8) -> str:
+        """สไตล์ Neon Sign ตามธีม: มีเส้นขอบนีออนเรืองแสง และความสว่างที่กระพริบตามแรงดันไฟ"""
+        accent = getattr(theme, "COLOR_ACCENT", "#7c3aed")
+        accent_hover = getattr(theme, "COLOR_ACCENT_HOVER", "#6d28d9")
+        on_text = getattr(theme, "COLOR_ON_ACCENT_TEXT", "#ffffff")
+
+        from PySide6.QtGui import QColor
+        ac_color = QColor(accent)
+        r, g, b = ac_color.red(), ac_color.green(), ac_color.blue()
+
+        # คำนวณความสว่างของหลอดนีออน (Tube Brightness)
+        bg_r = int(min(255, r * (0.6 + brightness * 0.4)))
+        bg_g = int(min(255, g * (0.6 + brightness * 0.4)))
+        bg_b = int(min(255, b * (0.6 + brightness * 0.4)))
+        bg_hex = f"#{bg_r:02x}{bg_g:02x}{bg_b:02x}"
+
+        return (
+            "QPushButton { "
+            f"background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {bg_hex}, stop:1 {accent_hover}); "
+            f"color: {on_text}; "
+            f"border: 1.5px solid rgba({r}, {g}, {b}, {border_alpha:.2f}); "
+            "border-radius: 16px; "
+            "padding: 4px 18px; "
+            "font-size: 12px; "
+            "font-weight: 700; "
+            "letter-spacing: 0.8px; "
+            "} "
+            "QPushButton:hover { "
+            f"background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {accent_hover}, stop:1 {accent}); "
+            f"border: 1.5px solid rgba(255, 255, 255, 0.9); "
+            "} "
+            "QPushButton:pressed { "
+            f"background: {accent_hover}; "
+            "padding-top: 5px; padding-bottom: 3px; "
+            "}"
+        )
+
     def show_update_button(self, version=""):
-        """แสดงปุ่ม UPDATE + เริ่ม shimmer + glow"""
-        vers = f" v{version}" if version else ""
-        self.btn_update.setText(f"NEW UPDATE{vers}")
+        """แสดงปุ่ม UPDATE + เริ่ม Motion Reference Neon Flicker Effect"""
+        self.btn_update.setText("NEW UPDATE")
+        if version:
+            self.btn_update.setToolTip(f"มีเวอร์ชั่นใหม่ v{version} — คลิกเพื่ออัพเดท")
+        self.btn_update.set_neon_state(1.0, 180, 16)
         self.btn_update.setVisible(True)
         self.btn_update.raise_()
         self._update_glow.setEnabled(True)
-        if self._shimmer_label:
-            self._shimmer_label.setVisible(True)
         if self._update_pulse.state() != QVariantAnimation.Running:
             self._update_pulse.start()
 
@@ -409,34 +466,60 @@ class TopBar(QFrame):
         self.btn_update.setVisible(False)
         self._update_pulse.stop()
         self._update_glow.setEnabled(False)
-        if self._shimmer_label:
-            self._shimmer_label.setVisible(False)
-        self.btn_update.setStyleSheet(self._update_btn_base_style)
 
     def _on_pulse_update(self, val):
-        """shimmer + glow — แสงขาววิ่งผ่านปุ่ม + เงาขาวนวลกระพริบ"""
+        """Motion Reference: Neon Flicker Pattern
+        จำลองหลอดไฟนีออนวินเทจ: สว่างคงที่ 80% ของเวลา แล้วเกิดการสั่นไหว/ไฟตกแบบสุ่ม (Electric Micro-flicker)
+        """
         import math
-        # sine wave: 0→1→0 → 0=เข้มสุด, 1=หาย
-        alpha = (math.sin(val * math.pi * 2) + 1) / 2
-        glow_alpha = 1.0 - alpha
-        # ★ glow ขาว: นุ่มๆ ไม่แรงเกิน
-        blur = int(8 + glow_alpha * 20)
-        self._update_glow.setBlurRadius(blur)
-        self._update_glow.setColor(QColor(255, 255, 255, int(80 + glow_alpha * 100)))
-
-        # ★ shimmer — ขยับแถบแสงจากซ้ายไปขวาตลอดความกว้างปุ่ม
-        btn_w = self.btn_update.width()
-        if btn_w > 0 and self._shimmer_label:
-            # val 0→1 = รอบ 1 รอบ → แสงวิ่งซ้าย→ขวา→ซ้าย (ping-pong)
-            travel = btn_w + 40  # กว้างพอให้ออกนอกปุ่ม
-            x = int(val * travel) - 20  # offset ให้เริ่มก่อนปุ่ม
-            self._shimmer_label.move(x, 0)
-            self._shimmer_label.setFixedHeight(self.btn_update.height())
-            self._shimmer_label.setVisible(True)
-        # เงาสีแดง: โปร่งใสตาม alpha
         from PySide6.QtGui import QColor
-        color = QColor(239, 68, 68, int(150 + glow_alpha * 105))
-        self._update_glow.setColor(color)
+
+        # คำนวณความสว่างของนีออนตามช่วงเวลาของลูป
+        if val < 0.65:
+            # นิ่งสงบ สว่างเต็มที่ พร้อม breathing เล็กๆ
+            p = (math.sin(val / 0.65 * math.pi * 2) + 1.0) / 2.0
+            brightness = 0.95 + 0.1 * p
+            blur = int(14 + p * 4)
+            glow_alpha = int(180 + p * 50)
+        elif val < 0.70:
+            # ไฟวูบลง (Dip)
+            brightness = 0.35
+            blur = 6
+            glow_alpha = 70
+        elif val < 0.74:
+            # สว่างวาบ (Burst)
+            brightness = 1.3
+            blur = 28
+            glow_alpha = 255
+        elif val < 0.78:
+            # สั่นไหว
+            brightness = 0.5
+            blur = 8
+            glow_alpha = 90
+        elif val < 0.82:
+            # ดับชั่วพริบตา (Flicker off)
+            brightness = 0.15
+            blur = 2
+            glow_alpha = 20
+        elif val < 0.88:
+            # วาบครั้งสุดท้ายก่อนนิ่ง
+            brightness = 1.2
+            blur = 24
+            glow_alpha = 240
+        else:
+            # คืนค่าสว่างนิ่ง
+            brightness = 1.0
+            blur = 16
+            glow_alpha = 200
+
+        # 1. อัปเดต DropShadow Aura ด้านหลังปุ่ม
+        self._update_glow.setBlurRadius(blur)
+        accent = getattr(theme, "COLOR_ACCENT", "#7c3aed")
+        ac_col = QColor(accent)
+        self._update_glow.setColor(QColor(ac_col.red(), ac_col.green(), ac_col.blue(), glow_alpha))
+
+        # 2. ให้ NeonButton วาดเส้นหลอดนีออนและข้อความเรืองแสงใหม่แบบ Realtime
+        self.btn_update.set_neon_state(brightness, glow_alpha, blur)
 
     # ════════════════════════════════════════════════════════════
     # OBS button state (poll จาก app.py ทุก 3 วิ)

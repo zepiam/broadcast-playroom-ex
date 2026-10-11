@@ -1,16 +1,16 @@
 {
-  "version": "2.8.9",
-  "changelog": "- เพิ่มคำสั่งเปลี่ยนเสียงอ่านชายหญิง\n- เพิ่มหน้าแสดงคำสั่งที่ใช้ได้ทั้งหมดในโปรแกรม อยู่ใน Setting > Hint",
+  "version": "2.8.10",
+  "changelog": "- แก้ไขข้อผิดพลาดเปิดโปรแกรมไม่ขึ้น (Hotfix SplitButton)\n- เพิ่มระบบ Sync เวลา Live อัตโนมัติกับ OBS WebSocket และระบบ Mark Clip\n- เพิ่มปุ่ม 1-Click Windows Defender Exclusion ป้องกันแอนตี้ไวรัสลบไฟล์โปรแกรมใน Setting",
   "lite": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.9/patch_lite.zip",
-    "size": 17655698,
-    "sha256": "f7a7700235e4d5d31a66f20d894083ccec5e2c62901e506834a78ece7feba8f4"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.10/patch_lite.zip",
+    "size": 17662780,
+    "sha256": "dfcffa18d077ed07eda98a60db0504694b39e40c4fd81123f38d94a70444d2da"
   },
   "full": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.9/patch_full.zip",
-    "size": 72420068,
-    "sha256": "f1e64e797a896a94a4f1887966bd4c745e869bb3aff07d7691f64ca1a1eb8211"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.10/patch_full.zip",
+    "size": 72428361,
+    "sha256": "717e439a5ca2ebdd0de057b4011690d0fbb694d2c3ab436335ebe81b11560632"
   }
 }

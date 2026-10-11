@@ -152,6 +152,7 @@ class SettingsDialog(QDialog):
             ("🪟 Overlay+", "overlay_plus"),
             ("🤖 Chat Bot", "twitch_bot"),
             ("💡 คำสั่งคนดู (Hint)", "hint"),
+            ("🛡️ Windows Defender", "defender"),
             ("💚 สนับสนุน", "supporters"),
             ("ℹ️ เกี่ยวกับ", "about"),
         ]
@@ -202,6 +203,7 @@ class SettingsDialog(QDialog):
         self._build_overlay_plus_section()
         self._build_twitch_bot_section()
         self._build_hint_section()
+        self._build_defender_section()
         # ★ _build_announce_section() ถอดออกจาก UI แล้ว — เครื่องมือ dev เท่านั้น
         #   (ยังใช้งานได้ผ่าน announce_sender.py แยกต่างหาก ไม่ควรให้ end user เห็นในนี้)
         self._build_supporters_section()
@@ -3381,6 +3383,138 @@ class SettingsDialog(QDialog):
             "นำเข้าการตั้งค่าทั้งหมดแล้ว — ถ้ามีแพลตฟอร์มที่ต้องล็อกอิน "
             "(Twitch/KICK/YouTube) ให้กดเชื่อมต่อใหม่ในหน้าแพลตฟอร์ม"
         )
+
+    # ════════════════════════════════════════════════════════════
+    # 🛡️ Windows Defender Section (1-Click Exclusion)
+    # ════════════════════════════════════════════════════════════
+    def _build_defender_section(self):
+        """🛡️ Windows Defender — 1-Click Exclusion + Relocation Detection"""
+        self._add_section("defender", "🛡️ Windows Defender (1-Click Exclusion)",
+                          "เพิ่มข้อยกเว้นอัตโนมัติในคลิกเดียว เพื่อป้องกัน Windows Defender สแกน/ลบไฟล์โปรแกรม และตัวอัปเดตอัตโนมัติ")
+        layout = self._current_section_layout
+        ci = lambda: layout.count() - 1
+
+        # Card container
+        card = QFrame()
+        card.setStyleSheet(
+            "QFrame { background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 14px; }"
+        )
+        card_layout = QVBoxLayout(card)
+        card_layout.setSpacing(12)
+
+        # Status row
+        status_box = QHBoxLayout()
+        status_box.setSpacing(8)
+        status_title = QLabel("สถานะข้อยกเว้น:")
+        status_title.setStyleSheet("font-size: 14px; font-weight: 600; color: #e2e8f0;")
+        status_box.addWidget(status_title)
+
+        self.defender_status_lbl = QLabel("กำลังตรวจสอบ...")
+        status_box.addWidget(self.defender_status_lbl)
+        status_box.addStretch()
+        card_layout.addLayout(status_box)
+
+        # Path info
+        from defender_helper import DefenderExclusionManager
+        app_dir, exe_name = DefenderExclusionManager.get_app_info()
+        path_box = QVBoxLayout()
+        path_box.setSpacing(4)
+        path_title = QLabel("📁 ตำแหน่งโฟลเดอร์โปรแกรมปัจจุบัน:")
+        path_title.setStyleSheet("font-size: 12px; color: #94a3b8;")
+        path_val = QLabel(str(app_dir))
+        path_val.setStyleSheet("font-size: 13px; font-family: Consolas, monospace; color: #38bdf8; background: #0f172a; padding: 6px 10px; border-radius: 4px; border: 1px solid #1e293b;")
+        path_val.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        path_box.addWidget(path_title)
+        path_box.addWidget(path_val)
+        card_layout.addLayout(path_box)
+
+        # Notice label (UAC instruction)
+        notice_lbl = QLabel(
+            "💡 คำแนะนำ: เมื่อกดปุ่มด้านล่าง จะมีหน้าต่างขอสิทธิ์ <b>User Account Control (UAC)</b> ของ Windows เด้งขึ้นมา "
+            "ให้กด <b>'Yes'</b> เพื่ออนุญาตให้ระบบเพิ่มข้อยกเว้นอัตโนมัติครับ"
+        )
+        notice_lbl.setWordWrap(True)
+        notice_lbl.setStyleSheet("font-size: 12px; color: #cbd5e1; background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; padding: 8px 10px; border-radius: 4px;")
+        card_layout.addWidget(notice_lbl)
+
+        # Action buttons
+        btn_box = QHBoxLayout()
+        btn_box.setSpacing(10)
+
+        self.btn_apply_defender = QPushButton("⚡ เพิ่มข้อยกเว้นอัตโนมัติ (1-Click Exclusion)")
+        self.btn_apply_defender.setCursor(Qt.PointingHandCursor)
+        self.btn_apply_defender.setStyleSheet(
+            "QPushButton { background: #2563eb; color: #ffffff; font-weight: 700; font-size: 13px; "
+            "padding: 8px 18px; border-radius: 6px; border: none; }"
+            "QPushButton:hover { background: #1d4ed8; }"
+            "QPushButton:pressed { background: #1e40af; }"
+        )
+        self.btn_apply_defender.clicked.connect(self._on_apply_defender_exclusion)
+        btn_box.addWidget(self.btn_apply_defender)
+
+        btn_open_sec = QPushButton("🛡️ เปิดหน้า Windows Security")
+        btn_open_sec.setCursor(Qt.PointingHandCursor)
+        btn_open_sec.setStyleSheet(
+            "QPushButton { background: #334155; color: #e2e8f0; font-weight: 600; font-size: 12px; "
+            "padding: 8px 14px; border-radius: 6px; border: 1px solid #475569; }"
+            "QPushButton:hover { background: #475569; }"
+            "QPushButton:pressed { background: #1e293b; }"
+        )
+        btn_open_sec.clicked.connect(DefenderExclusionManager.open_windows_security)
+        btn_box.addWidget(btn_open_sec)
+        btn_box.addStretch()
+
+        card_layout.addLayout(btn_box)
+        layout.insertWidget(ci(), card)
+
+        self._update_defender_status_label()
+
+    def _update_defender_status_label(self):
+        """อัปเดตข้อความสถานะ Windows Defender Exclusion"""
+        if not hasattr(self, 'defender_status_lbl'):
+            return
+        from defender_helper import DefenderExclusionManager
+        saved_path = getattr(self.settings, 'last_defender_excluded_path', '')
+        status = DefenderExclusionManager.check_relocation_status(saved_path)
+
+        if status == "relocated":
+            self.defender_status_lbl.setText("⚠️ ตรวจพบโฟลเดอร์ถูกย้ายที่ตั้ง — กรุณากดปุ่ม 1-Click อีกครั้งเพื่ออัปเดต")
+            self.defender_status_lbl.setStyleSheet("font-size: 13px; color: #f59e0b; font-weight: 700;")
+        elif status == "active":
+            self.defender_status_lbl.setText("🟢 ได้รับการยกเว้นใน Windows Defender เรียบร้อยแล้ว")
+            self.defender_status_lbl.setStyleSheet("font-size: 13px; color: #10b981; font-weight: 700;")
+        else:
+            self.defender_status_lbl.setText("⚪ ยังไม่เคยตั้งค่าข้อยกเว้น")
+            self.defender_status_lbl.setStyleSheet("font-size: 13px; color: #94a3b8; font-weight: 600;")
+
+    def _on_apply_defender_exclusion(self):
+        """คลิกปุ่ม 1-Click Exclusion"""
+        from defender_helper import DefenderExclusionManager
+        from PySide6.QtWidgets import QMessageBox
+
+        app_dir, exe_name = DefenderExclusionManager.get_app_info()
+        success = DefenderExclusionManager.apply_one_click_exclusion()
+        if success:
+            if self.settings:
+                self.settings.last_defender_excluded_path = str(app_dir)
+                try:
+                    from settings import save_settings
+                    save_settings(self.settings)
+                except Exception:
+                    pass
+            self._update_defender_status_label()
+            QMessageBox.information(
+                self,
+                "ขอสิทธิ์ Administrator (UAC)",
+                "ระบบกำลังเรียกหน้าต่างขอสิทธิ์จาก Windows (UAC)\n\n"
+                "👉 กรุณากด 'Yes' ที่หน้าต่างแจ้งเตือน เพื่อยืนยันการตั้งค่าครับ!"
+            )
+        else:
+            QMessageBox.warning(
+                self,
+                "ข้อผิดพลาด",
+                "ไม่สามารถส่งคำสั่งขอสิทธิ์ได้ กรุณาลองเปิดหน้า Windows Security ด้วยตัวเอง"
+            )
 
     def _build_about_section(self):
         """ℹ️ เกี่ยวกับ — เนื้อหาจาก v1 AboutDialog (port มา PySide6)"""

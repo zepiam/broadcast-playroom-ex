@@ -680,6 +680,7 @@ class AppSettings:
     # clip_markers: list of {time_str, elapsed_sec, wall_clock, author, note}
     clip_markers: list = field(default_factory=list)
     clip_hotkey: str = "f9"  # ปุ่มลัดมาร์กช็อตเด็ด (default f9)
+    last_defender_excluded_path: str = ""  # path โฟลเดอร์ที่เพิ่ม Windows Defender Exclusion ล่าสุด
     # Character Talk — author_lower → job name (เก็บถาวร)
     user_jobs: dict[str, str] = field(default_factory=dict)
     # Character Talk — job config: [{name, image}]
@@ -1027,6 +1028,7 @@ class AppSettings:
             "viewer_voice_commands_enabled": self.viewer_voice_commands_enabled,
             "clip_markers": list(self.clip_markers),
             "clip_hotkey": self.clip_hotkey,
+            "last_defender_excluded_path": self.last_defender_excluded_path,
             "user_jobs": dict(self.user_jobs),
             "character_jobs": list(self.character_jobs),
             "character_default_image": self.character_default_image,
@@ -1738,6 +1740,8 @@ class AppSettings:
             s.clip_markers = list(data["clip_markers"])
         if "clip_hotkey" in data:
             s.clip_hotkey = str(data["clip_hotkey"])
+        if "last_defender_excluded_path" in data:
+            s.last_defender_excluded_path = str(data["last_defender_excluded_path"])
         if "user_jobs" in data:
             s.user_jobs = dict(data["user_jobs"])
         if "character_jobs" in data:

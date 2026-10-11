@@ -185,6 +185,41 @@ def parse_viewer_command_prefix(text: str) -> tuple[str, Optional[dict]]:
 
 
 # ---------------------------------------------------------------------- #
+# Viewer voice command (-voiceman / -voicegirl / -voicereset / !voiceman etc.)
+# ---------------------------------------------------------------------- #
+_VOICE_CMD_RE = re.compile(
+    r"^\s*([!/-](?:voiceman|voicegirl|voicereset|voiceboy|voicewoman|man|girl))\b",
+    re.IGNORECASE,
+)
+
+
+def parse_viewer_voice_command(text: str) -> tuple[str, Optional[str]]:
+    """Parse viewer voice command จากต้นข้อความ
+    Returns (cleaned_text, voice_choice | None)
+    voice_choice: "niwat" | "premwadee" | "reset" | None
+    """
+    if not text:
+        return text, None
+    m = _VOICE_CMD_RE.match(text)
+    if m is None:
+        return text, None
+    cmd_token = m.group(1).lower().lstrip("!/-")
+    voice_choice = None
+    if cmd_token in ("voiceman", "voiceboy", "man"):
+        voice_choice = "niwat"
+    elif cmd_token in ("voicegirl", "voicewoman", "girl"):
+        voice_choice = "premwadee"
+    elif cmd_token in ("voicereset", "reset"):
+        voice_choice = "reset"
+
+    if voice_choice is None:
+        return text, None
+
+    cleaned = text[m.end():].lstrip()
+    return cleaned, voice_choice
+
+
+# ---------------------------------------------------------------------- #
 # Pipeline config
 # ---------------------------------------------------------------------- #
 @dataclass
@@ -193,6 +228,8 @@ class PipelineConfig:
 
     voice: str = "th-TH-PremwadeeNeural"  # edge-tts voice id หรือ rvc_model_id
     edge_voice: str = "premwadee"    # "premwadee" | "niwat"
+    user_voices: dict = field(default_factory=dict)  # author_lower → "niwat" | "premwadee"
+    viewer_voice_commands_enabled: bool = True  # ให้ผู้ชมพิมพ์เปลี่ยนเสียงตัวเองได้
     read_author: bool = True  # อ่านชื่อผู้แชทก่อน
     read_message: bool = True  # อ่านข้อความ
     # ★ โหมดอ่านชื่อ: "{ชื่อ} [หยุด] พูดว่า [หยุด] {ข้อความ}" — ประกอบเป็นเสียงทีละท่อนแล้วคั่นด้วยความเงียบจริง
@@ -1684,9 +1721,15 @@ class ChatPipeline:
             voice = {"premwadee": "th-TH-PremwadeeNeural", "niwat": "th-TH-NiwatNeural"}.get(_ev, "th-TH-PremwadeeNeural")
 
         # TTS synth — edge-tts (online) แล้วส่งต่อ RVC overlay ด้านล่าง (ถ้าเปิด)
-        audio_np = None  # ★ init กัน UnboundLocalError ตอน fallback
-        # ★ เลือก edge voice จาก config.edge_voice (premwadee/niwat)
-        edge_voice_name = self._resolve_edge_voice_name(voice)
+        # ★ เลือก edge voice จาก config.edge_voice (premwadee/niwat) หรือ viewer_voice ที่ผู้ใช้ตั้ง
+        author_lower = (getattr(msg, "author", "") or "").strip().lower()
+        viewer_voice = None
+        if msg.extra and msg.extra.get("_viewer_voice"):
+            viewer_voice = msg.extra["_viewer_voice"]
+        elif getattr(self.config, "user_voices", None):
+            viewer_voice = self.config.user_voices.get(author_lower)
+
+        edge_voice_name = self._resolve_edge_voice_name(voice, viewer_voice=viewer_voice)
         # ★ โหมดอ่านชื่อ: edge-tts ส่ง "ชื่อ⏎พูดว่า⏎ข้อความ" เป็น request เดียวได้ → ไม่ต้อง prefetch ท่อนนำขนาน
         _sp_text = self._single_pass_text(msg, text, edge_voice_name)
         _intro_th = [] if _sp_text else self._start_intro_prefetch(
@@ -1803,13 +1846,18 @@ class ChatPipeline:
             return None
         return result.get("data")
 
-    def _resolve_edge_voice_name(self, fallback_voice: str) -> str:
-        """แปลง edge_voice config ("premwadee"/"niwat") → edge-tts voice id
+    def _resolve_edge_voice_name(self, fallback_voice: str, viewer_voice: Optional[str] = None) -> str:
+        """แปลง edge_voice config ("premwadee"/"niwat") หรือ viewer_voice → edge-tts voice id
 
         ★ fallback_voice = voice ที่ pipeline เลือกไว้แล้ว (เช่น multilang voice)
           ถ้าเป็นเสียงไทย หรือ fallback ว่าง → ใช้ edge_voice ที่ผู้ใช้เลือก ("premwadee" หรือ "niwat")
           ถ้าเป็นภาษาต่างประเทศ และเปิด multilang → ใช้ fallback_voice ของภาษานั้น
         """
+        if viewer_voice in ("niwat", "man", "male"):
+            return "th-TH-NiwatNeural"
+        elif viewer_voice in ("premwadee", "girl", "female"):
+            return "th-TH-PremwadeeNeural"
+
         edge_voice = getattr(self.config, "edge_voice", "premwadee")
         voice_map = {
             "premwadee": "th-TH-PremwadeeNeural",

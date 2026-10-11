@@ -48,6 +48,10 @@ class TopBar(QFrame):
     update_clicked = Signal()
     # ★ Launch OBS (เปิดโปรแกรม OBS หรือ bring-to-front ถ้ารันอยู่แล้ว)
     obs_launch_clicked = Signal()
+    # ★ Clip marker
+    mark_clip_clicked = Signal()
+    mark_clip_settings = Signal()
+    mark_clip_open_file = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -181,6 +185,25 @@ class TopBar(QFrame):
         ])
         self.btn_overlay_plus.main_clicked.connect(self.overlay_plus_toggled.emit)
         layout.addWidget(self.btn_overlay_plus)
+
+        # ═══ ⭐ Mark Clip (บันทึกคลิปไฮไลต์) ═══
+        self.btn_mark_clip = SplitButton(
+            text="⭐ Mark",
+            parent=self,
+            tooltip="บันทึกเวลาช็อตเด็ด (Clip Marker) ลงไฟล์\nคลิกลูกศรเพื่อตั้งค่าปุ่มลัดหรือเปิดไฟล์",
+        )
+        self.btn_mark_clip.set_menu_actions([
+            ("⚙️ ตั้งค่าปุ่มลัด (Hotkey)...", self.mark_clip_settings.emit),
+            ("📂 เปิดไฟล์บันทึกคลิป (clip_markers.txt)", self.mark_clip_open_file.emit),
+        ])
+        self.btn_mark_clip.main_clicked.connect(self.mark_clip_clicked.emit)
+        self.btn_mark_clip._main_btn.setStyleSheet(
+            "QPushButton { background: #d97706; color: #ffffff; border: 1px solid #f59e0b; "
+            "border-radius: 6px; padding: 4px 10px; font-size: 13px; font-weight: 700; }"
+            "QPushButton:hover { background: #b45309; border-color: #fbbf24; }"
+            "QPushButton:pressed { background: #92400e; }"
+        )
+        layout.addWidget(self.btn_mark_clip)
 
         # ═══ 6. 👤 User Manager ═══
         self.btn_user_manager = QPushButton("👤")
@@ -436,3 +459,9 @@ class TopBar(QFrame):
                 "QPushButton:hover { background-color: #334155; border-color: #475569; }"
                 "QPushButton:pressed { background-color: #0f172a; }")
             self.btn_obs.setToolTip("เปิดโปรแกรม OBS")
+
+    def update_clip_hotkey_label(self, hotkey_str: str = "f9"):
+        """อัปเดตข้อความปุ่ม Mark ให้แสดงปุ่มลัดปัจจุบัน เช่น ⭐ Mark (F9)"""
+        hk_label = (hotkey_str or "F9").upper()
+        if hasattr(self, "btn_mark_clip"):
+            self.btn_mark_clip.set_text(f"⭐ Mark ({hk_label})")

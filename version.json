@@ -1,16 +1,16 @@
 {
-  "version": "2.8.8",
-  "changelog": "- เพิ่มระบบโหลดคำศัพท์ใหม่จากคลังศัพท์ทุกครั้งที่เปิดโปรแกรม\n- เพิ่มปุ่ม ช่วยเพิ่มคำศัพท์ ภายในหน้า Setting > Replace\n- แก้ไขปัญหาลบคำศัพท์ในหน้า Setting > Replace ไม่ได้\n- เพิ่ม Theme สีใหม่อีก 4 รูปแบบ รวมเป็น 20 Theme ให้เลือกใช้งาน\n- ปรับปรุงหน้าต่างแจ้งเตือนคำศัพท์ที่เคยลบให้แสดงผลชัดเจนและเลือกจัดการได้ง่ายขึ้น",
+  "version": "2.8.9",
+  "changelog": "- เพิ่มคำสั่งเปลี่ยนเสียงอ่านชายหญิง\n- เพิ่มหน้าแสดงคำสั่งที่ใช้ได้ทั้งหมดในโปรแกรม อยู่ใน Setting > Hint",
   "lite": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.8/patch_lite.zip",
-    "size": 17451850,
-    "sha256": "e97c41482cc0001051f6f38a3f5745496563370d70740d6e7a3ffbc0233df850"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.9/patch_lite.zip",
+    "size": 17651918,
+    "sha256": "fc204f72ca8a22e6c279d41f4e46eaff4ade1312fdb3f4228833f863f6e148e2"
   },
   "full": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.8/patch_full.zip",
-    "size": 71305388,
-    "sha256": "e8fc4cb468adb52347901e64f850e8b0b8700f49ce071cc2456cb8330029c966"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.9/patch_full.zip",
+    "size": 72416721,
+    "sha256": "7b680c77f5ffa28fe0f744b8c67c8b789c88761460a519c45c8344dee5256fb7"
   }
 }

@@ -283,10 +283,12 @@ class TTSForLivestreamApp(QMainWindow):
         self._apply_chat_appearance()
         # ★ restore topbar state จาก settings
         self._restore_topbar_state()
-        # ★ register global hotkeys (Game Overlay + Overlay+)
+        # ★ register global hotkeys (Game Overlay + Overlay+ + Clip Marker)
         self._game_hotkey_active = False
         self._more_overlay_hotkey_active = False
+        self._clip_hotkey_active = False
         self._start_all_hotkeys()
+        self._init_clip_marker()
 
         # ═══ Start reconnect watcher (every 1s) ═══
         self._reconnect_timer = QTimer(self)
@@ -1102,6 +1104,8 @@ class TTSForLivestreamApp(QMainWindow):
                 # ★ viewer command ([x2]/[p1]/[v50] chat prefix)
                 viewer_cmd_enabled=getattr(s, 'viewer_cmd_enabled', False),
                 viewer_cmd_cooldown=getattr(s, 'viewer_cmd_cooldown', 5.0),
+                user_voices=dict(getattr(s, 'user_voices', {}) or {}),
+                viewer_voice_commands_enabled=bool(getattr(s, 'viewer_voice_commands_enabled', True)),
             )
         except Exception as e:
             logger.error(f"Failed to build pipeline config: {e}")
@@ -1246,6 +1250,10 @@ class TTSForLivestreamApp(QMainWindow):
         self.topbar.update_clicked.connect(self._on_update_button_clicked)
         # ★ OBS launch button — เปิด OBS หรือดึงหน้าต่าง OBS ขึ้นมา
         self.topbar.obs_launch_clicked.connect(self._on_obs_launch)
+        # ★ Mark clip
+        self.topbar.mark_clip_clicked.connect(self._on_mark_clip_clicked)
+        self.topbar.mark_clip_settings.connect(self._open_clip_hotkey_dialog)
+        self.topbar.mark_clip_open_file.connect(self._open_clip_markers_file)
 
         # ═══ Build platform cards ═══
         self._platform_cards = {}
@@ -1821,6 +1829,56 @@ class TTSForLivestreamApp(QMainWindow):
                                 break
             except Exception:
                 pass
+        # ★ Viewer mark clip command (!clip / !mark / -clip / -mark)
+        if getattr(msg, 'event', 'message') == 'message' and (msg.text or '').strip():
+            _raw_msg_text = (msg.text or '').strip()
+            _first_token = _raw_msg_text.split()[0].lower() if _raw_msg_text else ""
+            if _first_token in ('!clip', '!mark', '-clip', '-mark'):
+                parts = _raw_msg_text.split(maxsplit=1)
+                clip_note = parts[1].strip() if len(parts) > 1 else ""
+                clip_author = getattr(msg, 'author', '') or 'Chat'
+                self.mark_clip(author=clip_author, note=clip_note)
+
+        # ★ Viewer custom voice memory (-voiceman / -voicegirl / -voicereset / !voiceman etc.)
+        if (getattr(self.settings, 'viewer_voice_commands_enabled', True)
+                and getattr(msg, 'event', 'message') == 'message'
+                and (msg.text or '').strip()):
+            try:
+                from chat_queue import parse_viewer_voice_command
+                cleaned_v, voice_choice = parse_viewer_voice_command(msg.text or '')
+                if voice_choice is not None:
+                    _author_clean = (getattr(msg, 'author', '') or '').strip().lower()
+                    if _author_clean:
+                        if not hasattr(self.settings, 'user_voices') or self.settings.user_voices is None:
+                            self.settings.user_voices = {}
+                        if voice_choice == 'reset':
+                            self.settings.user_voices.pop(_author_clean, None)
+                        else:
+                            self.settings.user_voices[_author_clean] = voice_choice
+                        # sync to pipeline config
+                        if self.pipeline and hasattr(self.pipeline, 'config'):
+                            self.pipeline.config.user_voices = dict(self.settings.user_voices)
+                        try:
+                            from settings import save_settings
+                            save_settings(self.settings)
+                        except Exception as e:
+                            logger.warning(f"Failed to save settings for user_voices: {e}")
+
+                    msg.text = cleaned_v
+                    if msg.extra is None:
+                        msg.extra = {}
+                    if voice_choice != 'reset':
+                        msg.extra["_viewer_voice"] = voice_choice
+                    if msg.extra.get("raw_text"):
+                        msg.extra["raw_text"] = cleaned_v
+                    if msg.extra.get("segments"):
+                        for seg in msg.extra["segments"]:
+                            if seg.get("type") == "text":
+                                seg_first, _ = parse_viewer_voice_command(seg.get("content", ''))
+                                seg["content"] = seg_first
+                                break
+            except Exception as e:
+                logger.debug(f"Viewer voice command parse error: {e}")
         # ★ ติด id + เวลารับ — สำหรับติดตามสถานะ TTS (ไอคอนริมข้อความใน Live Chat)
         try:
             if getattr(msg, 'event', 'message') == 'message':
@@ -5488,12 +5546,67 @@ class TTSForLivestreamApp(QMainWindow):
                 pass
 
     # ════════════════════════════════════════════════════════════
-    # Global hotkeys (Game Overlay + Overlay+)
+    # Clip Marker (บันทึกช่วงเวลาไฮไลต์ / ช็อตเด็ด)
+    # ════════════════════════════════════════════════════════════
+    def mark_clip(self, author: str = "Streamer", note: str = "") -> str:
+        """มาร์กช่วงเวลาไฮไลต์ / ช็อตเด็ด (บันทึกเวลาสตรีมลงไฟล์ clip_markers.txt และ settings)"""
+        now = time.time()
+        start = getattr(self, "_stream_start_time", None) or getattr(self, "_app_start_time", now)
+        elapsed_sec = max(0, int(now - start))
+        hrs = elapsed_sec // 3600
+        mins = (elapsed_sec % 3600) // 60
+        secs = elapsed_sec % 60
+        if hrs > 0:
+            time_str = f"{hrs:02d}:{mins:02d}:{secs:02d}"
+        else:
+            time_str = f"{mins:02d}:{secs:02d}"
+
+        wall_clock = time.strftime("%Y-%m-%d %H:%M:%S")
+        entry = {
+            "time_str": time_str,
+            "elapsed_sec": elapsed_sec,
+            "wall_clock": wall_clock,
+            "author": author,
+            "note": note,
+        }
+
+        # บันทึกลง settings
+        if self.settings:
+            if not hasattr(self.settings, "clip_markers") or self.settings.clip_markers is None:
+                self.settings.clip_markers = []
+            self.settings.clip_markers.append(entry)
+            try:
+                from settings import save_settings
+                save_settings(self.settings)
+            except Exception as e:
+                logger.warning(f"Failed to save settings for clip_markers: {e}")
+
+        # บันทึกลงไฟล์ data/clip_markers.txt (human-readable)
+        try:
+            txt_path = os.path.join(self._data_dir, "clip_markers.txt")
+            line = f"[{time_str}] ({wall_clock}) โดย {author}: {note}\n" if note else f"[{time_str}] ({wall_clock}) โดย {author}\n"
+            with open(txt_path, "a", encoding="utf-8") as f:
+                f.write(line)
+        except Exception as e:
+            logger.warning(f"Failed to append to clip_markers.txt: {e}")
+
+        status_msg = f"⭐ บันทึกมาร์กคลิป: {time_str} ({author}{': ' + note if note else ''})"
+        self.status_bar.set_status(status_msg)
+        logger.info(f"Clip marker recorded: {entry}")
+        return time_str
+
+    def _on_mark_clip_clicked(self):
+        """กดปุ่ม Mark บน topbar"""
+        self.mark_clip(author="Streamer", note="")
+
+    # ════════════════════════════════════════════════════════════
+    # Global hotkeys (Game Overlay + Overlay+ + Clip Marker)
     # ════════════════════════════════════════════════════════════
     def _start_all_hotkeys(self):
-        """register global hotkeys สำหรับ Game Overlay + Overlay+"""
+        """register global hotkeys สำหรับ Game Overlay + Overlay+ + Clip Marker"""
         self._start_game_hotkey()
         self._start_more_overlay_hotkey()
+        self._start_clip_hotkey()
 
     def _stop_all_hotkeys(self):
         """unregister global hotkeys ทั้งหมด"""
@@ -5504,6 +5617,76 @@ class TTSForLivestreamApp(QMainWindow):
             pass
         self._game_hotkey_active = False
         self._more_overlay_hotkey_active = False
+        self._clip_hotkey_active = False
+
+    def _start_clip_hotkey(self):
+        """register global hotkey สำหรับ clip marker"""
+        if getattr(self, '_clip_hotkey_active', False):
+            return
+        try:
+            import keyboard
+            hk = (getattr(self.settings, 'clip_hotkey', 'f9') or 'f9').strip().lower()
+            keyboard.add_hotkey(hk, self._on_clip_hotkey, suppress=False)
+            self._clip_hotkey_active = True
+        except Exception as e:
+            logger.debug(f"Clip hotkey register failed: {e}")
+
+    def _on_clip_hotkey(self):
+        """hotkey callback: mark clip — marshal ไป main thread"""
+        QTimer.singleShot(0, lambda: self.mark_clip(author="Streamer", note=""))
+
+    def _init_clip_marker(self):
+        """ตั้งค่าเริ่มต้นของปุ่ม Mark และ shortcut ตาม settings"""
+        hk = getattr(self.settings, 'clip_hotkey', 'f9') or 'f9'
+        if hasattr(self, 'topbar'):
+            self.topbar.update_clip_hotkey_label(hk)
+        self._update_clip_shortcut()
+
+    def _open_clip_hotkey_dialog(self):
+        """เปิด Dialog ตั้งค่าปุ่มลัดมาร์กคลิปไฮไลต์"""
+        from ui.dialogs.clip_hotkey_dialog import ClipHotkeyDialog
+        dlg = ClipHotkeyDialog(self)
+        dlg.exec()
+
+    def _open_clip_markers_file(self):
+        """เปิดไฟล์บันทึกคลิป clip_markers.txt"""
+        txt_path = os.path.join(self._data_dir, "clip_markers.txt")
+        if not os.path.exists(txt_path):
+            try:
+                with open(txt_path, "w", encoding="utf-8") as f:
+                    f.write("# รายการมาร์กคลิปไฮไลต์ / ช็อตเด็ด (Broadcast Playroom)\n")
+            except Exception:
+                pass
+        try:
+            os.startfile(txt_path)
+            self.status_bar.set_status("📂 เปิดไฟล์ clip_markers.txt แล้ว")
+        except Exception as e:
+            self.status_bar.set_status(f"❌ เปิดไฟล์ไม่สำเร็จ: {e}")
+
+    def _update_clip_hotkey(self, new_hk: str):
+        """อัปเดตปุ่มลัดมาร์กคลิป + re-register hotkeys + update UI"""
+        if self.settings:
+            self.settings.clip_hotkey = new_hk
+        self._reregister_hotkeys()
+        self._update_clip_shortcut()
+        if hasattr(self, 'topbar'):
+            self.topbar.update_clip_hotkey_label(new_hk)
+
+    def _update_clip_shortcut(self):
+        """อัปเดต QShortcut ในโปรแกรมตาม clip_hotkey"""
+        hk = getattr(self.settings, 'clip_hotkey', 'f9') or 'f9'
+        from PySide6.QtGui import QKeySequence, QShortcut
+        if hasattr(self, '_f9_shortcut') and self._f9_shortcut:
+            try:
+                self._f9_shortcut.setKey(QKeySequence(hk))
+            except Exception:
+                pass
+        else:
+            try:
+                self._f9_shortcut = QShortcut(QKeySequence(hk), self)
+                self._f9_shortcut.activated.connect(lambda: self.mark_clip(author="Streamer", note=""))
+            except Exception:
+                pass
 
     def _start_game_hotkey(self):
         """register Game Overlay hotkeys: toggle overlay + edit mode"""

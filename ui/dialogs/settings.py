@@ -151,6 +151,7 @@ class SettingsDialog(QDialog):
             ("🎟 โค้ดลับ", "secret_code"),
             ("🪟 Overlay+", "overlay_plus"),
             ("🤖 Chat Bot", "twitch_bot"),
+            ("💡 คำสั่งคนดู (Hint)", "hint"),
             ("💚 สนับสนุน", "supporters"),
             ("ℹ️ เกี่ยวกับ", "about"),
         ]
@@ -200,6 +201,7 @@ class SettingsDialog(QDialog):
         self._build_secret_code_section()
         self._build_overlay_plus_section()
         self._build_twitch_bot_section()
+        self._build_hint_section()
         # ★ _build_announce_section() ถอดออกจาก UI แล้ว — เครื่องมือ dev เท่านั้น
         #   (ยังใช้งานได้ผ่าน announce_sender.py แยกต่างหาก ไม่ควรให้ end user เห็นในนี้)
         self._build_supporters_section()
@@ -297,6 +299,8 @@ class SettingsDialog(QDialog):
                     break
             if key == "replace":
                 self._replace_auto_sync_on_open()
+            if key == "hint" and hasattr(self, "hint_widget"):
+                self.hint_widget.refresh(self.settings)
 
     def _apply_sidebar_theme_qss(self):
         """สไตล์ sidebar หมวดหมู่ (ซ้ายสุดของ Settings) ตามธีมปัจจุบัน — เรียกซ้ำได้เวลาเปลี่ยนธีมสด"""
@@ -2910,6 +2914,17 @@ class SettingsDialog(QDialog):
             save_settings(self.settings)
         except Exception:
             pass
+
+    def _build_hint_section(self):
+        """💡 คำสั่งคนดู (Hint) — ตารางอธิบายคำสั่งคนดูทั้งหมด"""
+        self._add_section("hint", "💡 คำสั่งคนดู (Hint Guide)",
+                          "รวมคำสั่งทั้งหมดที่คนดูสามารถพิมพ์ในแชทได้ (Danmaku สี, สปีดอ่าน, เลือกเสียง, มาร์กคลิป)")
+        layout = self._current_section_layout
+        ci = lambda: layout.count() - 1
+
+        from ui.dialogs.hint_guide import HintSectionWidget
+        self.hint_widget = HintSectionWidget(self, settings=self.settings)
+        layout.insertWidget(ci(), self.hint_widget, 1)
 
     def _build_twitch_bot_section(self):
         """🤖 Chat Bot (Twitch) — คำสั่งอัตโนมัติ + Timer"""

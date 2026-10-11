@@ -674,6 +674,12 @@ class AppSettings:
     # rename: original_lower → new_name (TTS+GUI ใช้ใหม่, overlay ใช้เดิม)
     user_renames: dict[str, str] = field(default_factory=dict)
     tts_renames: dict[str, str] = field(default_factory=dict)  # author_lower → ชื่อที่ TTS อ่าน
+    # user_voices: author_lower → "niwat" | "premwadee" (ผู้ชมเลือกเสียงประจำตัวด้วย -voiceman / -voicegirl)
+    user_voices: dict[str, str] = field(default_factory=dict)
+    viewer_voice_commands_enabled: bool = True  # เปิด/ปิดให้คนดูพิมพ์เปลี่ยนเสียงตัวเอง
+    # clip_markers: list of {time_str, elapsed_sec, wall_clock, author, note}
+    clip_markers: list = field(default_factory=list)
+    clip_hotkey: str = "f9"  # ปุ่มลัดมาร์กช็อตเด็ด (default f9)
     # Character Talk — author_lower → job name (เก็บถาวร)
     user_jobs: dict[str, str] = field(default_factory=dict)
     # Character Talk — job config: [{name, image}]
@@ -1017,6 +1023,10 @@ class AppSettings:
             "auto_translate_langs": list(self.auto_translate_langs),
             "user_renames": dict(self.user_renames),
             "tts_renames": dict(self.tts_renames),
+            "user_voices": dict(self.user_voices),
+            "viewer_voice_commands_enabled": self.viewer_voice_commands_enabled,
+            "clip_markers": list(self.clip_markers),
+            "clip_hotkey": self.clip_hotkey,
             "user_jobs": dict(self.user_jobs),
             "character_jobs": list(self.character_jobs),
             "character_default_image": self.character_default_image,
@@ -1720,6 +1730,14 @@ class AppSettings:
             s.user_renames = dict(data["user_renames"])
         if "tts_renames" in data:
             s.tts_renames = dict(data["tts_renames"])
+        if "user_voices" in data:
+            s.user_voices = dict(data["user_voices"])
+        if "viewer_voice_commands_enabled" in data:
+            s.viewer_voice_commands_enabled = bool(data["viewer_voice_commands_enabled"])
+        if "clip_markers" in data:
+            s.clip_markers = list(data["clip_markers"])
+        if "clip_hotkey" in data:
+            s.clip_hotkey = str(data["clip_hotkey"])
         if "user_jobs" in data:
             s.user_jobs = dict(data["user_jobs"])
         if "character_jobs" in data:

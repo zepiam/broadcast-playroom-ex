@@ -175,12 +175,19 @@ def make_hotkey_binder(parent_dialog, initial_hotkey, on_captured=None):
     filter_instance = HotkeyCaptureFilter(btn)
     parent_dialog._hotkey_filters[-1] = filter_instance  # อ้างอิงถึงกัน GC
 
+    def _pretty_hk(hk_str):
+        if not hk_str:
+            return "(none)"
+        return "+".join(part.upper() if len(part) <= 3 or part.startswith("f") else part.capitalize() for part in hk_str.split("+"))
+
+    btn.setText(_pretty_hk(initial_hotkey))
+
     def _set_capturing(capturing):
         btn.setProperty("capturing", "true" if capturing else "false")
         if capturing:
             btn.setText("กดคีย์ที่ต้องการ... (Esc = ยกเลิก)")
         else:
-            btn.setText(btn._hotkey or "(none)")
+            btn.setText(_pretty_hk(btn._hotkey))
         # ★ บังคับ style refresh
         btn.setStyle(btn.style())
 
@@ -190,12 +197,12 @@ def make_hotkey_binder(parent_dialog, initial_hotkey, on_captured=None):
         btn.installEventFilter(filter_instance)
 
     def _on_captured(hk):
-        btn._hotkey = hk
+        btn._hotkey = (hk or "").strip().lower()
         _set_capturing(False)
         btn.removeEventFilter(filter_instance)
         if on_captured:
             try:
-                on_captured(hk)
+                on_captured(btn._hotkey)
             except Exception:
                 pass
 
@@ -203,8 +210,22 @@ def make_hotkey_binder(parent_dialog, initial_hotkey, on_captured=None):
         _set_capturing(False)
         btn.removeEventFilter(filter_instance)
 
+    def _set_hotkey(hk):
+        btn._hotkey = (hk or "").strip().lower()
+        _set_capturing(False)
+        try:
+            btn.removeEventFilter(filter_instance)
+        except Exception:
+            pass
+        if on_captured:
+            try:
+                on_captured(btn._hotkey)
+            except Exception:
+                pass
+
     filter_instance.captured.connect(_on_captured)
     filter_instance.cancelled.connect(_on_cancelled)
     btn.clicked.connect(_on_click)
     btn._set_capturing = _set_capturing
+    btn.set_hotkey = _set_hotkey
     return btn

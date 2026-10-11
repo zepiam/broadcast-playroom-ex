@@ -4,13 +4,13 @@
   "lite": {
     "type": "patch",
     "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.9/patch_lite.zip",
-    "size": 17651918,
-    "sha256": "fc204f72ca8a22e6c279d41f4e46eaff4ade1312fdb3f4228833f863f6e148e2"
+    "size": 17655698,
+    "sha256": "f7a7700235e4d5d31a66f20d894083ccec5e2c62901e506834a78ece7feba8f4"
   },
   "full": {
     "type": "patch",
     "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.9/patch_full.zip",
-    "size": 72416721,
-    "sha256": "7b680c77f5ffa28fe0f744b8c67c8b789c88761460a519c45c8344dee5256fb7"
+    "size": 72420068,
+    "sha256": "f1e64e797a896a94a4f1887966bd4c745e869bb3aff07d7691f64ca1a1eb8211"
   }
 }

@@ -52,6 +52,8 @@ class TopBar(QFrame):
     mark_clip_clicked = Signal()
     mark_clip_settings = Signal()
     mark_clip_open_file = Signal()
+    mark_clip_open_location = Signal()
+    mark_clip_clear_history = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -195,6 +197,9 @@ class TopBar(QFrame):
         self.btn_mark_clip.set_menu_actions([
             ("⚙️ ตั้งค่าปุ่มลัด (Hotkey)...", self.mark_clip_settings.emit),
             ("📂 เปิดไฟล์บันทึกคลิป (clip_markers.txt)", self.mark_clip_open_file.emit),
+            ("📁 เปิดโฟลเดอร์ที่เก็บไฟล์ (Open File Location)", self.mark_clip_open_location.emit),
+            ("—", None),
+            ("🗑️ ล้างประวัติมาร์กคลิป (Clear History)", self.mark_clip_clear_history.emit),
         ])
         self.btn_mark_clip.main_clicked.connect(self.mark_clip_clicked.emit)
         self.btn_mark_clip._main_btn.setStyleSheet(
@@ -464,4 +469,4 @@ class TopBar(QFrame):
         """อัปเดตข้อความปุ่ม Mark ให้แสดงปุ่มลัดปัจจุบัน เช่น ⭐ Mark (F9)"""
         hk_label = (hotkey_str or "F9").upper()
         if hasattr(self, "btn_mark_clip"):
-            self.btn_mark_clip.set_text(f"⭐ Mark ({hk_label})")
+            self.btn_mark_clip.setText(f"⭐ Mark ({hk_label})")

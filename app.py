@@ -868,6 +868,8 @@ class TTSForLivestreamApp(QMainWindow):
                 on_connected=lambda: logger.info("OBS WS connected"),
                 on_refreshed=lambda n: logger.info(f"OBS WS refreshed {n} source(s)"),
                 on_status=lambda msg: self.status_bar.set_status(msg),
+                on_stream_started=lambda tc, dur: QTimer.singleShot(0, lambda: self._on_live_stream_started("OBS", tc, dur)),
+                on_stream_stopped=lambda: QTimer.singleShot(0, self._on_live_stream_stopped),
             )
             self._obs_watcher.start()
             logger.info(f"OBS WS watcher started (host={host}:{port})")
@@ -1254,6 +1256,8 @@ class TTSForLivestreamApp(QMainWindow):
         self.topbar.mark_clip_clicked.connect(self._on_mark_clip_clicked)
         self.topbar.mark_clip_settings.connect(self._open_clip_hotkey_dialog)
         self.topbar.mark_clip_open_file.connect(self._open_clip_markers_file)
+        self.topbar.mark_clip_open_location.connect(self._open_clip_markers_location)
+        self.topbar.mark_clip_clear_history.connect(self._clear_clip_markers_history)
 
         # ═══ Build platform cards ═══
         self._platform_cards = {}
@@ -4273,6 +4277,8 @@ class TTSForLivestreamApp(QMainWindow):
             start_time = title.replace("__start_time__:", "")
             if hasattr(card, 'set_stream_start_time'):
                 card.set_stream_start_time(start_time)
+            if not getattr(self, '_live_session_active', False):
+                self._on_live_stream_started(source=platform.upper(), timecode="00:00:00", duration_sec=0)
         else:
             # ★ cache ชื่อห้องล่าสุด (ใช้เป็นค่าเริ่มต้นใน dialog แก้ชื่อห้อง)
             if platform == "kick":
@@ -5546,20 +5552,82 @@ class TTSForLivestreamApp(QMainWindow):
                 pass
 
     # ════════════════════════════════════════════════════════════
-    # Clip Marker (บันทึกช่วงเวลาไฮไลต์ / ช็อตเด็ด)
+    # Clip Marker (บันทึกช่วงเวลาไฮไลต์ / ช็อตเด็ด — Sync เวลา Live/OBS)
     # ════════════════════════════════════════════════════════════
+    def _on_live_stream_started(self, source: str = "OBS", timecode: str = "00:00:00", duration_sec: int = 0):
+        """เริ่ม Live Session (Sync เวลากับ OBS หรือห้องแชท)"""
+        self._live_session_active = True
+        self._live_session_source = source
+        now = time.time()
+        self._live_start_time = now - max(0, duration_sec)
+        self._session_marks = []
+        self._session_header_written = False
+        msg = f"🔴 Live เริ่มแล้ว ({source}) — กำลัง Sync เวลากับระบบ Mark"
+        self.status_bar.set_status(msg)
+        logger.info(f"Live session started: source={source}, timecode={timecode}, duration={duration_sec}s")
+
+    def _on_live_stream_stopped(self):
+        """จบ Live Session — หากไม่มีการมาร์กเลยให้เคลียร์ session ทิ้ง ไม่เก็บประวัติขยะ"""
+        if not getattr(self, '_live_session_active', False):
+            return
+        marks_count = len(getattr(self, '_session_marks', []))
+        if marks_count == 0:
+            logger.info("Live session ended with 0 marks — session cleared")
+            self.status_bar.set_status("⚪ สิ้นสุด Live (ไม่มีการมาร์กคลิปในรอบนี้)")
+        else:
+            logger.info(f"Live session ended with {marks_count} marks — preserved in file")
+            self.status_bar.set_status(f"⚪ สิ้นสุด Live (บันทึกมาร์กคลิปทั้งหมด {marks_count} จุดเรียบร้อย)")
+        self._live_session_active = False
+        self._session_marks = []
+        self._session_header_written = False
+
     def mark_clip(self, author: str = "Streamer", note: str = "") -> str:
         """มาร์กช่วงเวลาไฮไลต์ / ช็อตเด็ด (บันทึกเวลาสตรีมลงไฟล์ clip_markers.txt และ settings)"""
         now = time.time()
-        start = getattr(self, "_stream_start_time", None) or getattr(self, "_app_start_time", now)
-        elapsed_sec = max(0, int(now - start))
-        hrs = elapsed_sec // 3600
-        mins = (elapsed_sec % 3600) // 60
-        secs = elapsed_sec % 60
-        if hrs > 0:
-            time_str = f"{hrs:02d}:{mins:02d}:{secs:02d}"
-        else:
-            time_str = f"{mins:02d}:{secs:02d}"
+        time_str = "00:00"
+        elapsed_sec = 0
+        source_tag = "Live"
+
+        # 1. ลองดึงเวลาตรงจาก OBS WebSocket ก่อน (แม่นยำที่สุด)
+        obs_synced = False
+        if getattr(self.settings, 'obs_ws_enabled', False):
+            try:
+                from obs_refresh import get_obs_stream_status
+                host = getattr(self.settings, 'obs_ws_host', 'localhost')
+                port = int(getattr(self.settings, 'obs_ws_port', 4455))
+                pw = getattr(self.settings, 'obs_ws_password', '')
+                obs_status = get_obs_stream_status(host, port, pw)
+                if obs_status.get("output_active") and obs_status.get("timecode"):
+                    time_str = obs_status["timecode"]
+                    elapsed_sec = obs_status["duration_sec"]
+                    source_tag = "OBS Live" if obs_status.get("is_streaming") else "OBS Record"
+                    obs_synced = True
+                    if not getattr(self, '_live_session_active', False):
+                        self._live_session_active = True
+                        self._live_start_time = now - elapsed_sec
+                        self._live_session_source = source_tag
+            except Exception as e:
+                logger.debug(f"OBS get_obs_stream_status check failed: {e}")
+
+        # 2. ถ้าไม่ได้ต่อ OBS หรือ OBS ไม่ได้เปิด ให้ใช้เวลาจากการเริ่ม Live Session
+        if not obs_synced:
+            live_start = getattr(self, "_live_start_time", None)
+            if live_start:
+                elapsed_sec = max(0, int(now - live_start))
+                hrs = elapsed_sec // 3600
+                mins = (elapsed_sec % 3600) // 60
+                secs = elapsed_sec % 60
+                time_str = f"{hrs:02d}:{mins:02d}:{secs:02d}" if hrs > 0 else f"{mins:02d}:{secs:02d}"
+                source_tag = getattr(self, '_live_session_source', 'Live')
+            else:
+                # 3. Fallback กรณีไม่ได้เริ่ม live session
+                app_start = getattr(self, "_app_start_time", now)
+                elapsed_sec = max(0, int(now - app_start))
+                hrs = elapsed_sec // 3600
+                mins = (elapsed_sec % 3600) // 60
+                secs = elapsed_sec % 60
+                time_str = f"{hrs:02d}:{mins:02d}:{secs:02d}" if hrs > 0 else f"{mins:02d}:{secs:02d}"
+                source_tag = "Timer"
 
         wall_clock = time.strftime("%Y-%m-%d %H:%M:%S")
         entry = {
@@ -5568,7 +5636,13 @@ class TTSForLivestreamApp(QMainWindow):
             "wall_clock": wall_clock,
             "author": author,
             "note": note,
+            "source": source_tag,
         }
+
+        # บันทึก session marks
+        if not hasattr(self, '_session_marks') or self._session_marks is None:
+            self._session_marks = []
+        self._session_marks.append(entry)
 
         # บันทึกลง settings
         if self.settings:
@@ -5584,13 +5658,21 @@ class TTSForLivestreamApp(QMainWindow):
         # บันทึกลงไฟล์ data/clip_markers.txt (human-readable)
         try:
             txt_path = os.path.join(self._data_dir, "clip_markers.txt")
+            # ถ้าเป็นมาร์กแรกของรอบนี้ ให้เขียนหัวข้อเซสชัน Live
+            if not getattr(self, '_session_header_written', False):
+                self._session_header_written = True
+                with open(txt_path, "a", encoding="utf-8") as f:
+                    f.write(f"\n{'='*55}\n")
+                    f.write(f"🔴 Live Session: {wall_clock} ({source_tag})\n")
+                    f.write(f"{'='*55}\n")
+
             line = f"[{time_str}] ({wall_clock}) โดย {author}: {note}\n" if note else f"[{time_str}] ({wall_clock}) โดย {author}\n"
             with open(txt_path, "a", encoding="utf-8") as f:
                 f.write(line)
         except Exception as e:
             logger.warning(f"Failed to append to clip_markers.txt: {e}")
 
-        status_msg = f"⭐ บันทึกมาร์กคลิป: {time_str} ({author}{': ' + note if note else ''})"
+        status_msg = f"⭐ บันทึกมาร์กคลิป: [{time_str}] ({author}{': ' + note if note else ''})"
         self.status_bar.set_status(status_msg)
         logger.info(f"Clip marker recorded: {entry}")
         return time_str
@@ -5662,6 +5744,46 @@ class TTSForLivestreamApp(QMainWindow):
             self.status_bar.set_status("📂 เปิดไฟล์ clip_markers.txt แล้ว")
         except Exception as e:
             self.status_bar.set_status(f"❌ เปิดไฟล์ไม่สำเร็จ: {e}")
+
+    def _open_clip_markers_location(self):
+        """เปิดโฟลเดอร์ที่เก็บไฟล์ clip_markers.txt (Open File Location)"""
+        txt_path = os.path.join(self._data_dir, "clip_markers.txt")
+        if not os.path.exists(txt_path):
+            try:
+                with open(txt_path, "w", encoding="utf-8") as f:
+                    f.write("# รายการมาร์กคลิปไฮไลต์ / ช็อตเด็ด (Broadcast Playroom)\n")
+            except Exception:
+                pass
+        try:
+            import subprocess
+            subprocess.Popen(f'explorer /select,"{os.path.abspath(txt_path)}"')
+            self.status_bar.set_status("📁 เปิดโฟลเดอร์เก็บไฟล์ clip_markers.txt แล้ว")
+        except Exception as e:
+            self.status_bar.set_status(f"❌ เปิดโฟลเดอร์ไม่สำเร็จ: {e}")
+
+    def _clear_clip_markers_history(self):
+        """ล้างประวัติการมาร์กคลิปทั้งหมด"""
+        from PySide6.QtWidgets import QMessageBox
+        reply = QMessageBox.question(
+            self, "ล้างประวัติมาร์กคลิป",
+            "คุณต้องการล้างประวัติการบันทึกคลิปทั้งหมดใช่หรือไม่?\n(ไฟล์ clip_markers.txt จะถูกเคลียร์ข้อมูลทั้งหมด)",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+        try:
+            txt_path = os.path.join(self._data_dir, "clip_markers.txt")
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.write("# รายการมาร์กคลิปไฮไลต์ / ช็อตเด็ด (Broadcast Playroom)\n")
+            if self.settings:
+                self.settings.clip_markers = []
+                from settings import save_settings
+                save_settings(self.settings)
+            self._session_marks = []
+            self._session_header_written = False
+            self.status_bar.set_status("🗑️ ล้างประวัติมาร์กคลิปทั้งหมดเรียบร้อยแล้ว")
+        except Exception as e:
+            self.status_bar.set_status(f"❌ ล้างประวัติไม่สำเร็จ: {e}")
 
     def _update_clip_hotkey(self, new_hk: str):
         """อัปเดตปุ่มลัดมาร์กคลิป + re-register hotkeys + update UI"""

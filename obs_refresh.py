@@ -89,23 +89,107 @@ def refresh_obs_sources(
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★ Persistent watcher — เชื่อม OBS WS ค้างไว้ + auto-retry
+# ★ Persistent watcher — เชื่อม OBS WS ค้างไว้ + auto-retry + live stream monitor
 # ═══════════════════════════════════════════════════════════════
+import socket
+
+def is_port_open(host: str, port: int, timeout: float = 0.2) -> bool:
+    """ตรวจสอบ socket port แบบเร็ว (ไม่ค้าง ไม่โยน traceback)"""
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except Exception:
+        return False
+
+
+def get_obs_stream_status(host: str = "localhost", port: int = 4455, password: str = "") -> dict:
+    """ดึงสถานะสตรีม/บันทึกจาก OBS WebSocket
+    Returns:
+      {
+        "connected": bool,
+        "is_streaming": bool,
+        "is_recording": bool,
+        "output_active": bool,
+        "timecode": str,      # เช่น "00:15:32"
+        "duration_sec": int,  # วินาที
+      }
+    """
+    if not is_port_open(host, port, timeout=0.2):
+        return {
+            "connected": False,
+            "is_streaming": False,
+            "is_recording": False,
+            "output_active": False,
+            "timecode": "",
+            "duration_sec": 0,
+        }
+    try:
+        import obsws_python as obs
+        cl = obs.ReqClient(host=host, port=port, password=password, timeout=1.5)
+        is_streaming = False
+        is_recording = False
+        timecode = ""
+        duration_sec = 0
+        try:
+            st = cl.get_stream_status()
+            if getattr(st, 'output_active', False):
+                is_streaming = True
+                tc = getattr(st, 'output_timecode', '') or ''
+                timecode = tc.split('.')[0] if '.' in tc else tc
+                duration_sec = int(getattr(st, 'output_duration', 0) / 1000)
+        except Exception:
+            pass
+        if not is_streaming:
+            try:
+                rec = cl.get_record_status()
+                if getattr(rec, 'output_active', False):
+                    is_recording = True
+                    tc = getattr(rec, 'output_timecode', '') or ''
+                    timecode = tc.split('.')[0] if '.' in tc else tc
+                    duration_sec = int(getattr(rec, 'output_duration', 0) / 1000)
+            except Exception:
+                pass
+        try:
+            cl.base_close()
+        except Exception:
+            pass
+        return {
+            "connected": True,
+            "is_streaming": is_streaming,
+            "is_recording": is_recording,
+            "output_active": is_streaming or is_recording,
+            "timecode": timecode,
+            "duration_sec": duration_sec,
+        }
+    except Exception:
+        return {
+            "connected": False,
+            "is_streaming": False,
+            "is_recording": False,
+            "output_active": False,
+            "timecode": "",
+            "duration_sec": 0,
+        }
+
+
 class OBSWatcher:
-    """เชื่อม OBS WebSocket ค้างไว้ → retry จนกว่าจะติด → refresh เมื่อพร้อม
+    """เชื่อม OBS WebSocket ค้างไว้ → auto-retry + refresh เมื่อพร้อม + monitor stream live status
 
     Callbacks:
-      on_connected() — เรียกเมื่อเชื่อมต่อสำเร็จ (ครั้งแรกหรือ reconnect)
+      on_connected() — เรียกเมื่อเชื่อมต่อสำเร็จ
       on_refreshed(n) — เรียกเมื่อ refresh browser sources แล้ว
-      on_status(msg) — เรียกเมื่อมีสถานะเปลี่ยน (สำหรับ status bar)
+      on_status(msg) — เรียกเมื่อมีสถานะเปลี่ยน
+      on_stream_started(timecode, duration_sec) — เรียกเมื่อเริ่ม Live / Record
+      on_stream_stopped() — เรียกเมื่อจบ Live / Record
+      on_stream_tick(status_dict) — เรียกทุกรอบที่กำลัง Live อยู่ (บอกเวลาปัจจุบัน)
     """
 
-    RETRY_INTERVAL = 5.0   # วินาทีระหว่าง retry
-    MAX_RETRIES = 60       # สูงสุด 60 ครั้ง (5 นาที)
+    RETRY_INTERVAL = 5.0
 
     def __init__(self, host="localhost", port=4455, password="",
                  match_urls=("localhost:8765", "localhost:8801", "localhost:8808"),
-                 on_connected=None, on_refreshed=None, on_status=None):
+                 on_connected=None, on_refreshed=None, on_status=None,
+                 on_stream_started=None, on_stream_stopped=None, on_stream_tick=None):
         self.host = host
         self.port = port
         self.password = password
@@ -113,9 +197,13 @@ class OBSWatcher:
         self.on_connected = on_connected
         self.on_refreshed = on_refreshed
         self.on_status = on_status
+        self.on_stream_started = on_stream_started
+        self.on_stream_stopped = on_stream_stopped
+        self.on_stream_tick = on_stream_tick
         self._stop = threading.Event()
         self._thread = None
         self._connected = False
+        self._was_streaming = False
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -127,47 +215,74 @@ class OBSWatcher:
     def stop(self):
         self._stop.set()
         self._connected = False
+        self._was_streaming = False
 
     @property
     def is_connected(self):
         return self._connected
 
     def _watch_loop(self):
-        """ลู principal: retry เชื่อม OBS จนกว่าจะติด → refresh → จบ"""
-        for attempt in range(self.MAX_RETRIES):
+        """ลูปหลัก: เชื่อมต่อ OBS WS → refresh browser sources → monitor stream status อย่างต่อเนื่อง"""
+        attempt = 0
+        while not self._stop.is_set():
+            if not self._connected:
+                if not is_port_open(self.host, self.port, timeout=0.3):
+                    if attempt == 0 and self.on_status:
+                        self.on_status("🔌 OBS: กำลังรอ OBS เปิด...")
+                    attempt += 1
+                    self._stop.wait(self.RETRY_INTERVAL)
+                    continue
+
+                ok, msg = test_connection(self.host, self.port, self.password)
+                if ok:
+                    self._connected = True
+                    attempt = 0
+                    _log.info("OBS WS connected")
+                    if self.on_connected:
+                        self.on_connected()
+                    # refresh ทันที
+                    n = refresh_obs_sources(self.host, self.port, self.password, self.match_urls)
+                    if self.on_refreshed:
+                        self.on_refreshed(n)
+                    if self.on_status:
+                        if n > 0:
+                            self.on_status(f"🔄 OBS: refresh {n} browser source(s) สำเร็จ")
+                        else:
+                            self.on_status("🔌 OBS: เชื่อมต่อแล้ว")
+                else:
+                    attempt += 1
+                    self._stop.wait(self.RETRY_INTERVAL)
+                    continue
+
+            # เมื่อเชื่อมต่อแล้ว → ตรวจสอบสถานะการ Live ต่อเนื่องทุกๆ 2 วินาที
+            self._stop.wait(2.0)
             if self._stop.is_set():
-                return
+                break
 
-            ok, msg = test_connection(self.host, self.port, self.password)
-            if ok:
-                self._connected = True
-                _log.info("OBS WS connected (attempt %d)", attempt + 1)
-                if self.on_connected:
-                    self.on_connected()
-                if self.on_status:
-                    self.on_status("🔌 OBS: เชื่อมต่อแล้ว — กำลัง refresh browser sources")
-                # refresh ทันที
-                n = refresh_obs_sources(self.host, self.port, self.password, self.match_urls)
-                if self.on_refreshed:
-                    self.on_refreshed(n)
-                if self.on_status:
-                    if n > 0:
-                        self.on_status(f"🔄 OBS: refresh {n} browser source(s) สำเร็จ")
-                    else:
-                        self.on_status("🔌 OBS: เชื่อมต่อแล้ว (ไม่พบ browser source ของเรา)")
-                return  # ทำงานเสร็จ → จบ
+            status = get_obs_stream_status(self.host, self.port, self.password)
+            if not status["connected"]:
+                _log.info("OBS WS disconnected")
+                self._connected = False
+                if self._was_streaming:
+                    self._was_streaming = False
+                    if self.on_stream_stopped:
+                        self.on_stream_stopped()
+                continue
 
-            # ยังไม่ติด → รอแล้วลองใหม่
-            if attempt == 0:
-                _log.info("OBS WS not ready — retrying every %.0fs...", self.RETRY_INTERVAL)
-                if self.on_status:
-                    self.on_status("🔌 OBS: กำลังรอ OBS เปิด...")
-            self._stop.wait(self.RETRY_INTERVAL)
+            is_active = status["output_active"]
+            if is_active and not self._was_streaming:
+                self._was_streaming = True
+                _log.info(f"OBS stream started: {status['timecode']}")
+                if self.on_stream_started:
+                    self.on_stream_started(status['timecode'], status['duration_sec'])
+            elif not is_active and self._was_streaming:
+                self._was_streaming = False
+                _log.info("OBS stream stopped")
+                if self.on_stream_stopped:
+                    self.on_stream_stopped()
 
-        _log.info("OBS WS gave up after %d attempts", self.MAX_RETRIES)
-        if self.on_status:
-            self.on_status("⚠️ OBS: ไม่สามารถเชื่อมต่อได้ (รอเกิน 5 นาที)")
-
+            if is_active and self.on_stream_tick:
+                self.on_stream_tick(status)
 
 
 def test_connection(
@@ -176,10 +291,12 @@ def test_connection(
     password: str = "",
 ) -> tuple[bool, str]:
     """ทดสอบการเชื่อมต่อ OBS WS → คืน (success, message)"""
+    if not is_port_open(host, port, timeout=0.3):
+        return (False, "เชื่อมต่อไม่ได้ — ตรวจสอบว่า OBS เปิดอยู่และเปิด WebSocket Server แล้ว")
     try:
         import obsws_python as obs
 
-        cl = obs.ReqClient(host=host, port=port, password=password, timeout=5)
+        cl = obs.ReqClient(host=host, port=port, password=password, timeout=3)
         version = cl.get_version()
         v = version.obs_version if hasattr(version, "obs_version") else "?"
         try:

@@ -67,6 +67,9 @@ class SplitButton(QWidget):
         self._text = text
         self._main_btn.setText(text)
 
+    def set_text(self, text):
+        self.setText(text)
+
     def text(self):
         return self._text
 

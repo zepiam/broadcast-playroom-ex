@@ -326,9 +326,9 @@ class MyLiveChat:
             )
             return False
 
-        stream_id = self._extract_stream_id(target)
+        stream_id, err = self.resolve_target(target, on_status=self.on_status)
         if not stream_id:
-            self.on_error("ระบุเลขห้อง MyLive เช่น 162006 หรือลิงก์ /streams/162006")
+            self.on_error(err or "ระบุ username หรือเลขห้อง MyLive เช่น Men9CH หรือ 162032")
             return False
 
         if self._is_connected:
@@ -359,29 +359,82 @@ class MyLiveChat:
         self.on_status("⚪ ยกเลิกการเชื่อมต่อ MyLive")
 
     # ------------------------------------------------------------------ #
-    # Target parsing
+    # Target parsing & Auto-Resolve
     # ------------------------------------------------------------------ #
     @staticmethod
-    def _extract_stream_id(text: str) -> Optional[str]:
-        """แยกเลข stream จาก URL หรือ input ตรงๆ
+    def resolve_target(text: str, on_status: Optional[Callable[[str], Any]] = None) -> tuple[Optional[str], Optional[str]]:
+        """แปลง input (เลขห้อง / URL / username) เป็น (stream_id, error_message)
 
-        รองรับทุกรูปแบบ:
-          - "162006"                                  (เลขห้องล้วน)
-          - "https://mylive.in.th/streams/162006"     (URL ตรงๆ)
-          - "https://mylive.in.th/Men9CH/streams/162006"  (URL ที่มี user คั่น)
+        รองรับ:
+          - "162032"                                  (เลขห้องตรงๆ)
+          - "https://mylive.in.th/streams/162032"     (URL ตรงๆ)
+          - "https://mylive.in.th/Men9CH/streams/162032" (URL สตรีม)
+          - "Men9CH" หรือ "@Men9CH"                   (Username → ค้นหาห้อง live อัตโนมัติ)
+          - "https://mylive.in.th/Men9CH"             (URL หน้าโปรไฟล์)
         """
-        text = text.strip()
-        if not text:
-            return None
-        # URL รูปแบบ /streams/<id> หรือ /<user>/streams/<id>
-        # จับเลขตัวเลขที่อยู่หลัง /streams/ ตัวสุดท้าย
-        m = re.search(r"/streams/(\d+)", text)
+        raw = text.strip()
+        if not raw:
+            return None, "กรุณาระบุ username หรือเลขห้อง MyLive"
+
+        # 1. URL ที่มี /streams/<id>
+        m = re.search(r"/streams/(\d+)", raw)
         if m:
-            return m.group(1)
-        # เลข stream ล้วน
-        if re.fullmatch(r"\d+", text):
-            return text
-        return None
+            return m.group(1), None
+
+        # 2. เลขห้องล้วน
+        if re.fullmatch(r"\d+", raw):
+            return raw, None
+
+        # 3. ตีความว่าเป็น Username หรือ URL หน้าโปรไฟล์ (เช่น Men9CH หรือ https://mylive.in.th/Men9CH)
+        clean = raw.rstrip("/")
+        if "/" in clean:
+            clean = clean.split("/")[-1]
+        username = clean.lstrip("@").strip()
+
+        if not username:
+            return None, "รูปแบบ Username MyLive ไม่ถูกต้อง"
+
+        if on_status:
+            try:
+                on_status(f"🔍 กำลังตรวจสอบสถานะ Live ของ {username} บน MyLive...")
+            except Exception:
+                pass
+
+        try:
+            import requests
+            headers = {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/126.0.0.0 Safari/537.36"
+                )
+            }
+            resp = requests.get(f"https://mylive.in.th/a/users/{username}", headers=headers, timeout=6)
+            if resp.status_code == 200:
+                data = resp.json()
+                live_id = data.get("live")
+                display_name = data.get("name") or username
+                if live_id and str(live_id) not in ("False", "false", "0"):
+                    if on_status:
+                        try:
+                            on_status(f"✅ พบห้อง Live ของ {display_name} (ห้อง #{live_id})")
+                        except Exception:
+                            pass
+                    return str(live_id), None
+                else:
+                    return None, f"ผู้ใช้ {display_name} ({username}) ยังไม่ได้เปิดห้อง Live — กรุณาสร้างห้อง Live ก่อน แล้วเชื่อมต่ออีกครั้ง"
+            elif resp.status_code in (400, 404):
+                return None, f"ไม่พบบัญชีผู้ใช้ MyLive: {username}"
+            else:
+                return None, f"ตรวจสอบ MyLive ล้มเหลว (HTTP {resp.status_code})"
+        except Exception as exc:
+            return None, f"เกิดข้อผิดพลาดในการตรวจสอบ MyLive: {exc}"
+
+    @staticmethod
+    def _extract_stream_id(text: str) -> Optional[str]:
+        """แยกเลข stream จาก input ตรงๆ (คงไว้เพื่อ backward compatibility)"""
+        sid, _ = MyLiveChat.resolve_target(text)
+        return sid
 
     # ------------------------------------------------------------------ #
     # Worker loop — เปิด browser + poll DOM จนกว่าจะ disconnect

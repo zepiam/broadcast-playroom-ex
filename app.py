@@ -2536,7 +2536,15 @@ class TTSForLivestreamApp(QMainWindow):
             elif platform == "mylive":
                 raw = (getattr(self.settings, 'mylive_url', '') or '').strip()
                 if raw:
-                    url = raw if raw.startswith('http') else f"https://mylive.in.th/streams/{raw}"
+                    client = self.chat_clients.get("mylive")
+                    active_sid = getattr(client, '_stream_id', '')
+                    if active_sid:
+                        url = f"https://mylive.in.th/streams/{active_sid}"
+                    elif raw.isdigit() or '/streams/' in raw:
+                        url = raw if raw.startswith('http') else f"https://mylive.in.th/streams/{raw}"
+                    else:
+                        u = raw.rstrip('/').split('/')[-1].lstrip('@')
+                        url = f"https://mylive.in.th/{u}"
             elif platform == "tiktok":
                 user = (getattr(self.settings, 'tiktok_username', '') or '').strip().lstrip('@')
                 if user:
@@ -3437,7 +3445,12 @@ class TTSForLivestreamApp(QMainWindow):
         # ★ mark for reconnect
         st = self._reconnect_state.get(platform)
         if st and not st.get('manual_disconnect'):
-            if 'ปิด' in error_msg or 'หลุด' in error_msg:
+            if platform == 'mylive' and ('ยังไม่ได้เปิดห้อง' in error_msg or 'สร้างห้อง' in error_msg or 'ไม่พบบัญชี' in error_msg):
+                # ★ ถ้ายังไม่เปิดห้อง / ไม่พบบัญชี → หยุดพยายามเชื่อมต่อทันที (ห้าม reconnect วนลูป)
+                st['manual_disconnect'] = True
+                st['last_attempt'] = None
+                st['attempts'] = 0
+            elif 'ปิด' in error_msg or 'หลุด' in error_msg:
                 st['last_attempt'] = time.time()
         self._update_platform_count()
 

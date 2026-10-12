@@ -535,7 +535,7 @@ class SettingsDialog(QDialog):
         # ── MyLive ──
         body = _platform_card("mylive", "MyLive")
         self.ml_url = QLineEdit()
-        self.ml_url.setPlaceholderText("https://mylive.in.th/streams/XXXXX")
+        self.ml_url.setPlaceholderText("Username (เช่น Men9CH) หรือเลขห้อง")
         _channel_row(body, self.ml_url, "MyLive", 'ml_auto', 'ml_show')
 
         # ── KICK (รองรับส่งแชท + bot) ──

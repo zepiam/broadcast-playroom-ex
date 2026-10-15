@@ -452,7 +452,20 @@ def apply_patch(zip_path: str) -> bool:
     delete_old_exes_lines = "".join(
         f'del "{os.path.join(install_dir, f)}" >nul 2>&1\n' for f in old_exes_to_delete)
 
-    # batch script — stage-then-copy pattern
+    # ★ 1. แตกไฟล์ zip ลง .update_staging ด้วย Python โดยตรง (เสร็จก่อนปิดโปรแกรม เร็วกว่า ปลอดภัยกว่า ไม่พึ่ง PowerShell ใน batch)
+    try:
+        import shutil
+        if os.path.exists(staging):
+            shutil.rmtree(staging, ignore_errors=True)
+        os.makedirs(staging, exist_ok=True)
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            zf.extractall(staging)
+        logger.info(f"apply_patch: zip extracted to staging ({staging})")
+    except Exception as exc:
+        logger.error(f"apply_patch: failed to extract zip directly: {exc}")
+        return False
+
+    # batch script — stage-then-copy pattern พร้อม retry loop และ guaranteed restart
     bat = f"""@echo off
 chcp 65001 >nul 2>&1
 >"{log_path}" echo === Broadcast Playroom v2 updater ===
@@ -460,37 +473,46 @@ chcp 65001 >nul 2>&1
 >>"{log_path}" echo install: {install_dir}
 >>"{log_path}" echo exe: {exe_name}
 
-:: Stage 1: extract zip to staging (PowerShell Expand-Archive)
-if exist "{staging}" rd /s /q "{staging}"
-mkdir "{staging}"
-powershell -NoProfile -Command "try {{ Expand-Archive -LiteralPath '{zip_path}' -DestinationPath '{staging}' -Force }} catch {{ exit 1 }}"
-if errorlevel 1 (
-  >>"{log_path}" echo FAIL: cannot extract zip
-  exit /b 1
-)
-
-:: Stage 2: wait until exe is gone from tasklist
+:: Stage 1: wait until exe is gone from tasklist (สูงสุด 20 วินาที)
+set wait_count=0
 :waitloop
 tasklist /fi "imagename eq {exe_name}" 2>nul | find /i "{exe_name}" >nul
 if not errorlevel 1 (
-  ping 127.0.0.1 -n 2 >nul
+  set /a wait_count+=1
+  if %wait_count% gtr 10 (
+    >>"{log_path}" echo process still running — forcing termination...
+    taskkill /f /im "{exe_name}" >nul 2>&1
+    goto copy_stage
+  )
+  ping 127.0.0.1 -n 3 >nul
   goto waitloop
 )
 
-:: Stage 2b: 3s buffer for OS to release mutex/file handle
+:copy_stage
+:: Stage 2: buffer for OS to release mutex/file handles
 >>"{log_path}" echo waiting for OS cleanup (3s)...
 ping 127.0.0.1 -n 4 >nul
 
-:: Stage 3: recursive overwrite copy
->>"{log_path}" echo copying files...
+:: Stage 3: recursive overwrite copy พร้อม retry loop 5 ครั้ง
+set copy_try=0
+:copy_loop
+set /a copy_try+=1
+>>"{log_path}" echo copying files (attempt %copy_try%)...
 xcopy /y /e /i "{staging}\\*" "{install_dir}\\" >nul 2>&1
+if errorlevel 1 (
+  if %copy_try% lss 5 (
+    ping 127.0.0.1 -n 3 >nul
+    goto copy_loop
+  )
+  >>"{log_path}" echo WARNING: xcopy returned error after 5 attempts
+)
 
 :: Stage 4: cleanup old exe files (migration — ชื่อเปลี่ยน)
 {delete_old_exes_lines}
-:: Stage 5: cleanup + restart + self-delete
+:: Stage 5: cleanup + guaranteed restart
 rd /s /q "{staging}" 2>nul
 del "{zip_path}" 2>nul
->>"{log_path}" echo done — restarting
+>>"{log_path}" echo done — restarting application
 start "" "{exe_path}"
 (goto) 2>nul & del "%~f0"
 """

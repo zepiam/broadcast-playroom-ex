@@ -404,6 +404,8 @@ class ChatPipeline:
         #   | "skipped" | "error"   info: dict (เช่น elapsed, reason)
         #   ใช้แสดงไอคอนสถานะริมข้อความใน Live Chat (รอคิว/กำลังอ่าน/อ่านแล้วกี่วิ)
         self.on_tts_status: Optional[Callable[[str, str, dict], None]] = None
+        # ★ TTS server health tracking: (status: str, latency: float, err: str)
+        self.on_tts_health: Optional[Callable[[str, float, str], None]] = None
 
     # ------------------------------------------------------------------ #
     # Wiring
@@ -1828,6 +1830,7 @@ class ChatPipeline:
             done_event.set()
 
         epoch0 = self._epoch
+        t0 = time.monotonic()
         self.tts.generate(params, on_done, on_error)
         # ★ รอแบบสั้นๆ ทีละ 50 ms — ถ้ากดปิดเสียง/ล้างคิวระหว่างรอ (เช่น สแปมประโยคยาวๆ ที่ใช้เวลาสร้างเสียงนาน)
         #   เลิกรอทันที ไม่ต้องรอจนเสร็จ/หมดเวลา — คำขอที่ค้างอยู่ทางเน็ตปล่อยให้จบเอง ผลลัพธ์ถูกทิ้ง
@@ -1836,15 +1839,26 @@ class ChatPipeline:
             if self._epoch != epoch0 or self._stop_event.is_set():
                 return None
             if time.monotonic() >= deadline:
+                lat = time.monotonic() - t0
                 logger.warning(f"edge-tts timeout ({timeout}s) — ข้ามข้อความนี้")
                 if self.on_status is not None:
                     self.on_status(f"⚠️ edge-tts ค้าง {timeout}s → ข้ามข้อความ")
+                if self.on_tts_health is not None:
+                    self.on_tts_health("red", lat, f"timeout {timeout}s")
                 return None
+        lat = time.monotonic() - t0
         if "error" in result:
+            err = result["error"]
             if self.on_status is not None:
-                self.on_status(f"❌ TTS: {result['error']}")
+                self.on_status(f"❌ TTS: {err}")
+            if self.on_tts_health is not None:
+                self.on_tts_health("red", lat, str(err))
             return None
-        return result.get("data")
+        data = result.get("data")
+        if self.on_tts_health is not None and data:
+            st = "yellow" if ((lat > 3.0 and len(params.text) < 30) or lat > 6.0) else "green"
+            self.on_tts_health(st, lat, "")
+        return data
 
     def _resolve_edge_voice_name(self, fallback_voice: str, viewer_voice: Optional[str] = None) -> str:
         """แปลง edge_voice config ("premwadee"/"niwat") หรือ viewer_voice → edge-tts voice id

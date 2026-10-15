@@ -353,6 +353,7 @@ class Sidebar(QFrame):
     """Left sidebar — platforms list + voice panel"""
 
     toggle_requested = Signal()  # ซ่อน/แสดง sidebar
+    tts_status_clicked = Signal()  # ★ คลิกที่เม็ดสี status เพื่อตรวจสอบสถานะเซิร์ฟเวอร์ TTS ทันที
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -422,11 +423,39 @@ class Sidebar(QFrame):
         theme.styled(sep, "background-color: #2a2f45;")
         clayout.addWidget(sep)
 
-        # ★ Voice header — เหลือแค่หัวข้อ (สถานะย้ายไปใต้ RVC combo แล้ว)
+        # ★ Voice header row: 🎤 เสียง (ซ้าย) + status : ● (ขวา)
+        vh_row = QHBoxLayout()
+        vh_row.setContentsMargins(0, 0, 0, 0)
+        vh_row.setSpacing(4)
+
         voice_header = QLabel("🎤 เสียง")
         voice_header.setObjectName("Heading")
         theme.styled(voice_header, "font-size: 16px; font-weight: 700; color: #f59e0b;")
-        clayout.addWidget(voice_header)
+        vh_row.addWidget(voice_header)
+
+        vh_row.addStretch()
+
+        # ★ TTS Server Status indicator (status : ●)
+        self.tts_status_container = QWidget()
+        self.tts_status_container.setCursor(Qt.PointingHandCursor)
+        tts_st_layout = QHBoxLayout(self.tts_status_container)
+        tts_st_layout.setContentsMargins(0, 0, 0, 0)
+        tts_st_layout.setSpacing(3)
+
+        self.tts_status_lbl = QLabel("status :")
+        theme.styled(self.tts_status_lbl, "font-size: 12px; color: #9ca3af; font-weight: 500;")
+        tts_st_layout.addWidget(self.tts_status_lbl)
+
+        self.tts_status_dot = QLabel("●")
+        theme.styled(self.tts_status_dot, "font-size: 14px; color: #9ca3af; font-weight: bold;")
+        tts_st_layout.addWidget(self.tts_status_dot)
+
+        # คลิกเพื่อสั่งตรวจสอบสถานะซ้ำได้ทันที
+        self.tts_status_container.mousePressEvent = lambda e: self.tts_status_clicked.emit()
+        vh_row.addWidget(self.tts_status_container)
+
+        clayout.addLayout(vh_row)
+        self.set_tts_status("checking")
 
         # ════════════════════════════════════════════════════════════════
         # ★ Voice panel — แยก 2 ส่วน: base voice (หญิง/ชาย) / RVC
@@ -669,3 +698,46 @@ class Sidebar(QFrame):
         color = "#10b981" if connected > 0 else "#6b7280"
         self.platform_count.setText(f"{connected}/{total}")
         theme.styled(self.platform_count, f"color: {color}; font-size: 12px; font-weight: 600;")
+
+    def set_tts_status(self, state: str, latency: float = 0.0, err_detail: str = ""):
+        """อัปเดตสีเม็ดสถานะ TTS + tooltip
+
+        state: "green" | "yellow" | "red" | "checking"
+        """
+        if state == "green":
+            color = "#10b981"
+            tooltip = (
+                "<div style='font-size: 12px; line-height: 1.4; color: #f3f4f6;'>"
+                "<b style='color: #e2e8f0;'>ตรวจสอบเซิฟเวอร์ระบบอ่านแชท :</b><br/>"
+                "<span style='color: #10b981; font-weight: bold;'>● พร้อมใช้งานตามปกติ</span><br/>"
+                "<span style='color: #9ca3af; font-size: 11px;'>(เชื่อมต่อสำเร็จปกติ)</span>"
+                "</div>"
+            )
+        elif state == "yellow":
+            color = "#f59e0b"
+            tooltip = (
+                "<div style='font-size: 12px; line-height: 1.4; color: #f3f4f6;'>"
+                "<b style='color: #e2e8f0;'>ตรวจสอบเซิฟเวอร์ระบบอ่านแชท :</b><br/>"
+                "<span style='color: #f59e0b; font-weight: bold;'>● การเชื่อมต่อไม่ค่อยเสถียร</span><br/>"
+                "<span style='color: #9ca3af; font-size: 11px;'>อาจทำให้อ่านหรือตอบสนองข้อความช้า</span>"
+                "</div>"
+            )
+        elif state == "red":
+            color = "#ef4444"
+            tooltip = (
+                "<div style='font-size: 12px; line-height: 1.4; color: #f3f4f6;'>"
+                "<b style='color: #e2e8f0;'>ตรวจสอบเซิฟเวอร์ระบบอ่านแชท :</b><br/>"
+                "<span style='color: #ef4444; font-weight: bold;'>● เชื่อมต่อระบบไม่สำเร็จ</span><br/>"
+                "<span style='color: #9ca3af; font-size: 11px;'>อาจเกิดจากเซิฟเวอร์ล่ม หรือ อินเตอร์เน็ตของคุณมีปัญหาในการเชื่อมต่อ</span>"
+                "</div>"
+            )
+        else:
+            color = "#9ca3af"
+            tooltip = (
+                "<div style='font-size: 12px; line-height: 1.4; color: #f3f4f6;'>"
+                "<b style='color: #e2e8f0;'>ตรวจสอบเซิฟเวอร์ระบบอ่านแชท :</b><br/>"
+                "<span style='color: #9ca3af; font-weight: bold;'>● กำลังตรวจสอบสถานะ...</span>"
+                "</div>"
+            )
+        theme.styled(self.tts_status_dot, f"font-size: 14px; color: {color}; font-weight: bold;")
+        self.tts_status_container.setToolTip(tooltip)

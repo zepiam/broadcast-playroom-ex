@@ -302,6 +302,55 @@ class TTSEngine:
         future = asyncio.run_coroutine_threadsafe(_fetch(), self._loop)
         future.add_done_callback(_task_done)
 
+    def check_health(
+        self,
+        on_result: Callable[[str, float, str], None],
+        timeout: int = 8,
+    ) -> None:
+        """ตรวจสอบความพร้อมของเซิร์ฟเวอร์ edge-tts (WebSocket audio handshake)
+
+        on_result(status: str, latency: float, error_detail: str)
+          status: "green" | "yellow" | "red"
+        """
+        import time
+
+        async def _probe() -> tuple[str, float, str]:
+            t0 = time.monotonic()
+            try:
+                conn = aiohttp.TCPConnector(family=socket.AF_INET)
+                communicate = edge_tts.Communicate(
+                    "ok",
+                    voice="th-TH-PremwadeeNeural",
+                    connector=conn,
+                    connect_timeout=6,
+                    receive_timeout=int(timeout),
+                )
+                has_audio = False
+                async for chunk in communicate.stream():
+                    if chunk["type"] == "audio" and len(chunk.get("data", b"")) > 0:
+                        has_audio = True
+                latency = time.monotonic() - t0
+                if has_audio:
+                    if latency <= 2.2:
+                        return ("green", latency, "")
+                    else:
+                        return ("yellow", latency, f"latency {latency:.1f}s")
+                else:
+                    return ("red", latency, "No audio received")
+            except Exception as exc:
+                latency = time.monotonic() - t0
+                return ("red", latency, str(exc))
+
+        def _task_done(fut: asyncio.Future) -> None:
+            try:
+                res = fut.result()
+                on_result(res[0], res[1], res[2])
+            except Exception as exc:  # noqa: BLE001
+                on_result("red", 0.0, str(exc))
+
+        future = asyncio.run_coroutine_threadsafe(_probe(), self._loop)
+        future.add_done_callback(_task_done)
+
     @staticmethod
     def _format_error(exc: Exception) -> str:
         msg = str(exc).lower()

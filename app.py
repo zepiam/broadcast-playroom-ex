@@ -94,6 +94,8 @@ class TTSForLivestreamApp(QMainWindow):
     _kick_oauth_result_sig = Signal(object)  # result dict or None
     # ★ TTS status per message — pipeline thread → main thread (ไอคอนสถานะริมข้อความ)
     _tts_status_sig = Signal(str, str, object)  # (tts_id, status, info dict)
+    # ★ TTS server health status — probe / pipeline → main thread (status, latency, error)
+    _tts_health_sig = Signal(str, float, str)
 
     def __init__(self):
         super().__init__()
@@ -106,6 +108,8 @@ class TTSForLivestreamApp(QMainWindow):
         self._reconnect_result.connect(self._on_reconnect_done)
         self._chat_message.connect(self._on_chat_message)
         self._tts_status_sig.connect(self._on_tts_status_ui)
+        self._tts_health_sig.connect(self._on_tts_health_ui)
+        self._tts_health_alerted = False  # แจ้งเตือนลง Live Chat แค่ครั้งเดียวต่อการเปิดโปรแกรม 1 ครั้ง
         self._platform_error.connect(self._on_platform_error_signal)
         self._viewer_update.connect(self._update_viewer_ui)
         self._open_playroom_sig.connect(self._open_playroom_settings_tab)
@@ -340,6 +344,13 @@ class TTSForLivestreamApp(QMainWindow):
 
         # ★ Auto-sync คลังคำศัพท์ (Replace) จากเซิร์ฟเวอร์ 4 วินาทีหลังเปิดโปรแกรม
         QTimer.singleShot(4000, self._auto_sync_replace_dict)
+
+        # ★ ตรวจสอบสถานะเซิร์ฟเวอร์ TTS 1.5 วินาทีหลังเปิดโปรแกรม + ตรวจซ้ำทุก 2 นาที
+        QTimer.singleShot(1500, self._check_tts_health)
+        self._tts_health_timer = QTimer(self)
+        self._tts_health_timer.setInterval(120_000)
+        self._tts_health_timer.timeout.connect(self._check_tts_health)
+        self._tts_health_timer.start()
 
     # ════════════════════════════════════════════════════════════
     # Subsystem init (events + donate + notification + history)
@@ -1016,6 +1027,8 @@ class TTSForLivestreamApp(QMainWindow):
             # ★ TTS status tracking — ไอคอนสถานะริมข้อความ (รอคิว/กำลังอ่าน/อ่านแล้วกี่วิ)
             #   เรียกจาก compute/play thread → marshal ผ่าน signal (thread-safe)
             self.pipeline.on_tts_status = lambda tid, st, info: self._tts_status_sig.emit(tid, st, info)
+            # ★ TTS server health tracking — อัปเดตเม็ดสีสถานะ TTS
+            self.pipeline.on_tts_health = lambda st, lat, err: self._tts_health_sig.emit(st, lat, err)
             # ★ translation callback → re-render chat row (thread-safe via signal)
             self.pipeline.on_translated = lambda msg: self._msg_translated.emit(msg)
             self.pipeline.on_translate_settled = lambda msg: self._translate_settled.emit(msg)
@@ -1281,6 +1294,8 @@ class TTSForLivestreamApp(QMainWindow):
         self.sidebar.pitch_slider.valueChanged.connect(self._on_pitch_change)
         self.sidebar.voice_download_btn.clicked.connect(self._open_voice_downloader)
         self.sidebar.voice_test_btn.clicked.connect(self._test_voice)
+        # ★ คลิกที่เม็ดสี status เพื่อตรวจสอบสถานะเซิร์ฟเวอร์ TTS ใหม่ทันที
+        self.sidebar.tts_status_clicked.connect(self._check_tts_health)
         # ★ refresh voice panel button → rescan + rebuild dropdowns
         self.sidebar.voice_refresh_btn.clicked.connect(lambda: self._refresh_voice_panel())
         # ★ initial refresh
@@ -3001,6 +3016,36 @@ class TTSForLivestreamApp(QMainWindow):
                 self._popout_window.update_tts_status(tts_id, status, info or {})
         except Exception:
             pass
+
+    def _check_tts_health(self):
+        """★ สั่งตรวจสอบสถานะเซิร์ฟเวอร์ edge-tts (WebSocket audio handshake) ใน worker loop"""
+        if not getattr(self, "tts_engine", None):
+            self._tts_health_sig.emit("red", 0.0, "TTS engine not initialized")
+            return
+        if hasattr(self, "sidebar") and self.sidebar:
+            self.sidebar.set_tts_status("checking")
+        try:
+            self.tts_engine.check_health(lambda st, lat, err: self._tts_health_sig.emit(st, lat, err))
+        except Exception as e:
+            self._tts_health_sig.emit("red", 0.0, str(e))
+
+    def _on_tts_health_ui(self, status: str, latency: float, err_detail: str):
+        """★ อัปเดต UI เม็ดสีสถานะ TTS และแจ้งเตือนลงช่อง Live Chat ถ้ามีปัญหา (Main Thread)"""
+        if hasattr(self, "sidebar") and self.sidebar:
+            self.sidebar.set_tts_status(status, latency, err_detail)
+
+        # แจ้งเตือนลง Live Chat เฉพาะกรณีเหลืองหรือแดง และยังไม่เคยแจ้งในเซสชั่นนี้
+        if not getattr(self, "_tts_health_alerted", False):
+            if status == "yellow":
+                self._tts_health_alerted = True
+                self._post_system_message(
+                    "⚠️ ตรวจสอบเซิฟเวอร์ระบบอ่านแชท : การเชื่อมต่อไม่ค่อยเสถียร อาจทำให้อ่านหรือตอบสนองข้อความช้า"
+                )
+            elif status == "red":
+                self._tts_health_alerted = True
+                self._post_system_message(
+                    "❌ ตรวจสอบเซิฟเวอร์ระบบอ่านแชท : เชื่อมต่อระบบไม่สำเร็จ อาจเกิดจากเซิฟเวอร์ล่ม หรือ อินเตอร์เน็ตของคุณมีปัญหาในการเชื่อมต่อ"
+                )
 
     def _on_tts_check_toggled(self, checked):
         """★ checkbox "TTS" ข้างปุ่มส่ง — จำค่าล่าสุดไว้ใน settings (เปิดรอบหน้าใช้ค่าเดิม)

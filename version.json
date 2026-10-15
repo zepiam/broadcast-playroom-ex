@@ -1,16 +1,16 @@
 {
-  "version": "2.8.13",
-  "changelog": "- แก้ไขระบบเสียง TTS (อัปเดต edge-tts 7.3.1 รองรับมาตรการรักษาความปลอดภัยใหม่ของ Microsoft)\n- ปรับปรุงความเสถียรของระบบอัปเดตอัตโนมัติ (แตกไฟล์ผ่าน Python ป้องกันโปรแกรมดับค้าง)",
+  "version": "2.8.14",
+  "changelog": "- แก้ไขระบบเสียง TTS (อัปเดต edge-tts 7.3.1 รองรับมาตรการรักษาความปลอดภัยใหม่ของ Microsoft)\n- เพิ่มไฟสถานะเช็คเซิฟเวอร์ Microsoft ว่าสามารถอ่านเสียง TTS ได้หรือไม่ ผู้ใช้งานสามารถเช็คได้ด้วยตนเองเสมอ\n- ปรับปรุงความเสถียรของระบบอัปเดตอัตโนมัติ (แตกไฟล์ผ่าน Python ป้องกันโปรแกรมดับค้าง)",
   "lite": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.13/patch_lite.zip",
-    "size": 17677160,
-    "sha256": "5dc16232ea24ec280574dea95c677de62191adcf5c7643f4ddcd29ca32ad0f02"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.14/patch_lite.zip",
+    "size": 17681833,
+    "sha256": "2c5d73b96f687b7bd429a416264d088ac967a68709b7408cb945c7ef43a45b25"
   },
   "full": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.13/patch_full.zip",
-    "size": 72443115,
-    "sha256": "acbc6699bb8a92b3f112632090440c5b59dc2bfc20fdb5e6a9d88985b3a0463b"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.14/patch_full.zip",
+    "size": 72447362,
+    "sha256": "e9f98c889b69f69d88da8b265666c3e764d3e84988dd9e065a3b31cfecca1e53"
   }
 }

@@ -40,4 +40,6 @@ server/
 YOUTUBE_TOKEN_DEPLOY.md
 
 # dev test screenshots (generated)
-dev_tests/**/shots/
+dev_tests/
+HANDOFF.md
+icon_check_256.png

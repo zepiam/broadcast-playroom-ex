@@ -15,6 +15,9 @@
 ★ Functions:
     - fetch_supporters()      — GET approved list (โปรแกรมแสดงในหน้าสนับสนุน)
     - submit_supporter()      — POST อัพโหลดหลักฐาน (multipart)
+    - delete_supporter()      — POST ลบผู้สนับสนุน (admin)
+    - fetch_pending()         — POST ดู pending list (admin)
+    - open_approve_url()      — เปิดหน้า approve ในเบราว์เซอร์
 
 ★ ดึงครั้งเดียวตอนเปิดโปรแกรม (user ตั้งค่า cache policy)
 """
@@ -31,7 +34,7 @@ import urllib.parse
 _log = logging.getLogger(__name__)
 
 # ★ API endpoint — user สามารถเปลี่ยนได้ภายหลัง
-SUPPORTERS_API_URL = "https://men9ch.com/api"
+SUPPORTERS_API_URL = "https://www.men9ch.com/api"
 # ★ ใช้ User-Agent เหมือน browser จริง — security plugin ของ host บล็อก bot UA
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
 
@@ -42,12 +45,22 @@ def _browser_headers(extra=None):
         "User-Agent": USER_AGENT,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
-        "Origin": "https://men9ch.com",
-        "Referer": "https://men9ch.com/api/upload.html",
+        "Origin": "https://www.men9ch.com",
+        "Referer": "https://www.men9ch.com/api/upload.html",
     }
     if extra:
         h.update(extra)
     return h
+
+# ★ Tier thresholds (เปรียบเทียบในหน่วย THB — สกุลอื่นแปลงเป็น THB ก่อนถ้ามีอัตรา)
+#   ตอนนี้ใช้ง่ายๆ: ทุกสกุลเทียบ amount ตรงๆ (assume THB)
+_TIER_THRESHOLDS = [
+    (10000, "👑", "Diamond"),
+    (5000,  "💎", "Platinum"),
+    (2000,  "🥇", "Gold"),
+    (500,   "🥈", "Silver"),
+    (1,     "🥉", "Bronze"),
+]
 
 # ★ currency symbol map
 _CURRENCY_SYMBOL = {
@@ -57,6 +70,20 @@ _CURRENCY_SYMBOL = {
     "EUR": "€",
     "GBP": "£",
 }
+
+
+def get_tier(amount: float, currency: str = "THB") -> dict:
+    """คำนวณ tier จากยอด → คืน {"icon": "...", "name": "..."}
+
+    ★ ตอนนี้ใช้ amount ตรงๆ (assume THB-equivalent)
+      ถ้ามีหลายสกุลจริงๆ จะต้องแปลงเป็น THB ก่อนเปรียบเทียบ
+    """
+    amt = float(amount or 0)
+    for threshold, icon, name in _TIER_THRESHOLDS:
+        if amt >= threshold:
+            return {"icon": icon, "name": name}
+    # amount = 0 หรือติดลบ → ไม่มี tier
+    return {"icon": "💚", "name": "Supporter"}
 
 
 def format_amount(amount, currency: str = "THB") -> str:
@@ -178,6 +205,7 @@ def submit_supporter(
     machine_id: str = "",
     platform: str = "",
     channel_url: str = "",
+    source: str = "",
     timeout: int = 30,
 ) -> dict:
     """★ ส่งหลักฐานการสนับสนุน (multipart/form-data) — multi-channel
@@ -247,6 +275,8 @@ def submit_supporter(
         body_parts.append(_field("platform", platform))
     if channel_url:
         body_parts.append(_field("channel_url", channel_url))
+    if source:
+        body_parts.append(_field("source", source))
     body_parts.append(_field("channel", channel))
     if channel == "bank":
         body_parts.append(_field("method", method))
@@ -307,3 +337,217 @@ def submit_supporter(
         return {"ok": False, "error": f"ไม่สามารถเชื่อมต่อ server: {e.reason}"}
     except Exception as e:
         return {"ok": False, "error": f"เกิดข้อผิดพลาด: {e}"}
+
+
+# ════════════════════════════════════════════════════════════════
+# ★ Admin actions (ลบผู้สนับสนุน + ดู pending)
+# ════════════════════════════════════════════════════════════════
+
+def delete_supporter(
+    supporter_id: str,
+    admin_secret: str,
+    api_url: str = SUPPORTERS_API_URL,
+    timeout: int = 10,
+) -> dict:
+    """★ ลบผู้สนับสนุน (admin only)
+
+    Returns:
+        {"ok": True, "message": "..."} หรือ {"ok": False, "error": "..."}
+    """
+    if not admin_secret:
+        return {"ok": False, "error": "ยังไม่ได้ตั้ง admin secret (ไปที่ ตั้งค่า > สนับสนุน)"}
+
+    url = api_url.rstrip("/")
+    if not url.endswith("api.php"):
+        url = url + "/api.php"
+    url = f"{url}?action=delete&id={urllib.parse.quote(supporter_id)}&token={urllib.parse.quote(admin_secret)}"
+
+    ctx = ssl.create_default_context()
+    ctx.load_default_certs()
+
+    try:
+        req = urllib.request.Request(url, data=b"", method="POST", headers=_browser_headers())
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+        data = json.loads(raw)
+        return data
+    except urllib.error.HTTPError as e:
+        try:
+            err_data = json.loads(e.read().decode("utf-8", errors="replace"))
+            return {"ok": False, "error": err_data.get("error", f"HTTP {e.code}")}
+        except Exception:
+            return {"ok": False, "error": f"HTTP {e.code}: {e.reason}"}
+    except urllib.error.URLError as e:
+        return {"ok": False, "error": f"ไม่สามารถเชื่อมต่อ server: {e.reason}"}
+    except Exception as e:
+        return {"ok": False, "error": f"เกิดข้อผิดพลาด: {e}"}
+
+
+def fetch_pending(
+    admin_secret: str,
+    api_url: str = SUPPORTERS_API_URL,
+    timeout: int = 10,
+) -> dict:
+    """★ ดู pending list (admin only) — สำหรับ admin panel
+
+    Returns:
+        {"ok": True, "pending": [...], "count": N} หรือ {"ok": False, "error": "..."}
+    """
+    if not admin_secret:
+        return {"ok": False, "error": "ยังไม่ได้ตั้ง admin secret"}
+
+    url = api_url.rstrip("/")
+    if not url.endswith("api.php"):
+        url = url + "/api.php"
+    url = f"{url}?action=fetch_pending&token={urllib.parse.quote(admin_secret)}"
+
+    ctx = ssl.create_default_context()
+    ctx.load_default_certs()
+
+    try:
+        req = urllib.request.Request(url, data=b"", method="POST", headers=_browser_headers())
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+        data = json.loads(raw)
+        return data
+    except urllib.error.HTTPError as e:
+        try:
+            err_data = json.loads(e.read().decode("utf-8", errors="replace"))
+            return {"ok": False, "error": err_data.get("error", f"HTTP {e.code}")}
+        except Exception:
+            return {"ok": False, "error": f"HTTP {e.code}: {e.reason}"}
+    except urllib.error.URLError as e:
+        return {"ok": False, "error": f"ไม่สามารถเชื่อมต่อ server: {e.reason}"}
+    except Exception as e:
+        return {"ok": False, "error": f"เกิดข้อผิดพลาด: {e}"}
+
+
+def open_approve_url(supporter_id: str, admin_secret: str, api_url: str = SUPPORTERS_API_URL):
+    """★ เปิดหน้า approve ในเบราว์เซอร์ (สำหรับ pending entries)"""
+    import webbrowser
+    base = api_url.rstrip("/")
+    if base.endswith("api.php"):
+        base = base.replace("api.php", "")
+    url = f"{base}/approve.php?id={urllib.parse.quote(supporter_id)}&token={urllib.parse.quote(admin_secret)}"
+    try:
+        webbrowser.open(url)
+    except Exception:
+        pass
+    return url
+
+
+def open_admin_url(admin_secret: str, api_url: str = SUPPORTERS_API_URL):
+    """★ เปิดหน้า admin ในเบราว์เซอร์"""
+    import webbrowser
+    base = api_url.rstrip("/")
+    if base.endswith("api.php"):
+        base = base.replace("api.php", "")
+    url = f"{base}/admin.php?token={urllib.parse.quote(admin_secret)}"
+    try:
+        webbrowser.open(url)
+    except Exception:
+        pass
+    return url
+
+
+def redeem_truemoney_voucher(
+    voucher_url: str,
+    api_url: str = SUPPORTERS_API_URL,
+    source: str = "desktop_app",
+    timeout: int = 15,
+) -> dict:
+    """★ ส่งซองของขวัญ TrueMoney ไปตรวจและรับเงินอัตโนมัติ
+
+    Returns:
+        {"ok": True, "tx_id": "...", "amount": 50.0, "currency": "THB"}
+        {"ok": False, "error": "ข้อความผิดพลาด"}
+    """
+    ctx = ssl.create_default_context()
+    ctx.load_default_certs()
+
+    base = api_url.rstrip("/")
+    if base.startswith("https://men9ch.com"):
+        base = "https://www.men9ch.com" + base[18:]
+    elif base.startswith("http://men9ch.com"):
+        base = "https://www.men9ch.com" + base[17:]
+    if base.endswith("api.php"):
+        base = base[:-7]
+    url = f"{base}/truemoney/redeem"
+
+    payload = json.dumps({"voucher_url": voucher_url.strip(), "source": source}).encode("utf-8")
+    headers = _browser_headers({
+        "Content-Type": "application/json",
+        "Content-Length": str(len(payload)),
+    })
+
+    try:
+        req = urllib.request.Request(url, data=payload, method="POST", headers=headers)
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+        return json.loads(raw)
+    except urllib.error.HTTPError as e:
+        try:
+            return json.loads(e.read().decode("utf-8", errors="replace"))
+        except Exception:
+            return {"ok": False, "error": f"HTTP {e.code}: {e.reason}"}
+    except Exception as e:
+        return {"ok": False, "error": f"เกิดข้อผิดพลาด: {e}"}
+
+
+def complete_truemoney_supporter(
+    tx_id: str,
+    name: str,
+    channel_url: str = "",
+    message: str = "",
+    platform: str = "",
+    source: str = "",
+    api_url: str = SUPPORTERS_API_URL,
+    timeout: int = 15,
+) -> dict:
+    """★ บันทึกข้อมูลชื่อและช่องทางโปรโมทของผู้สนับสนุน TrueMoney หลังตัดเงินสำเร็จ
+
+    Returns:
+        {"ok": True, "message": "..."}
+        {"ok": False, "error": "ข้อความผิดพลาด"}
+    """
+    ctx = ssl.create_default_context()
+    ctx.load_default_certs()
+
+    base = api_url.rstrip("/")
+    if base.startswith("https://men9ch.com"):
+        base = "https://www.men9ch.com" + base[18:]
+    elif base.startswith("http://men9ch.com"):
+        base = "https://www.men9ch.com" + base[17:]
+    if base.endswith("api.php"):
+        base = base[:-7]
+    url = f"{base}/truemoney/complete"
+
+    body_data = {
+        "tx_id": tx_id.strip(),
+        "name": name.strip(),
+        "channel_url": channel_url.strip(),
+        "message": message.strip(),
+        "platform": platform.strip(),
+    }
+    if source:
+        body_data["source"] = source.strip()
+
+    payload = json.dumps(body_data).encode("utf-8")
+    headers = _browser_headers({
+        "Content-Type": "application/json",
+        "Content-Length": str(len(payload)),
+    })
+
+    try:
+        req = urllib.request.Request(url, data=payload, method="POST", headers=headers)
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+        return json.loads(raw)
+    except urllib.error.HTTPError as e:
+        try:
+            return json.loads(e.read().decode("utf-8", errors="replace"))
+        except Exception:
+            return {"ok": False, "error": f"HTTP {e.code}: {e.reason}"}
+    except Exception as e:
+        return {"ok": False, "error": f"เกิดข้อผิดพลาด: {e}"}
+

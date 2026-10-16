@@ -26,7 +26,7 @@ echo [INFO] Starting Broadcast Playroom v2 (PySide6)...
 echo [INFO] Python: %PY%
 echo.
 
-"%PY%" main.py
+"%PY%" main.py %*
 
 if errorlevel 1 (
     echo.

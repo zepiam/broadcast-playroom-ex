@@ -3788,398 +3788,29 @@ class SettingsDialog(QDialog):
 
     def _build_supporters_section(self):
         """💚 สนับสนุน — บริจาค + รายชื่อผู้สนับสนุน"""
-        # ★ สร้าง section แบบไม่มี header default (จะสร้าง header เอง)
         self._add_section("supporters", "", "")
         layout = self._current_section_layout
         ci = lambda: layout.count() - 1
 
-        # ── Header row: [title] ...stretch... [PromptPay] [TrueMoney] [ส่งหลักฐาน] ──
-        header_row = QHBoxLayout()
-        header_row.setSpacing(8)
-        title_lbl = QLabel("💚 สนับสนุน")
-        title_lbl.setStyleSheet("font-size: 20px; font-weight: 700; color: #f59e0b;")
-        header_row.addWidget(title_lbl)
-        header_row.addStretch()
+        from ui.dialogs.supporter_dialog import SupportersWidget
+        self.supporters_widget = SupportersWidget(self, app_name="Broadcast Playroom")
+        layout.insertWidget(ci(), self.supporters_widget)
 
-        # ★ ปุ่มบริจาค + ส่งหลักฐาน อยู่ขวาบนบรรทัดเดียวกับหัวข้อ
-        btn_pp = QPushButton("💳 PromptPay")
-        btn_pp.setMinimumHeight(32)
-        btn_pp.setStyleSheet(
-            "QPushButton { background-color: #10b981; color: white; font-weight: 600; "
-            "border: none; border-radius: 6px; padding: 6px 16px; }"
-            "QPushButton:hover { background-color: #059669; }"
-        )
-        btn_pp.clicked.connect(lambda: self._show_qr("promptpay_qr.png", "PromptPay"))
-        header_row.addWidget(btn_pp)
-
-        btn_tm = QPushButton("💳 True Money")
-        btn_tm.setMinimumHeight(32)
-        btn_tm.setStyleSheet(
-            "QPushButton { background-color: #06b6d4; color: white; font-weight: 600; "
-            "border: none; border-radius: 6px; padding: 6px 16px; }"
-            "QPushButton:hover { background-color: #0891b2; }"
-        )
-        btn_tm.clicked.connect(lambda: self._show_qr("truemoney_qr.png", "True Money"))
-        header_row.addWidget(btn_tm)
-
-        btn_upload = QPushButton("📤 แนบหลักฐานสนับสนุน")
-        btn_upload.setMinimumHeight(32)
-        btn_upload.setStyleSheet(
-            "QPushButton { background-color: #7c3aed; color: white; font-weight: 600; "
-            "border: none; border-radius: 6px; padding: 6px 16px; }"
-            "QPushButton:hover { background-color: #6d28d9; }"
-        )
-        btn_upload.clicked.connect(self._open_supporter_upload)
-        header_row.addWidget(btn_upload)
-        layout.insertLayout(ci(), header_row)
-
-        # ── รายชื่อผู้สนับสนุน (ดึงจาก API) ──
-        # ★ header row: title + reload button
-        supporters_header_row = QHBoxLayout()
-        supporters_header_row.setSpacing(8)
-        supporters_hdr = QLabel("⭐ รายชื่อผู้สนับสนุน")
-        supporters_hdr.setStyleSheet("font-size: 15px; font-weight: 700; color: #f59e0b;")
-        supporters_header_row.addWidget(supporters_hdr)
-        supporters_header_row.addStretch()
-        # ★ ปุ่มรีโหลด
-        self._supporters_reload_btn = QPushButton("🔄 รีโหลด")
-        self._supporters_reload_btn.setCursor(Qt.PointingHandCursor)
-        self._supporters_reload_btn.setStyleSheet(
-            "QPushButton { color: #06b6d4; font-size: 12px; font-weight: 600; "
-            "border: none; background: transparent; padding: 4px 8px; }"
-            "QPushButton:hover { color: #0891b2; text-decoration: underline; }"
-            "QPushButton:disabled { color: #4b5563; }"
-        )
-        self._supporters_reload_btn.clicked.connect(self._on_supporters_reload)
-        supporters_header_row.addWidget(self._supporters_reload_btn)
-        layout.insertLayout(ci(), supporters_header_row)
-
-        # ★ status label ("⏳ กำลังโหลด..." / "✅ N ผู้สนับสนุน" / "❌ error")
-        self._supporters_status_label = QLabel("⏳ กำลังรอโหลดข้อมูล...")
-        self._supporters_status_label.setStyleSheet("font-size: 13px; color: #9ca3af; margin-bottom: 4px;")
-        layout.insertWidget(ci(), self._supporters_status_label)
-
-        # ★ scrollable container สำหรับ list ผู้สนับสนุน
-        from PySide6.QtWidgets import QScrollArea
-        self._supporters_container = QWidget()
-        self._supporters_container_layout = QVBoxLayout(self._supporters_container)
-        self._supporters_container_layout.setContentsMargins(0, 0, 0, 0)
-        self._supporters_container_layout.setSpacing(0)
-        self._supporters_container_layout.addStretch()
-
-        supporters_scroll = QScrollArea()
-        supporters_scroll.setWidgetResizable(True)
-        supporters_scroll.setWidget(self._supporters_container)
-        supporters_scroll.setFrameShape(QScrollArea.NoFrame)
-        supporters_scroll.setMinimumHeight(200)
-        supporters_scroll.setStyleSheet(
-            "QScrollArea { background: transparent; }"
-            "QScrollBar:vertical { background: #1f2937; width: 8px; border-radius: 4px; }"
-            "QScrollBar::handle:vertical { background: #4b5563; border-radius: 4px; min-height: 30px; }"
-            "QScrollBar::handle:vertical:hover { background: #6b7280; }"
-            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
-        )
-        layout.insertWidget(ci(), supporters_scroll)
-
-        # ★ cache + state
-        self._supporters_cache = None     # {"ok": ..., "supporters": [...]} ล่าสุด
-        self._supporters_loading = False  # flag กัน double-load
-        self._supporters_current_page = 0  # pagination (0-indexed)
-        self._supporters_per_page = 15     # แสดง 15 รายชื่อต่อหน้า
-
-        # ★ เชื่อมกับ app.py (parent_app = MainWindow ที่ส่งเข้ามาใน __init__):
-        #   - รับ cache ล่าสุดจาก parent_app._supporters_cache
-        #   - ตั้ง reload callback → parent_app._load_supporters()
+        # เชื่อมกับ parent_app (MainWindow)
         parent_app = getattr(self, 'parent_app', None)
         if parent_app is not None:
-            # ★ ส่ง callback ให้ปุ่มรีโหลดเรียก app.py
-            if hasattr(parent_app, '_load_supporters'):
-                self._supporters_reload_callback = parent_app._load_supporters
-            # ★ แสดง cache ถ้ามี (ดึงตอน startup แล้ว)
             parent_cache = getattr(parent_app, '_supporters_cache', None)
             if parent_cache is not None:
-                self._populate_supporters_list(parent_cache)
-            else:
-                # ★ ยังไม่มี cache → trigger fetch ถ้ายังไม่ได้ fetch
-                self._supporters_status_label.setText("⏳ กำลังโหลดข้อมูลผู้สนับสนุน...")
-                self._supporters_status_label.setStyleSheet("font-size: 13px; color: #06b6d4; margin-bottom: 4px;")
-                # ★ trigger fetch ด้วย QThread + Signal (ไม่บล็อก UI + thread-safe)
-                self._start_fetch_thread()
-
-    def _on_supporters_reload(self):
-        """★ ปุ่มรีโหลด → บอก app.py ให้ดึงใหม่ (emit signal)"""
-        # ★ ถ้ามี callback ที่ app.py ตั้งไว้ → เรียก
-        if hasattr(self, '_supporters_reload_callback') and self._supporters_reload_callback:
-            self._supporters_status_label.setText("⏳ กำลังโหลด...")
-            self._supporters_status_label.setStyleSheet("font-size: 13px; color: #06b6d4; margin-bottom: 4px;")
-            self._supporters_reload_btn.setEnabled(False)
-            self._supporters_reload_callback()
-        else:
-            # fallback: ดึงด้วย QThread เอง (ถ้าไม่ได้เชื่อมกับ app.py)
-            if self._supporters_loading:
-                return
-            self._supporters_loading = True
-            self._supporters_reload_btn.setEnabled(False)
-            self._supporters_status_label.setText("⏳ กำลังโหลด...")
-            self._supporters_status_label.setStyleSheet("font-size: 13px; color: #06b6d4; margin-bottom: 4px;")
-            self._start_fetch_thread()
-
-    def _start_fetch_thread(self):
-        """★ ดึง supporters ด้วย QThread + Signal (thread-safe)"""
-        from PySide6.QtCore import QThread, Signal
-
-        class _Fetch(QThread):
-            done = Signal(dict)
-            def run(self):
-                try:
-                    from supporters_api import fetch_supporters
-                    result = fetch_supporters()
-                except Exception as e:
-                    result = {"ok": False, "error": str(e)}
-                self.done.emit(result)
-
-        self._supporters_qthread = _Fetch()
-        self._supporters_qthread.done.connect(self._on_supporters_fetched)
-        self._supporters_qthread.start()
-
-    def _on_supporters_fetched(self, result: dict):
-        """★ slot ที่ทำงานใน main thread หลัง fetch เสร็จ"""
-        self._supporters_loading = False
-        self._supporters_reload_btn.setEnabled(True)
-        self._populate_supporters_list(result)
+                self.supporters_widget.populate(parent_cache)
 
     def _populate_supporters_list(self, result: dict):
-        """★ cache ผลลัพธ์ + render หน้าปัจจุบัน (reset to page 0)
+        """รับ cache ผลลัพธ์ผู้สนับสนุนและ render ทันที (app.py เรียกใช้)"""
+        if hasattr(self, 'supporters_widget') and self.supporters_widget:
+            self.supporters_widget.populate(result)
 
-        result: {"ok": True, "supporters": [...]} หรือ {"ok": False, "error": "..."}
-        """
-        # ★ cache ล่าสุดเสมอ
-        self._supporters_cache = result
-        self._supporters_current_page = 0  # reset to first page
-        self._render_supporters_page()
-
-    def _render_supporters_page(self):
-        """★ render หน้าปัจจุบันของตาราง (ใช้ cache ที่มี)"""
-        from PySide6.QtWidgets import QFrame
-        result = self._supporters_cache
-        if result is None:
-            return
-
-        # ★ เคลียร์ container เดิม (เก็บ stretch ไว้)
-        cl = self._supporters_container_layout
-        while cl.count() > 1:  # เก็บ stretch (index สุดท้าย)
-            item = cl.takeAt(0)
-            w = item.widget()
-            if w:
-                w.deleteLater()
-
-        # ★ error case
-        if not result.get("ok"):
-            err = result.get("error", "ไม่ทราบสาเหตุ")
-            self._supporters_status_label.setText(f"❌ ไม่สามารถดึงข้อมูลได้: {err}")
-            self._supporters_status_label.setStyleSheet("font-size: 13px; color: #ef4444; margin-bottom: 4px;")
-            # ★ placeholder row
-            placeholder = QLabel("ยังไม่มีข้อมูลผู้สนับสนุน\nกด 🔄 รีโหลด เพื่อลองใหม่")
-            placeholder.setAlignment(Qt.AlignCenter)
-            placeholder.setStyleSheet("font-size: 13px; color: #6b7280; padding: 32px;")
-            cl.insertWidget(cl.count() - 1, placeholder)
-            return
-
-        supporters = result.get("supporters", [])
-        count = len(supporters)
-
-        # ★ empty case
-        if count == 0:
-            self._supporters_status_label.setText("📋 ยังไม่มีผู้สนับสนุน — คุณสามารถเป็นคนแรกได้!")
-            self._supporters_status_label.setStyleSheet("font-size: 13px; color: #9ca3af; margin-bottom: 4px;")
-            placeholder = QLabel("💚\nยังไม่มีผู้สนับสนุนในตอนนี้")
-            placeholder.setAlignment(Qt.AlignCenter)
-            placeholder.setStyleSheet("font-size: 14px; color: #6b7280; padding: 32px;")
-            cl.insertWidget(cl.count() - 1, placeholder)
-            return
-
-        # ★ success case — ตารางรายชื่อผู้สนับสนุน
-        from supporters_api import format_amount
-        self._supporters_status_label.setText(f"✅ {count} ผู้สนับสนุน")
-        self._supporters_status_label.setStyleSheet("font-size: 13px; color: #10b981; margin-bottom: 4px;")
-
-        # ★ โหลดโลโก้แพลตฟอร์มจริงจาก assets/ (cache ใน memory)
-        import os
-        from PySide6.QtGui import QPixmap
-        assets_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "assets")
-        PLATFORM_LOGOS = {
-            'twitch':  os.path.join(assets_dir, "twitch.png"),
-            'youtube': os.path.join(assets_dir, "youtube.png"),
-            'kick':    os.path.join(assets_dir, "kick.png"),
-            'tiktok':  os.path.join(assets_dir, "tiktok.png"),
-            'mylive':  os.path.join(assets_dir, "mylive.png"),
-        }
-
-        # ★ table header — ใช้ stretch factor 4:2:3 (name:amount:message)
-        #   amount ใช้ ratio 2 + fixed min width 80px → ไม่ชิดขวาเกิน + รองรับยอดยาว
-        COL_NAME_STRETCH = 4
-        COL_AMOUNT_STRETCH = 2
-        COL_MSG_STRETCH = 3
-
-        header = QFrame()
-        header.setStyleSheet("QFrame { background: #111827; border: none; border-bottom: 1px solid #334155; }")
-        header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(12, 6, 12, 6)
-        header_layout.setSpacing(12)
-        h_name = QLabel("👤 ชื่อ")
-        h_name.setStyleSheet("font-size: 11px; font-weight: 700; color: #6b7280; background: transparent; border: none;")
-        header_layout.addWidget(h_name, COL_NAME_STRETCH)
-        h_amount = QLabel("💰 จำนวน")
-        h_amount.setStyleSheet("font-size: 11px; font-weight: 700; color: #6b7280; background: transparent; border: none;")
-        h_amount.setMinimumWidth(80)
-        header_layout.addWidget(h_amount, COL_AMOUNT_STRETCH)
-        h_msg = QLabel("💬 ข้อความ")
-        h_msg.setStyleSheet("font-size: 11px; font-weight: 700; color: #6b7280; background: transparent; border: none;")
-        header_layout.addWidget(h_msg, COL_MSG_STRETCH)
-        cl.insertWidget(cl.count() - 1, header)
-
-        # ★ pagination — slice เฉพาะหน้าปัจจุบัน
-        per_page = self._supporters_per_page
-        page = self._supporters_current_page
-        start = page * per_page
-        end = start + per_page
-        page_supporters = supporters[start:end]
-
-        for idx, sup in enumerate(page_supporters):
-            if not isinstance(sup, dict):
-                continue
-            name = str(sup.get("name", "ผู้สนับสนุน")).strip() or "ผู้สนับสนุน"
-            amount = sup.get("amount", 0)
-            currency = str(sup.get("currency", "THB")).upper()
-            date = str(sup.get("date", "")).strip()
-            message = str(sup.get("message", "")).strip()
-            platform = str(sup.get("platform", "")).strip()
-            channel_url = str(sup.get("channel_url", "")).strip()
-
-            amount_str = format_amount(amount, currency)
-
-            # ★ zebra stripes (สลับสีพื้นหลัง)
-            # ★ zebra stripes — ใช้ absolute index (start + idx) เพื่อความต่อเนื่องข้ามหน้า
-            abs_idx = start + idx
-            bg_color = "#1a1f2e" if abs_idx % 2 == 0 else "#1f2937"
-
-            # ★ table row — ใช้ stretch factor เดียวกับ header (ตำแหน่งตรงกันทุก row)
-            row = QFrame()
-            row.setStyleSheet(
-                f"QFrame {{ background: {bg_color}; border: none; }}"
-                f"QFrame:hover {{ background: #2a3447; }}"
-            )
-            row_layout = QHBoxLayout(row)
-            row_layout.setContentsMargins(12, 8, 12, 8)
-            row_layout.setSpacing(12)
-
-            # ═══ NAME COLUMN (stretch 3) — container รวม tier + name + platform logo ═══
-            name_container = QWidget()
-            name_container.setStyleSheet("background: transparent;")
-            name_col = QHBoxLayout(name_container)
-            name_col.setContentsMargins(0, 0, 0, 0)
-            name_col.setSpacing(6)
-
-            name_lbl = QLabel(name)
-            name_lbl.setStyleSheet("font-size: 13px; font-weight: 600; color: #f3f4f6; background: transparent; border: none;")
-            name_col.addWidget(name_lbl)
-
-            # platform logo (clickable → เปิด channel URL) — ใช้ QPushButton เพื่อความน่าเชื่อถือ
-            if platform and channel_url and platform in PLATFORM_LOGOS:
-                logo_path = PLATFORM_LOGOS[platform]
-                if os.path.exists(logo_path):
-                    from PySide6.QtGui import QIcon
-                    plat_btn = QPushButton()
-                    pix = QPixmap(logo_path)
-                    if not pix.isNull():
-                        plat_btn.setIcon(QIcon(pix.scaled(18, 18, Qt.KeepAspectRatio, Qt.SmoothTransformation)))
-                        plat_btn.setIconSize(pix.size().scaled(18, 18, Qt.KeepAspectRatio))
-                    plat_btn.setFixedSize(22, 22)
-                    plat_btn.setCursor(Qt.PointingHandCursor)
-                    plat_btn.setToolTip(f"เปิดช่อง {platform}: {channel_url}")
-                    plat_btn.setStyleSheet(
-                        "QPushButton { background: transparent; border: none; padding: 0; margin: 0; }"
-                        "QPushButton:hover { background: rgba(124, 58, 237, 0.2); border-radius: 4px; }"
-                    )
-                    _url = channel_url
-                    plat_btn.clicked.connect(lambda checked=False, u=_url: self._open_url(u))
-                    name_col.addWidget(plat_btn)
-
-            name_col.addStretch()
-            row_layout.addWidget(name_container, COL_NAME_STRETCH)
-
-            # ═══ AMOUNT COLUMN (stretch 2) — ชิดซ้ายติด name (ไม่ขวาเกิน) ═══
-            amount_lbl = QLabel(amount_str)
-            amount_lbl.setStyleSheet("font-size: 13px; font-weight: 700; color: #f59e0b; background: transparent; border: none;")
-            amount_lbl.setMinimumWidth(80)
-            amount_lbl.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-            row_layout.addWidget(amount_lbl, COL_AMOUNT_STRETCH)
-
-            # ═══ MESSAGE COLUMN (stretch 2) ═══
-            if message:
-                msg_lbl = QLabel(f'"{message}"')
-                msg_lbl.setStyleSheet("font-size: 12px; color: #9ca3af; font-style: italic; background: transparent; border: none;")
-                msg_lbl.setWordWrap(True)
-                msg_lbl.setAlignment(Qt.AlignVCenter)
-                row_layout.addWidget(msg_lbl, COL_MSG_STRETCH)
-            else:
-                spacer = QLabel("—")
-                spacer.setStyleSheet("font-size: 12px; color: #4b5563; background: transparent; border: none;")
-                row_layout.addWidget(spacer, COL_MSG_STRETCH)
-
-            cl.insertWidget(cl.count() - 1, row)
-
-        # ★ pagination controls (ถ้ามีมากกว่า 1 หน้า)
-        total_pages = (count + per_page - 1) // per_page  # ceil division
-        if total_pages > 1:
-            pager = QWidget()
-            pager.setStyleSheet("background: transparent;")
-            pager_layout = QHBoxLayout(pager)
-            pager_layout.setContentsMargins(12, 8, 12, 8)
-            pager_layout.setSpacing(6)
-
-            # ★ prev button
-            btn_prev = QPushButton("‹ ก่อนหน้า")
-            btn_prev.setEnabled(page > 0)
-            btn_prev.setCursor(Qt.PointingHandCursor)
-            btn_prev.setStyleSheet(
-                "QPushButton { background: #334155; color: #e2e8f0; border: none; "
-                "border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; }"
-                "QPushButton:hover { background: #475569; }"
-                "QPushButton:disabled { background: #1f2937; color: #4b5563; }"
-            )
-            _p = page
-            btn_prev.clicked.connect(lambda checked=False, p=page: self._supporters_goto_page(p - 1))
-            pager_layout.addWidget(btn_prev)
-
-            # ★ page info
-            page_lbl = QLabel(f"หน้า {page + 1} / {total_pages}")
-            page_lbl.setStyleSheet("color: #9ca3af; font-size: 12px; padding: 0 12px;")
-            page_lbl.setAlignment(Qt.AlignCenter)
-            pager_layout.addWidget(page_lbl)
-
-            # ★ next button
-            btn_next = QPushButton("ถัดไป ›")
-            btn_next.setEnabled(page < total_pages - 1)
-            btn_next.setCursor(Qt.PointingHandCursor)
-            btn_next.setStyleSheet(
-                "QPushButton { background: #334155; color: #e2e8f0; border: none; "
-                "border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; }"
-                "QPushButton:hover { background: #475569; }"
-                "QPushButton:disabled { background: #1f2937; color: #4b5563; }"
-            )
-            btn_next.clicked.connect(lambda checked=False, p=page: self._supporters_goto_page(p + 1))
-            pager_layout.addWidget(btn_next)
-
-            pager_layout.addStretch()
-            cl.insertWidget(cl.count() - 1, pager)
-
-    def _supporters_goto_page(self, page_num):
-        """★ เปลี่ยนหน้า — ไม่ต้อง fetch ใหม่ (ใช้ cache)"""
-        if page_num < 0:
-            return
-        self._supporters_current_page = page_num
-        self._render_supporters_page()
+    def _on_supporters_fetched(self, result: dict):
+        """slot ทำงานใน main thread หลัง fetch เสร็จ"""
+        self._populate_supporters_list(result)
 
     def _open_url(self, url):
         """เปิด URL ในเบราว์เซอร์"""
@@ -4191,57 +3822,17 @@ class SettingsDialog(QDialog):
 
     def _open_supporter_upload(self):
         """★ เปิด dialog ส่งหลักฐานการสนับสนุน"""
-        from ui.dialogs.supporter_upload import SupporterUploadDialog
-        api_url = getattr(self.settings, 'supporters_api_url', 'https://men9ch.com/api') if self.settings else "https://men9ch.com/api"
-        dlg = SupporterUploadDialog(self, api_url=api_url)
-        dlg.exec()
+        if hasattr(self, 'supporters_widget') and self.supporters_widget:
+            self.supporters_widget._open_upload()
+        else:
+            from ui.dialogs.supporter_dialog import SupporterUploadDialog
+            dlg = SupporterUploadDialog(self, app_name="Broadcast Playroom")
+            dlg.exec()
 
     def _show_qr(self, filename, title):
-        """แสดง QR popup — ขนาดคำนวณจากเนื้อหาจริง (กัน QR ถูกบีบ)"""
-        import os
-        from PySide6.QtWidgets import QDialog, QVBoxLayout, QSizePolicy
-        from PySide6.QtGui import QPixmap
-        base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        qr_path = os.path.join(base, "assets", filename)
-        if not os.path.exists(qr_path):
-            QMessageBox.information(
-                self, title,
-                f"ยังไม่มีไฟล์ QR {filename}\nวางไฟล์ในโฟลเดอร์ assets/ เพื่อแสดง QR"
-            )
-            return
-        popup = QDialog(self)
-        popup.setWindowTitle(f"QR {title}")
-        popup.setModal(True)
-        pop_layout = QVBoxLayout(popup)
-        pop_layout.setContentsMargins(24, 24, 24, 16)
-        pop_layout.setSpacing(12)
-        pix = QPixmap(qr_path)
-        if not pix.isNull():
-            img_lbl = QLabel()
-            img_lbl.setPixmap(pix)
-            img_lbl.setAlignment(Qt.AlignCenter)
-            # ★ SizePolicy = Fixed → ไม่ถูกบีบ แสดง 100% เสมอ
-            img_lbl.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-            img_lbl.setFixedSize(pix.size())
-            pop_layout.addWidget(img_lbl)
-            # ★ title label บน QR
-            title_lbl = QLabel(f"💳 {title}")
-            title_lbl.setAlignment(Qt.AlignCenter)
-            title_lbl.setStyleSheet("font-size: 14px; font-weight: 700; color: #f59e0b; margin-bottom: 4px;")
-            pop_layout.insertWidget(0, title_lbl)
-            # ★ setFixedSize ตามเนื้อหาจริง (QR + title + button + margins)
-            #   เพิ่ม padding generous เพื่อกันบีบ
-            total_w = pix.width() + 48
-            total_h = pix.height() + 110  # title + button + margins
-            popup.setFixedSize(total_w, total_h)
-        else:
-            pop_layout.addWidget(QLabel(f"(โหลด {filename} ไม่ได้)"))
-            popup.resize(300, 150)
-        btn_close = QPushButton("ปิด")
-        btn_close.setMinimumHeight(36)
-        btn_close.clicked.connect(popup.accept)
-        pop_layout.addWidget(btn_close)
-        popup.exec()
+        """แสดง QR popup"""
+        if hasattr(self, 'supporters_widget') and self.supporters_widget:
+            self.supporters_widget._show_qr_full(filename, title)
 
     def _check_update(self):
         """เช็คอัพเดท — รันใน background thread (กัน UI ค้าง) → แสดงผลใน main thread"""

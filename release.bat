@@ -90,7 +90,7 @@ if "%DO_UPLOAD%"=="1" (
         release\patch_lite.zip ^
         release\patch_full.zip ^
         release\version.json ^
-        --repo zepiam/broadcast-playroom --clobber
+        --repo zepiam/broadcast-playroom-ex --clobber
     if errorlevel 1 (
         echo   ❌ อัพโหลดล้มเหลว — ตรวจสอบ gh auth login
         pause
@@ -109,7 +109,7 @@ if "%DO_UPLOAD%"=="1" (
     echo       release\patch_lite.zip ^
     echo       release\patch_full.zip ^
     echo       release\version.json ^
-    echo       --repo zepiam/broadcast-playroom --clobber
+    echo       --repo zepiam/broadcast-playroom-ex --clobber
     echo.
     echo  หรือรันใหม่ด้วย:  release.bat upload
 )

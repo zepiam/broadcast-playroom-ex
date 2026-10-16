@@ -52,6 +52,8 @@ excludes = [
     'bitsandbytes', 'wandb', 'gradio',
     # engine modules — ไม่ bundle (Lite ไม่ใช้)
     'rvc_engine',
+    # Qt bindings exclusion — Broadcast Playroom is PySide6-only
+    'PyQt6',
 ]
 
 a = Analysis(

@@ -66,6 +66,7 @@ excludes = [
     'matplotlib', 'pandas', 'notebook', 'jupyter', 'IPython',
     'pytest', 'sphinx', 'tornado', 'zmq', 'tensorrt',
     'customtkinter', 'tkinter', 'darkdetect',
+    'PyQt6',
 ]
 
 a = Analysis(

@@ -338,6 +338,10 @@ def main():
         splash.finish(window)
         _boot_log("splash finished — window visible")
 
+    if "--supporters" in sys.argv:
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(500, window._open_settings_supporters)
+
     logger.info("Application started")
     sys.exit(app.exec())
 

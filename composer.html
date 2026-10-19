@@ -119,6 +119,9 @@
   }
 
   /* ── Chat widget ── */
+  body.chat-layer-hidden .widget.type-chat {
+    display: none !important;
+  }
   .widget.type-chat .widget-inner {
     display: flex;
     flex-direction: column-reverse;   /* ข้อความใหม่ด้านล่าง */
@@ -239,6 +242,54 @@
     background: rgba(80,140,255,0.5);
     padding: 4px 12px;
     border-radius: 8px;
+  }
+
+  /* ═══ Takayu Studio: Number Ticker (catalog-ui-feedback-number-ticker) ═══ */
+  .widget.type-viewer .viewer-ticker {
+    display: inline-flex;
+    align-items: center;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    line-height: 1.15em;
+    letter-spacing: 0.5px;
+  }
+  .widget.type-viewer .vt-col {
+    display: inline-block;
+    position: relative;
+    height: 1.15em;
+    line-height: 1.15em;
+    overflow: hidden;
+    vertical-align: middle;
+    min-width: 0.62em;
+    text-align: center;
+  }
+  .widget.type-viewer .vt-track {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    will-change: transform;
+  }
+  .widget.type-viewer .vt-track.animated {
+    /* easeOutCubic: cubic-bezier(.33, 1, .68, 1) duration: 1200ms */
+    transition: transform 1200ms cubic-bezier(0.33, 1, 0.68, 1);
+  }
+  .widget.type-viewer .vt-num {
+    height: 1.15em;
+    line-height: 1.15em;
+    text-align: center;
+    display: block;
+    user-select: none;
+  }
+  .widget.type-viewer .vt-char {
+    display: inline-block;
+    vertical-align: middle;
+    line-height: 1.15em;
+    min-width: 0.35em;
+    text-align: center;
+    opacity: 0.85;
   }
 
   /* ── Clock widget ── */
@@ -1057,13 +1108,13 @@
   @keyframes t-fade-in { from { opacity: 0; } to { opacity: 1; } }
   @keyframes t-fade-out { from { opacity: 1; } to { opacity: 0; } }
   @keyframes t-slide-up-in { from { transform: translateY(100vh); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-  @keyframes t-slide-up-out { from { transform: translateY(0); opacity: 1; } to { transform: translateY(100vh); opacity: 0; } }
+  @keyframes t-slide-up-out { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-100vh); opacity: 0; } }
   @keyframes t-slide-down-in { from { transform: translateY(-100vh); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-  @keyframes t-slide-down-out { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-100vh); opacity: 0; } }
+  @keyframes t-slide-down-out { from { transform: translateY(0); opacity: 1; } to { transform: translateY(100vh); opacity: 0; } }
   @keyframes t-slide-left-in { from { transform: translateX(100vw); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-  @keyframes t-slide-left-out { from { transform: translateX(0); opacity: 1; } to { transform: translateX(100vw); opacity: 0; } }
+  @keyframes t-slide-left-out { from { transform: translateX(0); opacity: 1; } to { transform: translateX(-100vw); opacity: 0; } }
   @keyframes t-slide-right-in { from { transform: translateX(-100vw); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-  @keyframes t-slide-right-out { from { transform: translateX(0); opacity: 1; } to { transform: translateX(-100vw); opacity: 0; } }
+  @keyframes t-slide-right-out { from { transform: translateX(0); opacity: 1; } to { transform: translateX(100vw); opacity: 0; } }
   @keyframes t-corner-tl-in { from { transform: translate(-100vw, -100vh); opacity: 0; } to { transform: translate(0, 0); opacity: 1; } }
   @keyframes t-corner-tl-out { from { transform: translate(0, 0); opacity: 1; } to { transform: translate(-100vw, -100vh); opacity: 0; } }
   @keyframes t-corner-tr-in { from { transform: translate(100vw, -100vh); opacity: 0; } to { transform: translate(0, 0); opacity: 1; } }
@@ -1518,23 +1569,95 @@
     min-width: 0; min-height: 0;
   }
   /* เสาแนวตั้ง — สูงตามเนื้อหา ชิดบน กว้างตาม % */
-  .widget.ask-mode-vleft  .ask-panel { top: 0; bottom: auto; max-height: 100%; left: 0; width: calc(var(--ask-extend) * 1%); }
-  .widget.ask-mode-vright .ask-panel { top: 0; bottom: auto; max-height: 100%; right: 0; width: calc(var(--ask-extend) * 1%); }
+  .widget.ask-mode-vleft  .ask-panel {
+    top: 0; bottom: auto; max-height: 100%; left: 0; width: calc(var(--ask-extend) * 1%);
+    transform: translate(calc(var(--ask-ox, 0) * 1px), calc(var(--ask-oy, 0) * 1px));
+  }
+  .widget.ask-mode-vright .ask-panel {
+    top: 0; bottom: auto; max-height: 100%; right: 0; width: calc(var(--ask-extend) * 1%);
+    transform: translate(calc(var(--ask-ox, 0) * 1px), calc(var(--ask-oy, 0) * 1px));
+  }
   /* แถบแนวนอน — เต็มกว้าง สูงตาม % + บน/ล่าง */
-  .widget.ask-mode-hband .ask-panel { left: 0; right: 0; height: calc(var(--ask-extend) * 1%); }
+  .widget.ask-mode-hband .ask-panel {
+    left: 0; right: 0; height: calc(var(--ask-extend) * 1%);
+    transform: translate(calc(var(--ask-ox, 0) * 1px), calc(var(--ask-oy, 0) * 1px));
+  }
   .widget.ask-anchor-top    .ask-panel.hband-anchor { top: 0; }
   .widget.ask-anchor-bottom .ask-panel.hband-anchor { bottom: 0; }
-  /* ★ Minimal — ย้ายอิสระ + ★ความกว้าง FIX ตามที่ user ตั้ง (ไม่ตามเนื้อหา —
+  /* ★ Minimal & Lite — ย้ายอิสระ + ★ความกว้าง FIX ตามที่ user ตั้ง (ไม่ตามเนื้อหา —
      เดิม max-content ทำให้คำถามสั้น = กล่องหด ตำแหน่งทดสอบใน composer ไม่ตรงของจริง) */
-  .widget.ask-mode-minimal .ask-panel {
+  .widget.ask-mode-minimal .ask-panel,
+  .widget.ask-mode-lite .ask-panel {
     top: calc(var(--ask-py) * 1%); left: calc(var(--ask-px) * 1%);
-    transform: translate(-50%, -50%);
+    transform: translate(calc(-50% + var(--ask-ox, 0) * 1px), calc(-50% + var(--ask-oy, 0) * 1px));
     width: calc(var(--ask-minw, 340) * 1px);
-    max-width: 92%;
-    max-height: 92%;
+    max-width: 95%;
+    max-height: 95%;
   }
   /* ตอน JS วัดแล้วจะ override ด้วย px (--ask-min-fixed = จุดกึ่งกลางที่ clamp แล้ว) */
-  .widget.ask-mode-minimal .ask-panel.ask-min-fixed { left: var(--ask-min-x); top: var(--ask-min-y); }
+  .widget.ask-mode-minimal .ask-panel.ask-min-fixed,
+  .widget.ask-mode-lite .ask-panel.ask-min-fixed {
+    left: var(--ask-min-x); top: var(--ask-min-y);
+    transform: translate(calc(-50% + var(--ask-ox, 0) * 1px), calc(-50% + var(--ask-oy, 0) * 1px));
+  }
+
+  /* ═══ Lite Layout Styling (✨ แถบกระทัดรัดประหยัดพื้นที่ จิ๋วพิเศษ) ═══ */
+  .widget.ask-mode-lite .ask-panel {
+    padding: calc(6px * var(--ask-scale)) calc(10px * var(--ask-scale));
+    gap: calc(5px * var(--ask-scale));
+    border-radius: calc(10px * var(--ask-scale));
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  }
+  .widget.ask-mode-lite .ask-question {
+    font-size: calc((var(--ask-qfs, 24) * 0.75) * 1px);
+    padding-bottom: calc(4px * var(--ask-scale));
+    border-bottom: 1px solid var(--ask-border);
+  }
+  .widget.ask-mode-lite .ask-choices {
+    display: flex;
+    flex-wrap: wrap;
+    flex-direction: row;
+    gap: calc(5px * var(--ask-scale));
+    align-content: flex-start;
+  }
+  .widget.ask-mode-lite .ask-choice {
+    padding: calc(4px * var(--ask-scale)) calc(7px * var(--ask-scale));
+    gap: calc(3px * var(--ask-scale));
+    border-radius: calc(6px * var(--ask-scale));
+    flex: 1 1 calc(50% - calc(5px * var(--ask-scale)));
+    min-width: calc(100px * var(--ask-scale));
+  }
+  .widget.ask-mode-lite .ask-choice-top {
+    gap: calc(5px * var(--ask-scale));
+  }
+  .widget.ask-mode-lite .ask-choice-key {
+    font-size: calc(11px * var(--ask-scale));
+    padding: calc(1px * var(--ask-scale)) calc(5px * var(--ask-scale));
+    border-radius: calc(4px * var(--ask-scale));
+  }
+  .widget.ask-mode-lite .ask-choice-label {
+    font-size: calc((var(--ask-cfs, 18) * 0.8) * 1px);
+    line-height: 1.2;
+  }
+  .widget.ask-mode-lite .ask-choice-count {
+    font-size: calc(11px * var(--ask-scale));
+  }
+  .widget.ask-mode-lite .ask-bar-wrap {
+    height: calc(5px * var(--ask-scale));
+    border-radius: calc(3px * var(--ask-scale));
+  }
+  .widget.ask-mode-lite .ask-bar {
+    border-radius: calc(3px * var(--ask-scale));
+  }
+  .widget.ask-mode-lite .ask-footer {
+    padding-top: calc(4px * var(--ask-scale));
+    font-size: calc(11px * var(--ask-scale));
+    gap: 4px;
+  }
+  .widget.ask-mode-lite .ask-timebar {
+    height: calc(4px * var(--ask-scale));
+    margin-top: calc(2px * var(--ask-scale));
+  }
   /* ── ส่วนประกอบ ── */
   .ask-question {
     color: var(--ask-text);
@@ -1778,11 +1901,6 @@
   /* idle — overlay หายทั้งแผง / editor = เส้นประเต็มจอ + ป้าย */
   .widget.type-ask .widget-inner.ask-idle .ask-panel { display: none; }
   body.edit-mode .widget.type-ask .widget-inner { border: 1px dashed rgba(148, 163, 184, 0.3); }
-  body.edit-mode .widget.type-ask .widget-inner.ask-idle::after {
-    content: '🗳️ ASK — เต็มจอ (ตั้งค่าที่ ⚙)';
-    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    color: #64748b; font-size: 13px;
-  }
   /* ── Animations (keyframes t-* ชุด Image Timer) ── */
   .widget.type-ask .widget-inner.a-anim-in,
   .widget.type-ask .widget-inner.a-anim-out {
@@ -1808,6 +1926,908 @@
   .widget.type-ask .widget-inner.a-anim-out-corner-tr   { animation-name: t-corner-tr-out; }
   .widget.type-ask .widget-inner.a-anim-out-corner-bl   { animation-name: t-corner-bl-out; }
   .widget.type-ask .widget-inner.a-anim-out-corner-br   { animation-name: t-corner-br-out; }
+
+  /* ═══ Giveaway (แจกรางวัล) widget ═══ */
+  .widget.type-giveaway {
+    pointer-events: none;
+    overflow: hidden;
+    --font-family: "Kanit", "Leelawadee UI", "Segoe UI", sans-serif;
+    --bg-card: rgba(2, 6, 23, 0.96);
+    --border-glow: rgba(56, 189, 248, 0.6);
+    --primary-gold: #fbbf24;
+    --primary-cyan: #38bdf8;
+    --primary-green: #34d399;
+    --primary-red: #f87171;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --base-tx: 0px;
+    --base-ty: 0px;
+    --offset-x: 0px;
+    --offset-y: 0px;
+    --scale: 1;
+  }
+  .widget.type-giveaway .widget-inner {
+    position: absolute; inset: 0;
+    display: block;
+    background: transparent; border: none; padding: 0; gap: 0;
+    pointer-events: none;
+    font-family: var(--font-family);
+    color: var(--text-main);
+  }
+  body.edit-mode .widget.type-giveaway .widget-inner { border: 1px dashed rgba(245, 158, 11, 0.4); }
+
+  /* CHECKPOINT BANNER 1: STANDARD TEXT/CODE CARD */
+  .giveaway-cp-box {
+    position: fixed;
+    top: 24px;
+    right: 28px;
+    width: 390px;
+    max-width: 90vw;
+    background: rgba(2, 6, 23, 0.96);
+    border: 1.5px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 18px 22px;
+    box-sizing: border-box;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+    contain: layout style;
+    isolation: isolate;
+    display: none;
+    opacity: 0;
+    transform: translateY(-20px);
+    transition: opacity 0.35s ease, transform 0.35s ease;
+    z-index: 100;
+  }
+  .giveaway-cp-box.visible {
+    display: block;
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .giveaway-cp-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .giveaway-cp-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #fbbf24;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .giveaway-cp-status-pill {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(16, 185, 129, 0.2);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.4);
+  }
+  .giveaway-cp-code-row {
+    margin: 6px 0 12px 0;
+    text-align: center;
+  }
+  .giveaway-cp-instruction {
+    font-size: 13px;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .giveaway-cp-code {
+    display: inline-block;
+    font-size: 26px;
+    font-weight: 900;
+    color: #38bdf8;
+    background: #0b1528;
+    border: 1px dashed #0284c7;
+    padding: 4px 18px;
+    border-radius: 8px;
+    letter-spacing: 1px;
+  }
+  .giveaway-progress-track {
+    width: 100%;
+    height: 8px;
+    background: #1e293b;
+    border-radius: 999px;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+  .giveaway-progress-fill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #0284c7, #38bdf8);
+    border-radius: 999px;
+    transition: width 0.3s linear;
+  }
+  .giveaway-cp-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12.5px;
+    color: #94a3b8;
+    font-weight: 600;
+  }
+  .giveaway-cp-timer { color: #e2e8f0; }
+  .giveaway-cp-count { color: #34d399; }
+  .giveaway-cp-toast {
+    position: absolute;
+    bottom: -32px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(15, 23, 42, 0.95);
+    border: 1px solid #0369a1;
+    color: #38bdf8;
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 999px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+    white-space: nowrap;
+  }
+  .giveaway-cp-toast.show { opacity: 1; }
+
+  /* CHECKPOINT OVERLAYS: SHARED POSITIONS FOR ALL 9 SCREEN ANCHORS */
+  .giveaway-cp-box.pos-top-right, .giveaway-image-box.pos-top-right {
+    top: 28px; right: 28px; bottom: auto; left: auto;
+    --base-tx: 0px; --base-ty: 0px;
+  }
+  .giveaway-cp-box.pos-top-left, .giveaway-image-box.pos-top-left {
+    top: 28px; left: 28px; bottom: auto; right: auto;
+    --base-tx: 0px; --base-ty: 0px;
+  }
+  .giveaway-cp-box.pos-bottom-right, .giveaway-image-box.pos-bottom-right {
+    bottom: 28px; right: 28px; top: auto; left: auto;
+    --base-tx: 0px; --base-ty: 0px;
+  }
+  .giveaway-cp-box.pos-bottom-left, .giveaway-image-box.pos-bottom-left {
+    bottom: 28px; left: 28px; top: auto; right: auto;
+    --base-tx: 0px; --base-ty: 0px;
+  }
+  .giveaway-cp-box.pos-top, .giveaway-image-box.pos-top {
+    top: 28px; left: 50%; bottom: auto; right: auto;
+    --base-tx: -50%; --base-ty: 0px;
+  }
+  .giveaway-cp-box.pos-bottom, .giveaway-image-box.pos-bottom {
+    bottom: 28px; left: 50%; top: auto; right: auto;
+    --base-tx: -50%; --base-ty: 0px;
+  }
+  .giveaway-cp-box.pos-left, .giveaway-image-box.pos-left {
+    top: 50%; left: 28px; bottom: auto; right: auto;
+    --base-tx: 0px; --base-ty: -50%;
+  }
+  .giveaway-cp-box.pos-right, .giveaway-image-box.pos-right {
+    top: 50%; right: 28px; bottom: auto; left: auto;
+    --base-tx: 0px; --base-ty: -50%;
+  }
+  .giveaway-cp-box.pos-center, .giveaway-image-box.pos-center {
+    top: 50%; left: 50%; bottom: auto; right: auto;
+    --base-tx: -50%; --base-ty: -50%;
+  }
+
+  /* BASE STYLING FOR CHECKPOINT CONTAINERS */
+  .giveaway-cp-box, .giveaway-image-box {
+    position: fixed;
+    contain: layout style;
+    isolation: isolate;
+    z-index: 100;
+    opacity: 0;
+    transition: opacity 0.4s ease, transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .giveaway-image-card-wrapper {
+    position: relative;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    line-height: normal;
+  }
+  .giveaway-custom-img {
+    display: block;
+    max-width: 520px;
+    max-height: 480px;
+    object-fit: contain;
+    /* เงาและขอบมิติคมชัดตามทรงโปร่งใสของภาพ (PNG/GIF/WebP) ไม่กลืนกับฉาก Live */
+    filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.95))
+            drop-shadow(0 4px 16px rgba(0, 0, 0, 0.85))
+            drop-shadow(0 12px 32px rgba(0, 0, 0, 0.75));
+  }
+  .giveaway-img-progress-track {
+    width: 100%;
+    height: 6px;
+    background: rgba(15, 23, 42, 0.9);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-top: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7);
+    box-sizing: border-box;
+  }
+  .giveaway-img-progress-fill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #0284c7, #38bdf8);
+    border-radius: 999px;
+    transition: width 0.3s linear;
+  }
+
+  /* PROGRESS THEME GRADIENTS */
+  .progress-theme-rainbow .giveaway-progress-fill,
+  .progress-theme-rainbow .giveaway-img-progress-fill {
+    background: linear-gradient(90deg, #ff0055, #ff7700, #ffdd00, #00ff88, #00ddff, #aa00ff);
+  }
+  .progress-theme-cyberpunk .giveaway-progress-fill,
+  .progress-theme-cyberpunk .giveaway-img-progress-fill {
+    background: linear-gradient(90deg, #22d3ee, #d946ef);
+  }
+  .progress-theme-gold .giveaway-progress-fill,
+  .progress-theme-gold .giveaway-img-progress-fill {
+    background: linear-gradient(90deg, #ea580c, #fde047);
+  }
+  .progress-theme-ice .giveaway-progress-fill,
+  .progress-theme-ice .giveaway-img-progress-fill {
+    background: linear-gradient(90deg, #0284c7, #a5f3fc);
+  }
+  .progress-theme-sakura .giveaway-progress-fill,
+  .progress-theme-sakura .giveaway-img-progress-fill {
+    background: linear-gradient(90deg, #db2777, #fbcfe8);
+  }
+  .progress-theme-emerald .giveaway-progress-fill,
+  .progress-theme-emerald .giveaway-img-progress-fill {
+    background: linear-gradient(90deg, #059669, #6ee7b7);
+  }
+  .progress-theme-ruby .giveaway-progress-fill,
+  .progress-theme-ruby .giveaway-img-progress-fill {
+    background: linear-gradient(90deg, #e11d48, #fda4af);
+  }
+  .progress-theme-violet .giveaway-progress-fill,
+  .progress-theme-violet .giveaway-img-progress-fill {
+    background: linear-gradient(90deg, #7c3aed, #d8b4fe);
+  }
+  .progress-theme-blue .giveaway-progress-fill,
+  .progress-theme-blue .giveaway-img-progress-fill {
+    background: linear-gradient(90deg, #2563eb, #93c5fd);
+  }
+
+  .giveaway-countdown-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: visible;
+    z-index: 10;
+  }
+  .giveaway-image-box .giveaway-countdown-svg {
+    display: none !important;
+  }
+  .giveaway-countdown-rect {
+    stroke-dasharray: 100;
+    stroke-dashoffset: 0;
+    stroke: url(#gwBorderGradRainbow);
+    stroke-width: 4;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 8px rgba(0, 221, 255, 0.85));
+    transition: stroke-dashoffset 0.3s linear;
+  }
+  .giveaway-countdown-svg.border-theme-rainbow .giveaway-countdown-rect {
+    stroke: url(#gwBorderGradRainbow);
+    filter: drop-shadow(0 0 8px rgba(0, 221, 255, 0.85));
+  }
+  .giveaway-countdown-svg.border-theme-cyberpunk .giveaway-countdown-rect {
+    stroke: url(#gwBorderGradCyberpunk);
+    filter: drop-shadow(0 0 8px rgba(217, 70, 239, 0.85));
+  }
+  .giveaway-countdown-svg.border-theme-gold .giveaway-countdown-rect {
+    stroke: url(#gwBorderGradGold);
+    filter: drop-shadow(0 0 8px rgba(250, 204, 21, 0.85));
+  }
+  .giveaway-countdown-svg.border-theme-ice .giveaway-countdown-rect {
+    stroke: url(#gwBorderGradIce);
+    filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.85));
+  }
+  .giveaway-countdown-svg.border-theme-sakura .giveaway-countdown-rect {
+    stroke: url(#gwBorderGradSakura);
+    filter: drop-shadow(0 0 8px rgba(244, 114, 182, 0.85));
+  }
+  .giveaway-countdown-svg.border-theme-emerald .giveaway-countdown-rect {
+    stroke: url(#gwBorderGradEmerald);
+    filter: drop-shadow(0 0 8px rgba(52, 211, 153, 0.85));
+  }
+  .giveaway-countdown-svg.border-theme-ruby .giveaway-countdown-rect {
+    stroke: url(#gwBorderGradRuby);
+    filter: drop-shadow(0 0 8px rgba(251, 113, 133, 0.85));
+  }
+  .giveaway-countdown-svg.border-theme-violet .giveaway-countdown-rect {
+    stroke: url(#gwBorderGradViolet);
+    filter: drop-shadow(0 0 8px rgba(192, 132, 252, 0.85));
+  }
+  .giveaway-countdown-svg.border-theme-blue .giveaway-countdown-rect {
+    stroke: url(#gwBorderGradBlue);
+    filter: drop-shadow(0 0 8px rgba(96, 165, 250, 0.85));
+  }
+  .giveaway-img-stats-bar {
+    margin-top: 8px;
+    align-self: center;
+    background: rgba(2, 6, 23, 0.95);
+    border: 1px solid #1e293b;
+    border-radius: 999px;
+    padding: 3px 14px;
+    display: flex; gap: 12px;
+    font-size: 12px; font-weight: 700;
+    white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  }
+
+  /* FLY-IN ANIMATIONS: FROM ALL 8 DIRECTIONS / CORNERS / FADE / ZOOM / BOUNCE */
+  .giveaway-cp-box.anim-in-from-top, .giveaway-image-box.anim-in-from-top {
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px) - 120vh)) scale(var(--scale, 1)) !important;
+    opacity: 0 !important;
+  }
+  .giveaway-cp-box.anim-in-from-bottom, .giveaway-image-box.anim-in-from-bottom {
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px) + 120vh)) scale(var(--scale, 1)) !important;
+    opacity: 0 !important;
+  }
+  .giveaway-cp-box.anim-in-from-left, .giveaway-image-box.anim-in-from-left {
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) - 120vw), calc(var(--base-ty) + var(--offset-y, 0px))) scale(var(--scale, 1)) !important;
+    opacity: 0 !important;
+  }
+  .giveaway-cp-box.anim-in-from-right, .giveaway-image-box.anim-in-from-right {
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) + 120vw), calc(var(--base-ty) + var(--offset-y, 0px))) scale(var(--scale, 1)) !important;
+    opacity: 0 !important;
+  }
+  .giveaway-cp-box.anim-in-from-top-left, .giveaway-image-box.anim-in-from-top-left {
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) - 120vw), calc(var(--base-ty) + var(--offset-y, 0px) - 120vh)) scale(var(--scale, 1)) !important;
+    opacity: 0 !important;
+  }
+  .giveaway-cp-box.anim-in-from-top-right, .giveaway-image-box.anim-in-from-top-right {
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) + 120vw), calc(var(--base-ty) + var(--offset-y, 0px) - 120vh)) scale(var(--scale, 1)) !important;
+    opacity: 0 !important;
+  }
+  .giveaway-cp-box.anim-in-from-bottom-left, .giveaway-image-box.anim-in-from-bottom-left {
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) - 120vw), calc(var(--base-ty) + var(--offset-y, 0px) + 120vh)) scale(var(--scale, 1)) !important;
+    opacity: 0 !important;
+  }
+  .giveaway-cp-box.anim-in-from-bottom-right, .giveaway-image-box.anim-in-from-bottom-right {
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) + 120vw), calc(var(--base-ty) + var(--offset-y, 0px) + 120vh)) scale(var(--scale, 1)) !important;
+    opacity: 0 !important;
+  }
+  .giveaway-cp-box.anim-in-fade, .giveaway-image-box.anim-in-fade {
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px))) scale(var(--scale, 1)) !important;
+    opacity: 0 !important;
+  }
+  .giveaway-cp-box.anim-in-zoom, .giveaway-image-box.anim-in-zoom {
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px))) scale(0.2) !important;
+    opacity: 0 !important;
+  }
+  .giveaway-cp-box.anim-in-bounce, .giveaway-image-box.anim-in-bounce {
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px))) scale(0.6) !important;
+    opacity: 0 !important;
+  }
+
+  .giveaway-cp-box.visible, .giveaway-image-box.visible {
+    display: block !important;
+    opacity: 1 !important;
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px))) scale(var(--scale, 1)) !important;
+  }
+
+  /* ═══ GIVEAWAY THEMES ═══ */
+  .giveaway-draw-box {
+    --gw-primary: #fbbf24;
+    --gw-secondary: #ea580c;
+    --gw-accent: #f59e0b;
+    --gw-text-glow: 0 0 15px rgba(245, 158, 11, 0.9), 0 0 35px rgba(234, 88, 12, 0.6), 0 4px 12px rgba(0, 0, 0, 0.9);
+    --gw-aura: radial-gradient(circle, rgba(245, 158, 11, 0.45) 0%, rgba(234, 88, 12, 0.2) 45%, transparent 70%);
+    --gw-sunburst-1: #fbbf24;
+    --gw-sunburst-2: #ea580c;
+    --gw-sunburst-3: #7c2d12;
+    --gw-prize-bg: linear-gradient(135deg, rgba(234, 88, 12, 0.95), rgba(180, 83, 9, 0.95));
+    --gw-prize-border: rgba(254, 240, 138, 0.6);
+    --gw-cap-top: linear-gradient(180deg, #fde047 0%, #f59e0b 60%, #b45309 100%);
+    --gw-box-border: rgba(251, 191, 36, 0.6);
+  }
+
+  .giveaway-draw-box.gw-theme-gold {
+    --gw-primary: #fbbf24;
+    --gw-secondary: #ea580c;
+    --gw-accent: #f59e0b;
+    --gw-text-glow: 0 0 15px rgba(245, 158, 11, 0.9), 0 0 35px rgba(234, 88, 12, 0.6), 0 4px 12px rgba(0, 0, 0, 0.9);
+    --gw-aura: radial-gradient(circle, rgba(245, 158, 11, 0.45) 0%, rgba(234, 88, 12, 0.2) 45%, transparent 70%);
+    --gw-sunburst-1: #fbbf24;
+    --gw-sunburst-2: #ea580c;
+    --gw-sunburst-3: #7c2d12;
+    --gw-prize-bg: linear-gradient(135deg, rgba(234, 88, 12, 0.95), rgba(180, 83, 9, 0.95));
+    --gw-prize-border: rgba(254, 240, 138, 0.6);
+    --gw-cap-top: linear-gradient(180deg, #fde047 0%, #f59e0b 60%, #b45309 100%);
+    --gw-box-border: rgba(251, 191, 36, 0.6);
+  }
+
+  .giveaway-draw-box.gw-theme-cyberpunk {
+    --gw-primary: #06b6d4;
+    --gw-secondary: #d946ef;
+    --gw-accent: #22d3ee;
+    --gw-text-glow: 0 0 18px rgba(6, 182, 212, 0.95), 0 0 38px rgba(217, 70, 239, 0.75), 0 4px 12px rgba(0, 0, 0, 0.9);
+    --gw-aura: radial-gradient(circle, rgba(6, 182, 212, 0.45) 0%, rgba(217, 70, 239, 0.25) 45%, transparent 70%);
+    --gw-sunburst-1: #22d3ee;
+    --gw-sunburst-2: #d946ef;
+    --gw-sunburst-3: #4a044e;
+    --gw-prize-bg: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(88, 28, 135, 0.95));
+    --gw-prize-border: rgba(6, 182, 212, 0.7);
+    --gw-cap-top: linear-gradient(180deg, #22d3ee 0%, #06b6d4 50%, #d946ef 100%);
+    --gw-box-border: rgba(6, 182, 212, 0.7);
+  }
+
+  .giveaway-draw-box.gw-theme-violet {
+    --gw-primary: #c084fc;
+    --gw-secondary: #6366f1;
+    --gw-accent: #a855f7;
+    --gw-text-glow: 0 0 16px rgba(192, 132, 252, 0.9), 0 0 35px rgba(99, 102, 241, 0.65), 0 4px 12px rgba(0, 0, 0, 0.9);
+    --gw-aura: radial-gradient(circle, rgba(168, 85, 247, 0.45) 0%, rgba(99, 102, 241, 0.2) 45%, transparent 70%);
+    --gw-sunburst-1: #c084fc;
+    --gw-sunburst-2: #7c3aed;
+    --gw-sunburst-3: #31104b;
+    --gw-prize-bg: linear-gradient(135deg, rgba(124, 58, 237, 0.95), rgba(67, 56, 202, 0.95));
+    --gw-prize-border: rgba(216, 180, 254, 0.6);
+    --gw-cap-top: linear-gradient(180deg, #e9d5ff 0%, #c084fc 60%, #7c3aed 100%);
+    --gw-box-border: rgba(168, 85, 247, 0.6);
+  }
+
+  .giveaway-draw-box.gw-theme-emerald {
+    --gw-primary: #34d399;
+    --gw-secondary: #059669;
+    --gw-accent: #10b981;
+    --gw-text-glow: 0 0 16px rgba(52, 211, 153, 0.9), 0 0 35px rgba(5, 150, 105, 0.65), 0 4px 12px rgba(0, 0, 0, 0.9);
+    --gw-aura: radial-gradient(circle, rgba(16, 185, 129, 0.45) 0%, rgba(5, 150, 105, 0.2) 45%, transparent 70%);
+    --gw-sunburst-1: #34d399;
+    --gw-sunburst-2: #059669;
+    --gw-sunburst-3: #022c22;
+    --gw-prize-bg: linear-gradient(135deg, rgba(5, 150, 105, 0.95), rgba(6, 95, 70, 0.95));
+    --gw-prize-border: rgba(167, 243, 208, 0.6);
+    --gw-cap-top: linear-gradient(180deg, #a7f3d0 0%, #34d399 60%, #059669 100%);
+    --gw-box-border: rgba(16, 185, 129, 0.6);
+  }
+
+  .giveaway-draw-box.gw-theme-sakura {
+    --gw-primary: #f472b6;
+    --gw-secondary: #db2777;
+    --gw-accent: #ec4899;
+    --gw-text-glow: 0 0 16px rgba(244, 114, 182, 0.9), 0 0 35px rgba(219, 39, 119, 0.65), 0 4px 12px rgba(0, 0, 0, 0.9);
+    --gw-aura: radial-gradient(circle, rgba(244, 114, 182, 0.45) 0%, rgba(219, 39, 119, 0.2) 45%, transparent 70%);
+    --gw-sunburst-1: #f472b6;
+    --gw-sunburst-2: #db2777;
+    --gw-sunburst-3: #500724;
+    --gw-prize-bg: linear-gradient(135deg, rgba(219, 39, 119, 0.95), rgba(157, 23, 77, 0.95));
+    --gw-prize-border: rgba(251, 207, 232, 0.6);
+    --gw-cap-top: linear-gradient(180deg, #fce7f3 0%, #f472b6 60%, #db2777 100%);
+    --gw-box-border: rgba(244, 114, 182, 0.6);
+  }
+
+  .giveaway-draw-box.gw-theme-ice {
+    --gw-primary: #38bdf8;
+    --gw-secondary: #0284c7;
+    --gw-accent: #0284c7;
+    --gw-text-glow: 0 0 16px rgba(56, 189, 248, 0.9), 0 0 35px rgba(2, 132, 199, 0.65), 0 4px 12px rgba(0, 0, 0, 0.9);
+    --gw-aura: radial-gradient(circle, rgba(56, 189, 248, 0.45) 0%, rgba(2, 132, 199, 0.2) 45%, transparent 70%);
+    --gw-sunburst-1: #38bdf8;
+    --gw-sunburst-2: #0284c7;
+    --gw-sunburst-3: #082f49;
+    --gw-prize-bg: linear-gradient(135deg, rgba(2, 132, 199, 0.95), rgba(12, 74, 110, 0.95));
+    --gw-prize-border: rgba(186, 230, 253, 0.6);
+    --gw-cap-top: linear-gradient(180deg, #e0f2fe 0%, #38bdf8 60%, #0284c7 100%);
+    --gw-box-border: rgba(56, 189, 248, 0.6);
+  }
+
+  .giveaway-draw-box.gw-theme-ruby {
+    --gw-primary: #fb7185;
+    --gw-secondary: #e11d48;
+    --gw-accent: #f43f5e;
+    --gw-text-glow: 0 0 16px rgba(251, 113, 133, 0.9), 0 0 35px rgba(225, 29, 72, 0.65), 0 4px 12px rgba(0, 0, 0, 0.9);
+    --gw-aura: radial-gradient(circle, rgba(244, 63, 94, 0.45) 0%, rgba(225, 29, 72, 0.2) 45%, transparent 70%);
+    --gw-sunburst-1: #fb7185;
+    --gw-sunburst-2: #e11d48;
+    --gw-sunburst-3: #4c0519;
+    --gw-prize-bg: linear-gradient(135deg, rgba(225, 29, 72, 0.95), rgba(159, 18, 57, 0.95));
+    --gw-prize-border: rgba(254, 205, 211, 0.6);
+    --gw-cap-top: linear-gradient(180deg, #ffe4e6 0%, #fb7185 60%, #e11d48 100%);
+    --gw-box-border: rgba(244, 63, 94, 0.6);
+  }
+
+  /* SLOT MACHINE / LUCKY DRAW STAGE */
+  .giveaway-draw-box {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(calc(-50% + var(--draw-offset-x, 0px)), calc(-50% + var(--draw-offset-y, 0px))) scale(calc(var(--draw-scale, 1) * 0.95));
+    width: 620px; max-width: 92vw;
+    background: rgba(2, 6, 23, 0.96);
+    border: 2px solid var(--gw-box-border, rgba(56, 189, 248, 0.6));
+    border-radius: 20px;
+    padding: 28px 32px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.85);
+    contain: layout style;
+    isolation: isolate;
+    display: none;
+    opacity: 0;
+    transition: opacity 0.45s cubic-bezier(0.16, 1, 0.3, 1), transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 200;
+    text-align: center;
+  }
+  .giveaway-draw-box.visible {
+    display: block;
+    opacity: 1;
+    transform: translate(calc(-50% + var(--draw-offset-x, 0px)), calc(-50% + var(--draw-offset-y, 0px))) scale(var(--draw-scale, 1));
+  }
+  .giveaway-draw-box.fadeout {
+    opacity: 0 !important;
+    transform: translate(calc(-50% + var(--draw-offset-x, 0px)), calc(-50% + var(--draw-offset-y, 0px))) scale(calc(var(--draw-scale, 1) * 0.82)) !important;
+    transition: opacity 0.45s cubic-bezier(0.4, 0, 0.2, 1), transform 0.45s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  }
+  .giveaway-draw-header-title {
+    font-size: 15px; font-weight: 700;
+    color: var(--gw-primary, #fbbf24); letter-spacing: 1px;
+    text-transform: uppercase; margin-bottom: 4px;
+  }
+  .giveaway-draw-prize-text {
+    font-size: 22px; font-weight: 900;
+    color: #f8fafc; margin-bottom: 4px;
+  }
+  .giveaway-draw-tier-pill {
+    display: inline-block; font-size: 12px; font-weight: 700;
+    color: #34d399; background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    padding: 3px 12px; border-radius: 999px; margin-bottom: 16px;
+  }
+  .giveaway-slot-reel-box {
+    background: #090e1a; border: 2px solid var(--gw-box-border, #1e293b);
+    border-radius: 14px; height: 130px;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    margin: 8px 0 16px 0; position: relative; overflow: hidden;
+    contain: strict;
+  }
+  .giveaway-slot-reel-vignette {
+    position: absolute; inset: 0; pointer-events: none; z-index: 5;
+    background: linear-gradient(180deg, rgba(2, 6, 23, 0.95) 0%, rgba(2, 6, 23, 0.45) 20%, transparent 40%, transparent 60%, rgba(2, 6, 23, 0.45) 80%, rgba(2, 6, 23, 0.95) 100%);
+    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8);
+  }
+  .giveaway-slot-reel-guides {
+    position: absolute; top: 50%; left: 0; right: 0; height: 120px;
+    transform: translateY(-50%); pointer-events: none; z-index: 6;
+    border-top: 2px dashed rgba(255, 255, 255, 0.18);
+    border-bottom: 2px dashed rgba(255, 255, 255, 0.18);
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0 12px;
+  }
+  .giveaway-slot-reel-guides::before {
+    content: '▶'; font-size: 16px; color: var(--gw-primary, #fbbf24);
+    filter: drop-shadow(0 0 6px var(--gw-primary, #fbbf24));
+  }
+  .giveaway-slot-reel-guides::after {
+    content: '◀'; font-size: 16px; color: var(--gw-primary, #fbbf24);
+    filter: drop-shadow(0 0 6px var(--gw-primary, #fbbf24));
+  }
+  .giveaway-slot-strip-container {
+    position: relative; width: 100%; height: 100%;
+    display: none; justify-content: center;
+  }
+  .giveaway-slot-stage.is-reel .giveaway-slot-reel-name {
+    display: none !important;
+  }
+  .giveaway-slot-stage.is-reel .giveaway-slot-strip-container {
+    display: flex !important;
+  }
+  .giveaway-slot-strip {
+    display: flex; flex-direction: column; width: 100%;
+    transform: translateY(0px); will-change: transform;
+  }
+  .giveaway-slot-strip.spinning {
+    animation: slotReelFastSpin 0.35s linear infinite;
+  }
+  @keyframes slotReelFastSpin {
+    from { transform: translateY(0px); }
+    to { transform: translateY(-780px); }
+  }
+  .slot-reel-item {
+    height: 130px; min-height: 130px; max-height: 130px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: var(--winner-name-size, 46px); font-weight: 900;
+    color: #cbd5e1; letter-spacing: 0.5px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    padding: 0 28px; box-sizing: border-box;
+    transition: color 0.25s ease, transform 0.25s ease;
+  }
+  .slot-reel-item.winner-item {
+    color: var(--gw-primary, #fbbf24) !important;
+    text-shadow: var(--gw-text-glow) !important;
+    transform: scale(1.05);
+  }
+  .giveaway-slot-reel-name {
+    font-size: var(--winner-name-size, 38px); font-weight: 900;
+    color: var(--gw-primary, #38bdf8); text-shadow: 0 2px 10px rgba(56, 189, 248, 0.4);
+    letter-spacing: 0.5px; transition: transform 0.1s ease;
+    max-width: 580px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    padding: 0 20px; box-sizing: border-box; text-align: center;
+  }
+  .giveaway-slot-reel-name.rolling {
+    color: #cbd5e1; text-shadow: none;
+  }
+  .giveaway-draw-status-label {
+    font-size: 14px; font-weight: 700;
+    color: #94a3b8; margin-top: 4px;
+  }
+  .giveaway-draw-box.winner .giveaway-draw-status-label { color: #10b981; }
+  .giveaway-draw-box.winner .giveaway-slot-reel-name {
+    color: var(--gw-primary, #fbbf24); font-size: var(--winner-name-size, 38px);
+    text-shadow: var(--gw-text-glow);
+  }
+
+  /* ═══ GACHAPON MODE (Takayu Studio Style) ═══ */
+  .giveaway-draw-box.style-gachapon {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    width: 800px;
+    height: 600px;
+    padding: 0;
+    overflow: visible;
+  }
+  .giveaway-draw-box.style-gachapon .giveaway-slot-stage {
+    display: none !important;
+  }
+  .giveaway-draw-box:not(.style-gachapon) .giveaway-gacha-stage {
+    display: none !important;
+  }
+  .giveaway-gacha-stage {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  .gacha-sunburst {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 720px; height: 720px;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 400ms ease;
+    z-index: 1;
+  }
+  .giveaway-gacha-stage.revealed .gacha-sunburst {
+    opacity: 1;
+    animation: sunburstSpin 24s linear infinite;
+  }
+  @keyframes sunburstSpin {
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to { transform: translate(-50%, -50%) rotate(360deg); }
+  }
+  .gacha-aura {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 520px; height: 520px;
+    transform: translate(-50%, -50%);
+    background: var(--gw-aura, radial-gradient(circle, rgba(245, 158, 11, 0.45) 0%, rgba(234, 88, 12, 0.2) 45%, transparent 70%));
+    border-radius: 50%;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 600ms ease;
+    z-index: 2;
+  }
+  .giveaway-gacha-stage.revealed .gacha-aura {
+    opacity: 1;
+  }
+  .gacha-capsule-wrap {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 170px; height: 170px;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    filter: drop-shadow(0 15px 25px rgba(0,0,0,0.6));
+    transition: opacity 300ms ease;
+  }
+  /* ── Phase 1: Entrance Drop-In & Elastic Squash-and-Stretch ── */
+  .giveaway-gacha-stage.gacha-entering .gacha-capsule-wrap {
+    animation: gachaDropIn 450ms cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  }
+  @keyframes gachaDropIn {
+    0% {
+      transform: translate(-50%, -280px) scale(0.65);
+      opacity: 0;
+    }
+    45% {
+      transform: translate(-50%, -46%) scale(1.18, 0.82);
+      opacity: 1;
+    }
+    68% {
+      transform: translate(-50%, -56%) scale(0.92, 1.08);
+    }
+    85% {
+      transform: translate(-50%, -48%) scale(1.04, 0.96);
+    }
+    100% {
+      transform: translate(-50%, -50%) scale(1, 1);
+      opacity: 1;
+    }
+  }
+
+  /* ── Phase 2: Organic Sinusoidal Pendulum Wobble (100% continuous, zero loop hitch) ── */
+  .giveaway-gacha-stage.gacha-wobble .gacha-capsule-wrap,
+  .giveaway-gacha-stage.shaking:not(.gacha-entering):not(.gacha-charging):not(.revealed) .gacha-capsule-wrap {
+    animation: gachaPendulumWobble 825ms cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+  }
+  @keyframes gachaPendulumWobble {
+    0% {
+      transform: translate(-50%, -50%) rotate(0deg) scale(1);
+    }
+    25% {
+      transform: translate(-50%, calc(-50% - 6px)) rotate(-13deg) scale(1.02);
+    }
+    50% {
+      transform: translate(-50%, -50%) rotate(0deg) scale(1);
+    }
+    75% {
+      transform: translate(-50%, calc(-50% - 6px)) rotate(13deg) scale(1.02);
+    }
+    100% {
+      transform: translate(-50%, -50%) rotate(0deg) scale(1);
+    }
+  }
+
+  /* ── Phase 3: Energy Charge Jitter & Continuous Swell (Single forward run, 0% jumps) ── */
+  .giveaway-gacha-stage.gacha-charging .gacha-capsule-wrap {
+    animation: gachaChargeJitter 1300ms cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+  }
+  @keyframes gachaChargeJitter {
+    0% { transform: translate(-50%, -50%) rotate(0deg) scale(1.0); }
+    8% { transform: translate(calc(-50% - 2px), calc(-50% + 2px)) rotate(-2.5deg) scale(1.02); }
+    16% { transform: translate(calc(-50% + 2px), calc(-50% - 2px)) rotate(2.5deg) scale(1.04); }
+    24% { transform: translate(calc(-50% - 3px), calc(-50% + 1px)) rotate(-3deg) scale(1.06); }
+    32% { transform: translate(calc(-50% + 3px), calc(-50% - 2px)) rotate(3deg) scale(1.08); }
+    40% { transform: translate(calc(-50% - 3px), calc(-50% + 2px)) rotate(-3.5deg) scale(1.11); }
+    48% { transform: translate(calc(-50% + 3px), calc(-50% - 3px)) rotate(3.5deg) scale(1.13); }
+    56% { transform: translate(calc(-50% - 4px), calc(-50% + 2px)) rotate(-4deg) scale(1.16); }
+    64% { transform: translate(calc(-50% + 4px), calc(-50% - 2px)) rotate(4deg) scale(1.18); }
+    72% { transform: translate(calc(-50% - 4px), calc(-50% + 3px)) rotate(-5deg) scale(1.20); }
+    80% { transform: translate(calc(-50% + 5px), calc(-50% - 2px)) rotate(5deg) scale(1.22); }
+    88% { transform: translate(calc(-50% - 5px), calc(-50% + 3px)) rotate(-5deg) scale(1.24); }
+    94% { transform: translate(calc(-50% + 5px), calc(-50% - 2px)) rotate(4deg) scale(1.25); }
+    100% { transform: translate(-50%, -50%) rotate(0deg) scale(1.25); }
+  }
+
+  .giveaway-gacha-stage.gacha-charging .gacha-aura {
+    opacity: 0.85;
+    animation: gachaAuraChargePulse 320ms ease-in-out infinite alternate;
+  }
+  @keyframes gachaAuraChargePulse {
+    from { transform: translate(-50%, -50%) scale(0.88); opacity: 0.45; }
+    to { transform: translate(-50%, -50%) scale(1.22); opacity: 0.95; }
+  }
+
+  /* ── Shockwave Burst Ring ── */
+  .gacha-burst-ring {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 140px; height: 140px;
+    border-radius: 50%;
+    border: 6px solid #fde047;
+    box-shadow: 0 0 35px #f59e0b, inset 0 0 20px #fde047;
+    transform: translate(-50%, -50%) scale(0.2);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 8;
+  }
+  .giveaway-gacha-stage.revealed .gacha-burst-ring {
+    animation: burstRingExpand 650ms cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
+  }
+  @keyframes burstRingExpand {
+    0% { transform: translate(-50%, -50%) scale(0.35); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(4.5); opacity: 0; }
+  }
+
+  .gacha-cap-top {
+    width: 170px; height: 85px;
+    background: var(--gw-cap-top, linear-gradient(180deg, #fde047 0%, #f59e0b 60%, #b45309 100%));
+    border-top-left-radius: 85px; border-top-right-radius: 85px;
+    position: relative;
+    border: 3px solid #1e293b; border-bottom: none;
+    box-shadow: inset 0 8px 12px rgba(255,255,255,0.4);
+    transition: transform 600ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 500ms ease;
+  }
+  .gacha-cap-top::after {
+    content: ''; position: absolute;
+    top: 22px; left: 36px; width: 26px; height: 26px;
+    background: rgba(255, 255, 255, 0.55); border-radius: 50%;
+  }
+  .gacha-cap-bottom {
+    width: 170px; height: 85px;
+    background: linear-gradient(180deg, #ffffff 0%, #e2e8f0 60%, #94a3b8 100%);
+    border-bottom-left-radius: 85px; border-bottom-right-radius: 85px;
+    position: relative;
+    border: 3px solid #1e293b; border-top: none;
+    box-shadow: inset 0 -6px 10px rgba(0,0,0,0.25);
+    transition: transform 600ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 500ms ease;
+  }
+  .gacha-cap-belt {
+    position: absolute; top: 50%; left: 50%;
+    width: 174px; height: 12px;
+    background: #0f172a; transform: translate(-50%, -50%);
+    border-radius: 6px; z-index: 12;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    transition: opacity 300ms ease, transform 400ms ease;
+  }
+  .giveaway-gacha-stage.revealed .gacha-cap-top {
+    transform: translateY(-160px) rotate(-32deg) scale(0.85);
+    opacity: 0; pointer-events: none;
+  }
+  .giveaway-gacha-stage.revealed .gacha-cap-bottom {
+    transform: translateY(160px) rotate(28deg) scale(0.85);
+    opacity: 0; pointer-events: none;
+  }
+  .giveaway-gacha-stage.revealed .gacha-cap-belt {
+    opacity: 0; transform: translate(-50%, -50%) scale(2.0); pointer-events: none;
+  }
+  .gacha-result {
+    position: relative; z-index: 5;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center; opacity: 0;
+    transform: scale(0.3);
+    transition: opacity 400ms ease, transform 650ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: none;
+  }
+  .giveaway-gacha-stage.revealed .gacha-result {
+    opacity: 1; transform: scale(1); pointer-events: auto;
+  }
+  .gacha-winner-badge {
+    display: none !important;
+  }
+  .gacha-winner-name {
+    font-size: var(--winner-name-size, 52px); font-weight: 900;
+    color: var(--gw-primary, #fbbf24);
+    text-shadow: var(--gw-text-glow, 0 0 15px rgba(245, 158, 11, 0.9), 0 0 35px rgba(234, 88, 12, 0.6), 0 4px 12px rgba(0, 0, 0, 0.9));
+    letter-spacing: 1px; line-height: 1.15em; margin-bottom: 18px;
+    max-width: 90vw;
+    word-break: break-word;
+  }
+  .gacha-stars-row {
+    display: none !important;
+  }
+  .gacha-prize-box {
+    background: var(--gw-prize-bg, linear-gradient(135deg, rgba(234, 88, 12, 0.95), rgba(180, 83, 9, 0.95)));
+    border: 1.5px solid var(--gw-prize-border, rgba(254, 240, 138, 0.6));
+    border-radius: 14px;
+    padding: calc(var(--prize-text-size, 20px) * 0.45) calc(var(--prize-text-size, 20px) * 1.35);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.5), 0 0 20px rgba(0, 0, 0, 0.4);
+    max-width: 680px;
+  }
+  .gacha-prize-label {
+    font-size: calc(var(--prize-text-size, 20px) * 0.65); font-weight: 700; color: var(--gw-primary, #fef08a);
+    letter-spacing: 1px; text-transform: uppercase; margin-bottom: 3px;
+  }
+  .gacha-prize-text {
+    font-size: var(--prize-text-size, 20px); font-weight: 800; color: #ffffff;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+  }
+  .giveaway-confetti-canvas {
+    position: fixed; top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    pointer-events: none; z-index: 190; display: none;
+  }
 
   /* ═══ Video widget ═══ */
   .widget.type-video .widget-inner {
@@ -1939,8 +2959,30 @@
     z-index: 1000;
   }
   body.edit-mode #sidebar { display: block; }
-  body.edit-mode #canvas { width: calc(100% - 300px); padding: 20px; }
-  body:not(.edit-mode) #canvas { padding: 0; }   /* overlay mode: ไม่มี padding */
+  body:not(.edit-mode) #canvas,
+  body.preview-mode #canvas {
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+  body:not(.edit-mode) #canvas-wrap,
+  body.preview-mode #canvas-wrap {
+    overflow: hidden !important;
+  }
+  body:not(.edit-mode),
+  body:not(.edit-mode) *,
+  body.preview-mode,
+  body.preview-mode * {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+  }
+  body:not(.edit-mode)::-webkit-scrollbar,
+  body:not(.edit-mode) *::-webkit-scrollbar,
+  body.preview-mode::-webkit-scrollbar,
+  body.preview-mode *::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
 
   #sidebar h2 {
     font-size: 18px;
@@ -2200,33 +3242,59 @@
 
   /* ★ คลิกขวาบน canvas — เมนูเลือก widget ที่ซ้อนกันอยู่ตรงจุดนั้น (กันต้องไปกดแท็บ Layers
      เวลาอยาก select widget ที่อยู่ด้านล่างสุดของกอง) */
-  #canvas-ctx-menu {
+  /* ★ Context Menu สำหรับ Layer ใน Sidebar และ Canvas */
+  #layer-ctx-menu, #canvas-ctx-menu {
     position: fixed;
-    background: #16213e;
-    border: 1px solid rgba(255,255,255,0.15);
+    background: #111a2e;
+    border: 1px solid rgba(255,255,255,0.18);
     border-radius: 8px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-    padding: 4px;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.65);
+    padding: 5px;
     z-index: 10000;
-    min-width: 180px;
-    max-height: 320px;
+    min-width: 195px;
+    max-height: 360px;
     overflow-y: auto;
+    font-family: inherit;
+    contain: layout paint;
+    isolation: isolate;
   }
-  #canvas-ctx-menu .ctx-title {
-    font-size: 11px; color: #888; padding: 6px 8px 4px;
+  #layer-ctx-menu .ctx-title, #canvas-ctx-menu .ctx-title {
+    font-size: 11px; color: #94a3b8; padding: 6px 8px 5px;
     text-transform: uppercase; letter-spacing: 0.5px;
+    font-weight: 700;
+    display: flex; align-items: center;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 4px;
   }
-  #canvas-ctx-menu .ctx-item {
+  #layer-ctx-menu .ctx-item, #canvas-ctx-menu .ctx-item {
     display: flex; align-items: center; gap: 8px;
-    padding: 7px 8px; border-radius: 6px;
-    cursor: pointer; font-size: 13px; color: #fff;
-    transition: background 0.15s;
+    padding: 7px 10px; border-radius: 6px;
+    cursor: pointer; font-size: 13px; color: #f1f5f9;
+    transition: background 0.12s, color 0.12s;
   }
-  #canvas-ctx-menu .ctx-item:hover { background: rgba(74,158,255,0.2); }
-  #canvas-ctx-menu .ctx-item.ctx-selected { background: rgba(74,158,255,0.12); }
-  #canvas-ctx-menu .ctx-item .ctx-icon { font-size: 15px; flex-shrink: 0; }
-  #canvas-ctx-menu .ctx-item .ctx-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #canvas-ctx-menu .ctx-item .ctx-z { font-size: 10px; color: #888; flex-shrink: 0; }
+  #layer-ctx-menu .ctx-item:hover, #canvas-ctx-menu .ctx-item:hover {
+    background: rgba(56,189,248,0.18);
+    color: #38bdf8;
+  }
+  #layer-ctx-menu .ctx-item.ctx-selected, #canvas-ctx-menu .ctx-item.ctx-selected {
+    background: rgba(56,189,248,0.12);
+  }
+  #layer-ctx-menu .ctx-item.ctx-danger {
+    color: #f87171;
+  }
+  #layer-ctx-menu .ctx-item.ctx-danger:hover {
+    background: rgba(239,68,68,0.22);
+    color: #fca5a5;
+  }
+  #layer-ctx-menu .ctx-divider {
+    height: 1px;
+    background: rgba(255,255,255,0.08);
+    margin: 4px 0;
+  }
+  #layer-ctx-menu .ctx-item .ctx-icon, #canvas-ctx-menu .ctx-item .ctx-icon { font-size: 14px; flex-shrink: 0; }
+  #layer-ctx-menu .ctx-item .ctx-name, #canvas-ctx-menu .ctx-item .ctx-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  #layer-ctx-menu .ctx-item .ctx-shortcut { font-size: 11px; color: #64748b; margin-left: 8px; font-weight: normal; }
+  #layer-ctx-menu .ctx-item .ctx-z, #canvas-ctx-menu .ctx-item .ctx-z { font-size: 10px; color: #888; flex-shrink: 0; }
 
   #layers-list:empty::before {
     content: 'ยังไม่มี widget — เพิ่มจากด้านบน';
@@ -2758,6 +3826,9 @@
   <button class="widget-add-btn" data-type="ask">
     <span class="icon">🗳️</span> <span>ASK (โพล)</span>
   </button>
+  <button class="widget-add-btn" data-type="giveaway">
+    <span class="icon">🎁</span> <span>Giveaway (แจกรางวัล)</span>
+  </button>
   </div><!-- /tab-widgets -->
 
   <!-- ★ Tab content: Layers (จัดลำดับชั้น widget) -->
@@ -3045,6 +4116,8 @@ function connectWs() {
       handleViewers(data);
     } else if (data.type === 'ask') {
       handleAskState(data);
+    } else if (data.type === 'giveaway' || (data.type && data.type.startsWith('giveaway_'))) {
+      handleGiveawayEvent(data);
     } else if (data.type === 'now_playing') {
       handleNowPlaying(data);
     } else if (data.type === 'emote_party') {
@@ -3057,6 +4130,8 @@ function connectWs() {
       handleMicLevel(data);
     } else if (data.type === 'mic_calibrated') {
       handleMicCalibrated(data);
+    } else if (data.type === 'chat_visibility') {
+      document.body.classList.toggle('chat-layer-hidden', Boolean(data.hidden));
     } else if (data.type === 'eval_js') {
       try { eval(data.js); } catch(e) {}
     }
@@ -3064,6 +4139,37 @@ function connectWs() {
   // ★ WS reconnect — ถ้าล้มเหลวเกิน 3 ครั้ง (server ปิด) → reload ทั้งหน้า
   let _wsFailCount = 0;
   ws.onclose = () => {
+    // ซ่อนหน้าต่างสุ่มรางวัลและเคลียร์เดโมทันทีเมื่อตัดการเชื่อมต่อจากเซิร์ฟเวอร์ (กันหน้าจอค้างเมื่อปิดโปรแกรม)
+    try {
+      const drawBoxes = document.querySelectorAll('.giveaway-draw-box');
+      drawBoxes.forEach(box => {
+        box.classList.remove('visible', 'winner', 'style-gachapon', 'fadeout');
+        box.style.display = 'none';
+        const gacha = box.querySelector('.giveaway-gacha-stage');
+        if (gacha) gacha.classList.remove('shaking', 'revealed', 'gacha-entering', 'gacha-wobble', 'gacha-charging');
+        const strip = box.querySelector('.giveaway-slot-strip');
+        if (strip) {
+          strip.classList.remove('spinning');
+          strip.style.transition = 'none';
+          strip.style.transform = 'translateY(0px)';
+          strip.innerHTML = '';
+        }
+      });
+      if (_gwSlotRollInterval) { clearInterval(_gwSlotRollInterval); _gwSlotRollInterval = null; }
+      if (_gwSlotReelSpinInterval) { clearInterval(_gwSlotReelSpinInterval); _gwSlotReelSpinInterval = null; }
+      if (Array.isArray(_gwSlotReelDecelTimers)) {
+        _gwSlotReelDecelTimers.forEach(t => clearTimeout(t));
+        _gwSlotReelDecelTimers = [];
+      }
+      if (!_giveawayState || !_giveawayState.active) {
+        const cpBoxes = document.querySelectorAll('.giveaway-cp-box, .giveaway-image-box');
+        cpBoxes.forEach(b => {
+          b.classList.remove('visible');
+          b.style.display = 'none';
+        });
+      }
+    } catch(e) {}
+
     _wsFailCount++;
     if (_wsFailCount > 3) {
       // server ปิด → reload หน้า (จะได้เชื่อมใหม่ + โหลด HTML ใหม่)
@@ -3146,6 +4252,9 @@ function renderAll() {
   if (isEditor) {
     document.getElementById('canvas-size').value = config.canvas_size;
   }
+  if (typeof config.chat_hidden !== 'undefined') {
+    document.body.classList.toggle('chat-layer-hidden', Boolean(config.chat_hidden));
+  }
 
   // ★ smart render — ไม่ล้างทั้งหมด (กัน chat widget iframe reload → แชทหาย)
   // 1. หา widget ที่มีอยู่แล้ว → update style/position + re-bind drag/resize (w reference เปลี่ยน)
@@ -3225,8 +4334,8 @@ function updateWidgetElement(el, w) {
   // position/size/opacity — แต่ถ้ากำลัง drag/resize widget นี้ → ข้าม (คงค่าปัจจุบัน)
   const isInteracting = (el._isDragging || el._isResizing);
   if (!isInteracting) {
-    if (w.type === 'ask') {
-      // ★ ASK = เต็ม canvas เสมอ (ล็อค — ลาก/ย่อไม่ได้)
+    if (w.type === 'ask' || w.type === 'giveaway') {
+      // ★ ASK / Giveaway = เต็ม canvas เสมอ (ล็อค — ลาก/ย่อไม่ได้)
       w.x = 0; w.y = 0; w.w = config.canvas_w || 1920; w.h = config.canvas_h || 1080;
     }
     el.style.left = w.x + 'px';
@@ -3408,27 +4517,36 @@ function updateWidgetElement(el, w) {
   //    เลยใช้ signature diff — ถ้าค่าที่กำหนดหน้าตาไม่เปลี่ยน → อย่าล้าง content
   const inner = el.querySelector('.widget-inner');
   if (inner) {
-    if (w.type === 'ask') {
+    if (w.type === 'ask' || w.type === 'giveaway') {
       // ★ เฟรมเต็มจอ — บังคับ geometry เสมอ (ล็อค แก้/ลากไม่ได้)
       w.x = 0; w.y = 0;
       w.w = config.canvas_w || 1920;
       w.h = config.canvas_h || 1080;
       el.style.left = '0px'; el.style.top = '0px';
       el.style.width = w.w + 'px'; el.style.height = w.h + 'px';
-      const inner = el.querySelector('.widget-inner');
-      if (inner) {
-        inner.style.setProperty('--ask-scale', w.ask_scale != null ? w.ask_scale : 1);
-        inner.style.setProperty('--ask-extend', w.ask_extend_pct != null ? w.ask_extend_pct : 20);
-        inner.style.setProperty('--ask-px', w.ask_pos_x != null ? w.ask_pos_x : 85);
-        inner.style.setProperty('--ask-py', w.ask_pos_y != null ? w.ask_pos_y : 12);
-        inner.style.setProperty('--ask-opacity', (w.ask_opacity_pct != null ? w.ask_opacity_pct : 100) / 100);
-        inner.style.setProperty('--ask-minw', w.ask_min_width != null ? w.ask_min_width : 340);
-        inner.style.setProperty('--ask-qfs', w.ask_question_fs != null ? w.ask_question_fs : 24);
-        inner.style.setProperty('--ask-cfs', w.ask_choice_fs != null ? w.ask_choice_fs : 18);
-        renderAskInto(inner);
-        // ★ ตำแหน่งเปลี่ยนผ่าน config (save จาก editor) → ต้อง re-clamp แผง Minimal
-        //   ด้วย (เดิมแค่ set var แต่แผงถูก pin ด้วย px เก่า → OBS ไม่ขยับจน rebuild)
-        askClampMinimal(el);
+      if (w.type === 'ask') {
+        const inner = el.querySelector('.widget-inner');
+        if (inner) {
+          inner.style.setProperty('--ask-scale', w.ask_scale != null ? w.ask_scale : 1);
+          inner.style.setProperty('--ask-extend', w.ask_extend_pct != null ? w.ask_extend_pct : 20);
+          inner.style.setProperty('--ask-px', w.ask_pos_x != null ? w.ask_pos_x : 85);
+          inner.style.setProperty('--ask-py', w.ask_pos_y != null ? w.ask_pos_y : 12);
+          inner.style.setProperty('--ask-ox', w.ask_offset_x != null ? w.ask_offset_x : 0);
+          inner.style.setProperty('--ask-oy', w.ask_offset_y != null ? w.ask_offset_y : 0);
+          inner.style.setProperty('--ask-opacity', (w.ask_opacity_pct != null ? w.ask_opacity_pct : 100) / 100);
+          inner.style.setProperty('--ask-minw', w.ask_min_width != null ? w.ask_min_width : 340);
+          inner.style.setProperty('--ask-qfs', w.ask_question_fs != null ? w.ask_question_fs : 24);
+          inner.style.setProperty('--ask-cfs', w.ask_choice_fs != null ? w.ask_choice_fs : 18);
+          renderAskInto(inner);
+          // ★ ตำแหน่งเปลี่ยนผ่าน config (save จาก editor) → ต้อง re-clamp แผง Minimal
+          //   ด้วย (เดิมแค่ set var แต่แผงถูก pin ด้วย px เก่า → OBS ไม่ขยับจน rebuild)
+          askClampMinimal(el);
+        }
+      } else if (w.type === 'giveaway') {
+        const inner = el.querySelector('.widget-inner');
+        if (inner) {
+          renderGiveawayInto(inner);
+        }
       }
     } else if (w.type === 'viewer') {
       const sig = JSON.stringify({
@@ -4048,6 +5166,8 @@ function renderWidgetContent(inner, w) {
     inner.style.setProperty('--ask-extend', w.ask_extend_pct != null ? w.ask_extend_pct : 20);
     inner.style.setProperty('--ask-px', w.ask_pos_x != null ? w.ask_pos_x : 85);
     inner.style.setProperty('--ask-py', w.ask_pos_y != null ? w.ask_pos_y : 12);
+    inner.style.setProperty('--ask-ox', w.ask_offset_x != null ? w.ask_offset_x : 0);
+    inner.style.setProperty('--ask-oy', w.ask_offset_y != null ? w.ask_offset_y : 0);
     inner.style.setProperty('--ask-qfs', w.ask_question_fs != null ? w.ask_question_fs : 24);
     inner.style.setProperty('--ask-cfs', w.ask_choice_fs != null ? w.ask_choice_fs : 18);
     inner.style.setProperty('--ask-opacity', (w.ask_opacity_pct != null ? w.ask_opacity_pct : 100) / 100);
@@ -4056,6 +5176,8 @@ function renderWidgetContent(inner, w) {
       (isEditor ? '🗳️ รอคำสั่งเริ่มโหวตจากโปรแกรม (ปุ่ม ASK)' : '') +
       '</div>';
     renderAskInto(inner);
+  } else if (w.type === 'giveaway') {
+    renderGiveawayInto(inner);
   } else if (w.type === 'viewer') {
     const iconSize = w.viewer_icon_size || 20;
     const showIcon = w.viewer_show_icon !== false;
@@ -4073,7 +5195,8 @@ function renderWidgetContent(inner, w) {
         }
       }
     }
-    inner.innerHTML = `<span class="viewer-total">${showIcon ? peopleIconSpan(iconSize) : ''}0</span>`;
+    inner.innerHTML = `<span class="viewer-total">${showIcon ? peopleIconSpan(iconSize) : ''}<span class="viewer-ticker"></span></span>`;
+    updateNumberTicker(inner.querySelector('.viewer-ticker'), 0);
   } else if (w.type === 'clock') {
     // ★ ถ้ามี clock_style → ใช้ renderClockStyle (ระบบ Style ใหม่)
     if (w.clock_style && w.clock_style !== 'none') {
@@ -4187,7 +5310,7 @@ function createWidgetElement(w) {
   el.dataset.id = w.id;
   // ★ ASK — บังคับเต็ม canvas ตั้งแต่สร้าง element (กัน config ภายนอก เช่น import
   //   profile ส่งขนาดเก่าเข้ามา แล้วโชว์เป็นกล่องเล็กจนกว่าจะ renderAll รอบหน้า)
-  if (w.type === 'ask') {
+  if (w.type === 'ask' || w.type === 'giveaway') {
     w.x = 0; w.y = 0;
     w.w = config.canvas_w || 1920;
     w.h = config.canvas_h || 1080;
@@ -4254,7 +5377,8 @@ function createWidgetElement(w) {
   } else if (w.type === 'viewer') {
     const vIconSize = w.viewer_icon_size || 20;
     const vShowIcon = w.viewer_show_icon !== false;
-    inner.innerHTML = `<span class="viewer-total">${vShowIcon ? peopleIconSpan(vIconSize) : ''}0</span>`;
+    inner.innerHTML = `<span class="viewer-total">${vShowIcon ? peopleIconSpan(vIconSize) : ''}<span class="viewer-ticker"></span></span>`;
+    updateNumberTicker(inner.querySelector('.viewer-ticker'), 0);
   } else if (w.type === 'clock') {
     // ★ ถ้ามี clock_style → ใช้ renderClockStyle (ระบบ Style ใหม่)
     if (w.clock_style && w.clock_style !== 'none') {
@@ -4313,6 +5437,10 @@ function createWidgetElement(w) {
     setupAvatarWidget(inner, w);
   } else if (w.type === 'donate_goal') {
     setupDonateGoalWidget(inner, w);
+  } else if (w.type === 'ask') {
+    renderAskInto(inner);
+  } else if (w.type === 'giveaway') {
+    renderGiveawayInto(inner);
   }
 
   // editor mode — เพิ่ม handle + ปุ่มลบ + ปุ่ม settings
@@ -4802,6 +5930,139 @@ function handleChatMessage(msg) {
 // ★ SVG ไอคอนคน (ประกาศไว้บนสุดของ script — ใช้ร่วมกับ renderWidgetContent)
 // (PEOPLE_ICON_SVG + peopleIconSpan ประกาศไว้ที่ด้านบนของ script แล้ว)
 
+// ════════════════════════════════════════════════════════════
+// Viewer Number Ticker (Takayu Studio: catalog-ui-feedback-number-ticker)
+// ════════════════════════════════════════════════════════════
+const _VT_DIGITS = [];
+for (let loop = 0; loop < 3; loop++) {
+  for (let d = 0; d <= 9; d++) {
+    _VT_DIGITS.push(d);
+  }
+}
+const _VT_TOTAL_ITEMS = _VT_DIGITS.length; // 30 items
+const _VT_STEP_PCT = 100 / _VT_TOTAL_ITEMS; // 3.333333%
+
+function createVtDigitColumn(initDigit) {
+  const col = document.createElement('span');
+  col.className = 'vt-col';
+  col.dataset.digit = initDigit;
+  col.dataset.idx = 10 + initDigit;
+
+  const track = document.createElement('span');
+  track.className = 'vt-track';
+  for (let i = 0; i < _VT_TOTAL_ITEMS; i++) {
+    const item = document.createElement('span');
+    item.className = 'vt-num';
+    item.textContent = _VT_DIGITS[i];
+    track.appendChild(item);
+  }
+
+  const initIdx = 10 + initDigit;
+  track.style.transform = `translateY(-${(initIdx * _VT_STEP_PCT).toFixed(4)}%)`;
+  col.appendChild(track);
+
+  track.addEventListener('transitionend', (e) => {
+    if (e.propertyName !== 'transform') return;
+    const curIdx = parseInt(col.dataset.idx, 10);
+    const normDigit = ((curIdx % 10) + 10) % 10;
+    const normIdx = 10 + normDigit;
+    col.dataset.idx = normIdx;
+    col.dataset.digit = normDigit;
+    track.classList.remove('animated');
+    track.style.transform = `translateY(-${(normIdx * _VT_STEP_PCT).toFixed(4)}%)`;
+    void track.offsetHeight;
+  });
+
+  return col;
+}
+
+function createVtCharSpan(char) {
+  const sp = document.createElement('span');
+  sp.className = 'vt-char';
+  sp.textContent = char;
+  return sp;
+}
+
+function updateNumberTicker(tickerEl, targetNumber) {
+  if (!tickerEl) return;
+  const targetVal = targetNumber || 0;
+  const formatted = targetVal.toLocaleString();
+  const targetChars = formatted.split('');
+  const prevVal = tickerEl._lastVal != null ? tickerEl._lastVal : null;
+  const isIncrease = prevVal == null || targetVal >= prevVal;
+  tickerEl._lastVal = targetVal;
+
+  let curCols = Array.from(tickerEl.children);
+
+  // Reconcile count of columns from right-to-left
+  while (curCols.length < targetChars.length) {
+    const c = targetChars[targetChars.length - curCols.length - 1];
+    let newEl;
+    if (c >= '0' && c <= '9') {
+      newEl = createVtDigitColumn(parseInt(c, 10));
+    } else {
+      newEl = createVtCharSpan(c);
+    }
+    tickerEl.insertBefore(newEl, tickerEl.firstChild);
+    curCols.unshift(newEl);
+  }
+  while (curCols.length > targetChars.length) {
+    const rem = curCols.shift();
+    if (rem) rem.remove();
+  }
+
+  targetChars.forEach((c, i) => {
+    const el = curCols[i];
+    if (c >= '0' && c <= '9') {
+      if (!el.classList.contains('vt-col')) {
+        const col = createVtDigitColumn(parseInt(c, 10));
+        tickerEl.replaceChild(col, el);
+        curCols[i] = col;
+        return;
+      }
+      const targetDigit = parseInt(c, 10);
+      const curDigit = parseInt(el.dataset.digit || 0, 10);
+      let curIdx = parseInt(el.dataset.idx || 10, 10);
+
+      if (curDigit === targetDigit && curIdx >= 10 && curIdx < 20) {
+        return;
+      }
+
+      let nextIdx;
+      if (isIncrease) {
+        if (targetDigit >= curDigit) {
+          nextIdx = curIdx + (targetDigit - curDigit);
+        } else {
+          nextIdx = curIdx + (10 + targetDigit - curDigit);
+        }
+      } else {
+        if (targetDigit <= curDigit) {
+          nextIdx = curIdx - (curDigit - targetDigit);
+        } else {
+          nextIdx = curIdx - (10 + curDigit - targetDigit);
+        }
+      }
+
+      el.dataset.digit = targetDigit;
+      el.dataset.idx = nextIdx;
+
+      const track = el.querySelector('.vt-track');
+      if (track) {
+        track.classList.add('animated');
+        track.style.transform = `translateY(-${(nextIdx * _VT_STEP_PCT).toFixed(4)}%)`;
+      }
+    } else {
+      if (!el.classList.contains('vt-char')) {
+        const sp = createVtCharSpan(c);
+        tickerEl.replaceChild(sp, el);
+        curCols[i] = sp;
+      } else {
+        el.textContent = c;
+      }
+    }
+  });
+}
+
 // ★ เก็บ viewers data ล่าสุด → ใช้ re-render ตอน viewer widget ถูก re-create (signature เปลี่ยน)
 //    กันปัญหา: เปลี่ยน icon size → re-create → innerHTML กลับเป็น initial 👥 0 → รอ WS ใหม่
 let _lastViewersData = null;
@@ -4810,6 +6071,7 @@ function handleViewers(data) {
   _lastViewersData = data;  // ★ cache ไว้
   document.querySelectorAll('.widget.type-viewer').forEach(widget => {
     const inner = widget.querySelector('.widget-inner');
+    if (!inner) return;
     const wid = widget.dataset.id;
     const w = wid ? config.widgets.find(x => x.id === wid) : null;
     const mode = (w && w.viewer_mode) || 'both';
@@ -4820,37 +6082,71 @@ function handleViewers(data) {
     const peopleIcon = showIcon ? peopleIconSpan(iconSize) : '';
     const platIcon = (plat) => showIcon ? `<img src="/logo/${plat}" alt="${plat}" style="${iconStyle}object-fit:contain;">` : '';
 
-    let html = '';
-    // total
-    if (mode === 'total' || mode === 'both') {
-      html += `<span class="viewer-total">${peopleIcon}${(data.total || 0).toLocaleString()}</span>`;
-    }
-    // per-platform
-    if ((mode === 'per_platform' || mode === 'both') && data.platforms) {
-      // ★ both + per_platform → แสดงทุก platform ที่เชื่อมไว้เสมอ (แม้ count=0 — เดี๋ยวอัปเดตเอง)
-      for (const [plat, count] of Object.entries(data.platforms)) {
-        html += `<span class="viewer-chip">${platIcon(plat)} ${(count || 0).toLocaleString()}</span>`;
-      }
-    }
-    // ★ fallback: ถ้าไม่มีข้อมูล (ยังไม่ได้รับ update / ทุก platform count=0) → แสดงตามโหมด
-    //    - total/both → ไอคอนคน + 0
-    //    - per_platform → ไอคอนแพลตฟอร์มที่เชื่อมไว้ + 0 (ถ้ารู้ platforms) หรือ ไอคอนคน + 0 (ถ้าไม่รู้)
-    if (!html) {
-      if (mode === 'per_platform' && data.platforms) {
-        // แสดงทุก platform ที่เชื่อมไว้ พร้อม count=0
-        for (const plat of Object.keys(data.platforms)) {
-          html += `<span class="viewer-chip">${platIcon(plat)} 0</span>`;
+    const wantTotal = (mode === 'total' || mode === 'both');
+    const wantPerPlat = (mode === 'per_platform' || mode === 'both');
+
+    // 1. Manage .viewer-total
+    let totalEl = inner.querySelector('.viewer-total');
+    if (wantTotal) {
+      if (!totalEl) {
+        totalEl = document.createElement('span');
+        totalEl.className = 'viewer-total';
+        totalEl.innerHTML = `${peopleIcon}<span class="viewer-ticker"></span>`;
+        inner.insertBefore(totalEl, inner.firstChild);
+      } else {
+        const curIcon = totalEl.querySelector('svg, img');
+        if (!showIcon && curIcon) {
+          curIcon.remove();
+        } else if (showIcon && !curIcon) {
+          totalEl.insertAdjacentHTML('afterbegin', peopleIcon);
         }
       }
-      if (!html) {
-        html = `<span class="viewer-total">${peopleIcon}0</span>`;
+      const ticker = totalEl.querySelector('.viewer-ticker');
+      if (ticker) updateNumberTicker(ticker, data.total || 0);
+    } else {
+      if (totalEl) totalEl.remove();
+    }
+
+    // 2. Manage .viewer-chip for each platform
+    const platforms = (wantPerPlat && data.platforms) ? data.platforms : {};
+    const activePlats = new Set(Object.keys(platforms));
+
+    inner.querySelectorAll('.viewer-chip').forEach(chip => {
+      const p = chip.dataset.platform;
+      if (!wantPerPlat || !activePlats.has(p)) {
+        chip.remove();
+      }
+    });
+
+    if (wantPerPlat) {
+      for (const [plat, count] of Object.entries(platforms)) {
+        let chip = inner.querySelector(`.viewer-chip[data-platform="${plat}"]`);
+        if (!chip) {
+          chip = document.createElement('span');
+          chip.className = 'viewer-chip';
+          chip.dataset.platform = plat;
+          chip.innerHTML = `${platIcon(plat)}<span class="viewer-ticker"></span>`;
+          inner.appendChild(chip);
+        } else {
+          const curIcon = chip.querySelector('img');
+          if (!showIcon && curIcon) {
+            curIcon.remove();
+          } else if (showIcon && !curIcon) {
+            chip.insertAdjacentHTML('afterbegin', platIcon(plat));
+          }
+        }
+        const ticker = chip.querySelector('.viewer-ticker');
+        if (ticker) updateNumberTicker(ticker, count || 0);
       }
     }
-    // ★ signature diff — ถ้า HTML เหมือนเดิม → อย่าเขียนใหม่ (กัน flicker)
-    //   แต่ถ้า DOM ว่างอยู่ → เขียนเสมอ (กัน widget หายหลัง clear children จากการเปลี่ยน theme)
-    if (inner.dataset.viewerHtml !== html || !inner.firstElementChild) {
-      inner.dataset.viewerHtml = html;
-      inner.innerHTML = html;
+
+    // 3. Fallback if empty (e.g. no total and no platforms)
+    if (!inner.firstElementChild) {
+      const fallback = document.createElement('span');
+      fallback.className = 'viewer-total';
+      fallback.innerHTML = `${peopleIcon}<span class="viewer-ticker"></span>`;
+      inner.appendChild(fallback);
+      updateNumberTicker(fallback.querySelector('.viewer-ticker'), 0);
     }
   });
 }
@@ -4915,7 +6211,7 @@ function updateAskModeSections(w) {
   } else {
     secE.style.display = 'none';
   }
-  if (mode === 'minimal') {
+  if (mode === 'minimal' || mode === 'lite') {
     secP.innerHTML =
       fld('ความกว้างกล่อง', `<input type="range" id="f-ask_min_width"
         min="220" max="700" step="10" value="${_live('f-ask_min_width', w.ask_min_width != null ? w.ask_min_width : 340)}"
@@ -4989,7 +6285,8 @@ function handleAskState(data) {
   document.querySelectorAll('.widget.type-ask').forEach(el => {
     const inner = el.querySelector('.widget-inner');
     if (!inner) return;
-    const w = config.widgets.find(x => x.id === el.dataset.id) || {};
+    const baseW = config.widgets.find(x => x.id === el.dataset.id) || {};
+    const w = Object.assign({}, baseW, _lastAskData || {});
     // ★ self-heal className — กันโหมด/ธีมค้างรุ่นเก่า (เช่น renderAll ถูกข้ามช่วง local-edit
     //   window → className เดิมไม่ถูก rebuild → panel ใหม่เรนเดอร์ผิดโหมด)
     const _keepSel = el.classList.contains('selected') ? ['selected'] : [];
@@ -4998,6 +6295,8 @@ function handleAskState(data) {
     inner.style.setProperty('--ask-extend', w.ask_extend_pct != null ? w.ask_extend_pct : 20);
     inner.style.setProperty('--ask-px', w.ask_pos_x != null ? w.ask_pos_x : 85);
     inner.style.setProperty('--ask-py', w.ask_pos_y != null ? w.ask_pos_y : 12);
+    inner.style.setProperty('--ask-ox', w.ask_offset_x != null ? w.ask_offset_x : 0);
+    inner.style.setProperty('--ask-oy', w.ask_offset_y != null ? w.ask_offset_y : 0);
     inner.style.setProperty('--ask-opacity', (w.ask_opacity_pct != null ? w.ask_opacity_pct : 100) / 100);
     inner.style.setProperty('--ask-minw', w.ask_min_width != null ? w.ask_min_width : 340);
     inner.style.setProperty('--ask-qfs', w.ask_question_fs != null ? w.ask_question_fs : 24);
@@ -5120,8 +6419,9 @@ function renderAskInto(inner) {
   }
   // ★ config ของ widget (โหมด/สไตล์ countdown)
   const _wEl = inner.closest ? inner.closest('.widget') : null;
-  const _w = (_wEl && typeof config !== 'undefined' && config.widgets)
+  const baseW = (_wEl && typeof config !== 'undefined' && config.widgets)
     ? (config.widgets.find(x => x.id === _wEl.dataset.id) || {}) : {};
+  const _w = Object.assign({}, baseW, _lastAskData || {});
   const _mode = { card: 'minimal', bar: 'hband', tower: 'vright' }[_w.ask_layout] || _w.ask_layout || 'vright';
   const cdStyle = _w.ask_countdown_style || 'text';
 
@@ -5137,9 +6437,9 @@ function renderAskInto(inner) {
     }
   }
   let html = '';
-  // ★ แผงโพลจริง — anchor class แยกตามโหมด (hband ใช้ top/middle/bottom, minimal ใช้มุม)
+  // ★ แผงโพลจริง — anchor class แยกตามโหมด (hband ใช้ top/middle/bottom, minimal/lite ใช้มุม)
   html += '<div class="ask-panel ' + (_mode === 'hband' ? 'hband-anchor' : '') +
-          (_mode === 'minimal' ? ' min-anchor' : '') + '">';
+          (_mode === 'minimal' || _mode === 'lite' ? ' min-anchor' : '') + '">';
   html += '<div class="ask-question"><span class="ask-question-text">' + (ended ? 'ผลสรุป : ' : '') + esc(d.question || '') + '</span></div>';
   html += '<div class="ask-choices">';
   // ★ หน้าสรุปผล — เรียงจากโหวตเยอะสุด → น้อยสุด (ไม่เรียง A B C)
@@ -5175,8 +6475,6 @@ function renderAskInto(inner) {
   } else if (d.end_ts) {
     if (cdStyle === 'text' || cdStyle === 'both') {
       html += '<span class="ask-countdown" data-endts="' + d.end_ts + '">จะหมดเวลาในอีก --:--</span>';
-    } else {
-      html += '<span>จะหมดเวลาในอีก...</span>';
     }
     if (cdStyle === 'bar' || cdStyle === 'both') {
       // ★ สร้างหลอดที่ค่าถูกต้องเลยตั้งแต่ตอน rebuild (ทุกโหวต = rebuild ทั้งแผง)
@@ -5222,7 +6520,7 @@ function askClampMinimal(wEl, ovX, ovY) {
   const _w = (typeof config !== 'undefined' && config.widgets)
     ? (config.widgets.find(x => x.id === wEl.dataset.id) || {}) : {};
   const _mode = { card: 'minimal', bar: 'hband', tower: 'vright' }[_w.ask_layout] || _w.ask_layout || 'vright';
-  if (_mode !== 'minimal') return;
+  if (_mode !== 'minimal' && _mode !== 'lite') return;
   const panel = inner.querySelector('.ask-panel');
   if (!panel) return;
   const cw = inner.offsetWidth || 1920, ch = inner.offsetHeight || 1080;
@@ -5274,6 +6572,18 @@ function askLivePos() {
 function tickAskCountdowns() {
   // ★ อัปเดตเฉพาะ "ตัวเลข" นับถอยหลัง (เปลี่ยนทุก 1 วิ — พอ)
   const now = Date.now() / 1000;
+  // ★ Demo Mode Loop Support: ถ้ากำลังรัน demo โหวตและเวลาหมด ให้ต่ออายุ endts ใหม่ 10 วินาทีอัตโนมัติ
+  if (_lastAskData && _lastAskData.is_demo && _lastAskData.phase === 'voting') {
+    if (_lastAskData.end_ts && _lastAskData.end_ts <= now) {
+      _lastAskData.end_ts = now + 10;
+      _lastAskData.duration_sec = 10;
+      document.querySelectorAll('.ask-countdown[data-endts], .ask-timebar[data-endts]').forEach(el => {
+        el.dataset.endts = _lastAskData.end_ts;
+        el.dataset.dur = 10;
+      });
+    }
+  }
+
   document.querySelectorAll('.ask-countdown[data-endts]').forEach(el => {
     const left = parseFloat(el.dataset.endts) - now;
     if (left <= 0) {
@@ -5288,6 +6598,18 @@ setInterval(tickAskCountdowns, 1000);
 // ★ หลอดเวลา — rAF ทุกเฟรม (สมูทจริง ไม่สเต็ปรายวินาที) + สี: เขียว>50 / เหลือง≤50 / แดง≤10
 function askTimebarFrame() {
   const now = Date.now() / 1000;
+  // ★ Demo Mode Loop Support สำหรับ timebar ในเฟรม rAF
+  if (_lastAskData && _lastAskData.is_demo && _lastAskData.phase === 'voting') {
+    if (_lastAskData.end_ts && _lastAskData.end_ts <= now) {
+      _lastAskData.end_ts = now + 10;
+      _lastAskData.duration_sec = 10;
+      document.querySelectorAll('.ask-countdown[data-endts], .ask-timebar[data-endts]').forEach(el => {
+        el.dataset.endts = _lastAskData.end_ts;
+        el.dataset.dur = 10;
+      });
+    }
+  }
+
   document.querySelectorAll('.ask-timebar[data-endts]').forEach(el => {
     const left = parseFloat(el.dataset.endts) - now;
     const dur = parseFloat(el.dataset.dur || 0);
@@ -5302,6 +6624,1200 @@ function askTimebarFrame() {
   requestAnimationFrame(askTimebarFrame);
 }
 requestAnimationFrame(askTimebarFrame);
+
+// ════════════════════════════════════════════════════════════
+// Giveaway Widget Handler (แจกรางวัล & เช็คชื่อ)
+// ════════════════════════════════════════════════════════════
+let _giveawayState = null;
+let _giveawayConfig = {
+  overlay_display_mode: 'banner',
+  overlay_has_image: false,
+  overlay_position: 'right',
+  overlay_offset_x: 0,
+  overlay_offset_y: 0,
+  overlay_scale: 100,
+  overlay_anim_in: 'slide',
+  overlay_anim_out: 'slide',
+  overlay_show_countdown_border: true,
+  overlay_show_toast: true,
+  overlay_show_stats: true,
+  sound_enabled: false,
+  draw_autohide_sec: 15
+};
+
+let _gwAudioCtx = null;
+function _getGwAudioCtx() {
+  if (!_gwAudioCtx) {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (AudioContext) _gwAudioCtx = new AudioContext();
+  }
+  if (_gwAudioCtx && _gwAudioCtx.state === 'suspended') {
+    _gwAudioCtx.resume();
+  }
+  return _gwAudioCtx;
+}
+
+function playGwTickSound() {
+  if (_giveawayConfig.sound_enabled === false) return;
+  try {
+    const ctx = _getGwAudioCtx();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(580 + Math.random() * 80, ctx.currentTime);
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.05);
+  } catch(e) {}
+}
+
+function playGwDropSound() {
+  if (_giveawayConfig.sound_enabled === false) return;
+  try {
+    const ctx = _getGwAudioCtx();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(240, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(70, ctx.currentTime + 0.12);
+    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.12);
+  } catch(e) {}
+}
+
+function playGwRattleSound() {
+  if (_giveawayConfig.sound_enabled === false) return;
+  try {
+    const ctx = _getGwAudioCtx();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(620 + Math.random() * 80, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(320, ctx.currentTime + 0.04);
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.04);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.04);
+  } catch(e) {}
+}
+
+function playGwChargeTickSound(pitchMult = 1) {
+  if (_giveawayConfig.sound_enabled === false) return;
+  try {
+    const ctx = _getGwAudioCtx();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    const baseFreq = 480 * pitchMult;
+    osc.frequency.setValueAtTime(baseFreq, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.35, ctx.currentTime + 0.035);
+    gain.gain.setValueAtTime(0.07, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.035);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.035);
+  } catch(e) {}
+}
+
+function playGwPopSound() {
+  if (_giveawayConfig.sound_enabled === false) return;
+  try {
+    const ctx = _getGwAudioCtx();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(950, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(140, ctx.currentTime + 0.09);
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.09);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.09);
+  } catch(e) {}
+}
+
+function playGwFanfareSound() {
+  if (_giveawayConfig.sound_enabled === false) return;
+  try {
+    const ctx = _getGwAudioCtx();
+    if (!ctx) return;
+    const notes = [523.25, 659.25, 783.99, 1046.50];
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const startTime = ctx.currentTime + idx * 0.12;
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, startTime);
+      gain.gain.setValueAtTime(0.12, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.6);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(startTime);
+      osc.stop(startTime + 0.6);
+    });
+  } catch(e) {}
+}
+
+let _gwConfettiAnimId = null;
+function triggerGwConfetti(canvas) {
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  canvas.style.display = 'block';
+
+  let particles = [];
+  const colors = ['#fbbf24', '#38bdf8', '#34d399', '#f472b6', '#a78bfa', '#f87171'];
+  for (let i = 0; i < 70; i++) {
+    particles.push({
+      x: canvas.width / 2 + (Math.random() * 200 - 100),
+      y: canvas.height / 2,
+      vx: (Math.random() - 0.5) * 16,
+      vy: Math.random() * -14 - 4,
+      size: Math.random() * 8 + 5,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      rotation: Math.random() * 360,
+      vRot: (Math.random() - 0.5) * 10,
+      alpha: 1
+    });
+  }
+
+  const startTime = performance.now();
+  if (_gwConfettiAnimId) cancelAnimationFrame(_gwConfettiAnimId);
+
+  function loop(now) {
+    const elapsed = now - startTime;
+    if (elapsed > 3500) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      canvas.style.display = 'none';
+      _gwConfettiAnimId = null;
+      return;
+    }
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const fade = Math.max(0, 1 - (elapsed - 2000) / 1500);
+
+    for (let p of particles) {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.38;
+      p.vx *= 0.98;
+      p.rotation += p.vRot;
+
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rotation * Math.PI / 180);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = p.alpha * fade;
+      ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+      ctx.restore();
+    }
+
+    _gwConfettiAnimId = requestAnimationFrame(loop);
+  }
+  _gwConfettiAnimId = requestAnimationFrame(loop);
+}
+
+let _gwCpTotalDuration = 0;
+let _gwCpDismissTimer = null;
+let _gwCpHideTimer = null;
+let _gwToastTimer = null;
+let _gwSlotRollInterval = null;
+let _gwSlotReelSpinInterval = null;
+let _gwSlotReelDecelTimers = [];
+let _gwCandidatesPool = [];
+let _gwDrawWinner = '';
+let _gwIsDrawRunning = false;
+let _gwDrawAutoHideTimer = null;
+
+function scheduleDrawAutoHide(inner) {
+  if (_gwDrawAutoHideTimer) {
+    clearTimeout(_gwDrawAutoHideTimer);
+    _gwDrawAutoHideTimer = null;
+  }
+  const autoHideSec = _giveawayConfig.draw_autohide_sec !== undefined ? Number(_giveawayConfig.draw_autohide_sec) : 15;
+  if (autoHideSec <= 0) return;
+
+  _gwDrawAutoHideTimer = setTimeout(() => {
+    const drawBox = inner.querySelector('.giveaway-draw-box');
+    if (drawBox && drawBox.classList.contains('visible')) {
+      drawBox.classList.add('fadeout');
+      setTimeout(() => {
+        drawBox.classList.remove('visible', 'winner', 'style-gachapon', 'fadeout');
+        const gachaStage = inner.querySelector('.giveaway-gacha-stage');
+        if (gachaStage) gachaStage.classList.remove('shaking', 'revealed', 'gacha-entering', 'gacha-wobble', 'gacha-charging');
+        const strip = inner.querySelector('.giveaway-slot-strip');
+        if (strip) {
+          strip.classList.remove('spinning');
+          strip.style.transition = 'none';
+          strip.style.transform = 'translateY(0px)';
+          strip.innerHTML = '';
+        }
+        inner.classList.add('giveaway-idle');
+      }, 450);
+    }
+  }, autoHideSec * 1000);
+}
+
+function startSmoothReelDraw(inner, winnerName, pool) {
+  const drawBox = inner.querySelector('.giveaway-draw-box');
+  const strip = inner.querySelector('.giveaway-slot-strip');
+  const drawStatus = inner.querySelector('.giveaway-draw-status-label');
+  const confettiCanvas = inner.querySelector('.giveaway-confetti-canvas');
+  if (!strip) return;
+
+  _gwSlotReelDecelTimers.forEach(t => clearTimeout(t));
+  _gwSlotReelDecelTimers = [];
+  if (_gwSlotReelSpinInterval) { clearInterval(_gwSlotReelSpinInterval); _gwSlotReelSpinInterval = null; }
+
+  // Clean candidate pool
+  const cleanPool = (pool && pool.length > 0) ? pool.filter(n => Boolean(n)) : ['ผู้เข้าร่วมกิจกรรม'];
+  const others = cleanPool.filter(n => n !== winnerName);
+  const fallbackList = others.length > 0 ? others : cleanPool;
+
+  // สร้างรายชื่อสลับกัน 32 ช่อง โดยชื่อผู้ชนะจะอยู่ตำแหน่งสุดท้ายอย่างสมบูรณ์แบบ
+  const totalItems = 32;
+  const reelItems = [];
+  let lastPick = '';
+  for (let i = 0; i < totalItems - 1; i++) {
+    let pick = fallbackList[Math.floor(Math.random() * fallbackList.length)];
+    if (fallbackList.length > 1 && pick === lastPick) {
+      pick = fallbackList[(fallbackList.indexOf(pick) + 1) % fallbackList.length];
+    }
+    reelItems.push(pick);
+    lastPick = pick;
+  }
+  reelItems.push(winnerName);
+
+  strip.classList.remove('spinning');
+  strip.style.transition = 'none';
+  strip.style.transform = 'translateY(0px)';
+  strip.innerHTML = reelItems.map((name, idx) => {
+    const isTarget = (idx === reelItems.length - 1);
+    return `<div class="slot-reel-item ${isTarget ? 'target-winner' : ''}"><span class="slot-reel-item-text">${name}</span></div>`;
+  }).join('');
+
+  const itemHeight = 130;
+  const targetOffset = -((reelItems.length - 1) * itemHeight);
+
+  void strip.offsetHeight; // Force reflow
+
+  const durationMs = 3500;
+  strip.style.transition = `transform ${durationMs}ms cubic-bezier(0.12, 0.88, 0.18, 1)`;
+  strip.style.transform = `translateY(${targetOffset}px)`;
+
+  // จังหวะเสียงหมุนที่ค่อยๆ ชะลอช้าลงตามการเคลื่อนที่ของตู้สล็อต
+  const tickIntervals = [
+    40, 75, 115, 160, 210, 265, 325, 390, 465, 545, 635, 735,
+    845, 970, 1110, 1265, 1440, 1635, 1855, 2100, 2380, 2690, 3040, 3380
+  ];
+  tickIntervals.forEach(delay => {
+    if (delay < durationMs - 40) {
+      const timer = setTimeout(() => playGwTickSound(), delay);
+      _gwSlotReelDecelTimers.push(timer);
+    }
+  });
+
+  const landTimer = setTimeout(() => {
+    if (drawBox) drawBox.classList.add('winner');
+    const targetEl = strip.querySelector('.target-winner');
+    if (targetEl) targetEl.classList.add('winner-item');
+    if (drawStatus) drawStatus.textContent = '🎉 ขอแสดงความยินดีกับผู้โชคดี! 🎉';
+    playGwFanfareSound();
+    triggerGwConfetti(confettiCanvas);
+    scheduleDrawAutoHide(inner);
+  }, durationMs + 20);
+  _gwSlotReelDecelTimers.push(landTimer);
+}
+
+function startSmoothShuffleDraw(inner, winnerName, pool) {
+  const drawBox = inner.querySelector('.giveaway-draw-box');
+  const slotName = inner.querySelector('.giveaway-slot-reel-name');
+  const drawStatus = inner.querySelector('.giveaway-draw-status-label');
+  const confettiCanvas = inner.querySelector('.giveaway-confetti-canvas');
+  if (!slotName) return;
+
+  _gwSlotReelDecelTimers.forEach(t => clearTimeout(t));
+  _gwSlotReelDecelTimers = [];
+  if (_gwSlotRollInterval) { clearInterval(_gwSlotRollInterval); _gwSlotRollInterval = null; }
+
+  const cleanPool = (pool && pool.length > 0) ? pool.filter(n => Boolean(n)) : ['ผู้เข้าร่วมกิจกรรม'];
+  const others = cleanPool.filter(n => n !== winnerName);
+  const fallbackList = others.length > 0 ? others : cleanPool;
+
+  slotName.classList.add('rolling');
+  if (drawBox) drawBox.classList.remove('winner');
+  if (drawStatus) drawStatus.textContent = '⚡ กำลังสลับรายชื่อ...';
+
+  // ช่วงสับชื่อเร็วรัวๆ 42 ครั้ง (35ms) ให้ดูตื่นเต้น เร้าใจ
+  const delays = [];
+  for (let i = 0; i < 42; i++) {
+    delays.push(35);
+  }
+  // ช่วงค่อยๆ ชะลอความเร็ว (Deceleration Curve) ให้ลุ้นระทึก รวม ~5.7 วินาที (+2 วินาที)
+  const decelSteps = [60, 60, 60, 60, 100, 100, 100, 100, 160, 160, 160, 280, 280, 280, 450, 450, 650];
+  decelSteps.forEach(d => delays.push(d));
+
+  // จังหวะสุดท้าย: หน่วงเวลา 750ms จากชื่อก่อนหน้า แล้วลงที่ชื่อผู้ชนะตัวจริงทันที
+  delays.push(750);
+
+  let acc = 0;
+  let lastDummy = '';
+  const totalSteps = delays.length;
+
+  delays.forEach((delay, idx) => {
+    acc += delay;
+    const isFinalStep = (idx === totalSteps - 1);
+
+    const t = setTimeout(() => {
+      if (isFinalStep) {
+        // ลงที่ชื่อผู้ชนะตัวจริงทันที ไม่หยุดที่ชื่อคนอื่นก่อน
+        slotName.classList.remove('rolling');
+        slotName.textContent = winnerName;
+        if (drawBox) drawBox.classList.add('winner');
+        if (drawStatus) drawStatus.textContent = '🎉 ขอแสดงความยินดีกับผู้โชคดี! 🎉';
+        playGwFanfareSound();
+        triggerGwConfetti(confettiCanvas);
+        scheduleDrawAutoHide(inner);
+      } else {
+        let dummy = fallbackList[Math.floor(Math.random() * fallbackList.length)];
+        if (fallbackList.length > 1 && dummy === lastDummy) {
+          dummy = fallbackList[(fallbackList.indexOf(dummy) + 1) % fallbackList.length];
+        }
+        lastDummy = dummy;
+        slotName.textContent = dummy;
+        playGwTickSound();
+      }
+    }, acc);
+
+    _gwSlotReelDecelTimers.push(t);
+  });
+}
+
+function startGachaponDraw(inner, winnerName, prizeName) {
+  const drawBox = inner.querySelector('.giveaway-draw-box');
+  const gachaStage = inner.querySelector('.giveaway-gacha-stage');
+  const gachaWinnerName = inner.querySelector('.gacha-winner-name');
+  const gachaPrizeText = inner.querySelector('.gacha-prize-text');
+  const confettiCanvas = inner.querySelector('.giveaway-confetti-canvas');
+
+  _gwSlotReelDecelTimers.forEach(t => clearTimeout(t));
+  _gwSlotReelDecelTimers = [];
+
+  if (!gachaStage) return;
+
+  // รีเซ็ตสถานะและคลาสก่อนหน้าให้พร้อมสำหรับรอบใหม่
+  gachaStage.classList.remove('revealed', 'shaking', 'gacha-entering', 'gacha-wobble', 'gacha-charging');
+  if (drawBox) drawBox.classList.remove('winner');
+  if (gachaPrizeText) gachaPrizeText.textContent = prizeName;
+  if (gachaWinnerName) gachaWinnerName.textContent = '...';
+
+  // ── Phase 1: ลูกบอลหล่นลงมาจากด้านบนพร้อมเด้งดึ๋งนุ่มนวล (0 - 450ms) ──
+  gachaStage.classList.add('gacha-entering');
+  playGwDropSound();
+
+  // ── Phase 2: แกว่งส่ายแบบลูกตุ้มต่อเนื่อง ไร้รอยต่อ 100% (450ms - 2100ms) ──
+  const t1 = setTimeout(() => {
+    gachaStage.classList.remove('gacha-entering');
+    gachaStage.classList.add('gacha-wobble');
+
+    // เสียงเคาะคลิกเบาๆ ตามจังหวะการเอียงของลูกบอล
+    const wobbleTicks = [180, 480, 800, 1120, 1420];
+    wobbleTicks.forEach(dt => {
+      const wt = setTimeout(() => {
+        playGwRattleSound();
+      }, dt);
+      _gwSlotReelDecelTimers.push(wt);
+    });
+  }, 450);
+  _gwSlotReelDecelTimers.push(t1);
+
+  // ── Phase 3: ชาร์จพลังงาน สั่นสะเทือนเร็วขึ้นเรื่อยๆ และขยายขนาดต่อเนื่อง (2100ms - 3400ms) ──
+  const t2 = setTimeout(() => {
+    gachaStage.classList.remove('gacha-wobble');
+    gachaStage.classList.add('gacha-charging');
+
+    // เสียงชาร์จพลังงานถี่รัวขึ้นพร้อมระดับเสียงที่สูงขึ้น
+    const chargeSchedule = [
+      { t: 0, mult: 1.0 },
+      { t: 180, mult: 1.1 },
+      { t: 340, mult: 1.2 },
+      { t: 480, mult: 1.3 },
+      { t: 600, mult: 1.4 },
+      { t: 710, mult: 1.5 },
+      { t: 810, mult: 1.6 },
+      { t: 900, mult: 1.7 },
+      { t: 980, mult: 1.8 },
+      { t: 1050, mult: 1.9 },
+      { t: 1120, mult: 2.0 },
+      { t: 1180, mult: 2.1 },
+      { t: 1240, mult: 2.2 }
+    ];
+    chargeSchedule.forEach(item => {
+      const ct = setTimeout(() => {
+        playGwChargeTickSound(item.mult);
+      }, item.t);
+      _gwSlotReelDecelTimers.push(ct);
+    });
+  }, 2100);
+  _gwSlotReelDecelTimers.push(t2);
+
+  // ── Phase 4: POP! ลูกบอลระเบิดเปิดออก ฝาแยก แสงช็อคเวฟ และผู้ชนะพุ่งออกมา (3400ms) ──
+  const t3 = setTimeout(() => {
+    if (drawBox) drawBox.classList.add('winner');
+    gachaStage.classList.remove('gacha-charging', 'shaking');
+    gachaStage.classList.add('revealed');
+    if (gachaWinnerName) gachaWinnerName.textContent = winnerName;
+    if (gachaPrizeText) gachaPrizeText.textContent = prizeName;
+
+    playGwPopSound();
+    playGwFanfareSound();
+    triggerGwConfetti(confettiCanvas);
+    scheduleDrawAutoHide(inner);
+  }, 3400);
+  _gwSlotReelDecelTimers.push(t3);
+}
+
+function applyGiveawayConfigToInner(inner, cfg) {
+  if (!inner) return;
+  if (cfg) Object.assign(_giveawayConfig, cfg);
+  const c = _giveawayConfig;
+  const cpBox = inner.querySelector('.giveaway-cp-box');
+  const imgBox = inner.querySelector('.giveaway-image-box');
+  const allBoxes = [cpBox, imgBox].filter(Boolean);
+  const allCountdownSvgs = inner.querySelectorAll('.giveaway-countdown-svg');
+  const imgStatsBar = inner.querySelector('.giveaway-img-stats-bar');
+  const customImg = inner.querySelector('.giveaway-custom-img');
+
+  const pos = c.overlay_position || 'top-right';
+  const posClasses = [
+    'pos-top-right', 'pos-top-left', 'pos-bottom-right', 'pos-bottom-left',
+    'pos-top', 'pos-bottom', 'pos-left', 'pos-right', 'pos-center'
+  ];
+  allBoxes.forEach(box => {
+    posClasses.forEach(p => box.classList.remove(p));
+    box.classList.add(`pos-${pos}`);
+    box.style.setProperty('--offset-x', (c.overlay_offset_x || 0) + 'px');
+    box.style.setProperty('--offset-y', (c.overlay_offset_y || 0) + 'px');
+    box.style.setProperty('--scale', ((c.overlay_scale || 100) / 100));
+  });
+
+  const borderTheme = c.overlay_border_theme || 'rainbow';
+  const themes = ['rainbow', 'cyberpunk', 'gold', 'ice', 'sakura', 'emerald', 'ruby', 'violet', 'blue'];
+
+  if (allCountdownSvgs.length) {
+    const showBorder = (c.overlay_show_countdown_border !== false);
+    allCountdownSvgs.forEach(svg => {
+      svg.style.display = showBorder ? 'block' : 'none';
+      themes.forEach(t => svg.classList.remove(`border-theme-${t}`));
+      svg.classList.add(`border-theme-${borderTheme}`);
+    });
+  }
+
+  // Progress bar display & theme for both standard card and image mode
+  const showProgressBar = (c.overlay_show_progress_bar !== false);
+  const cpTrack = inner.querySelector('.giveaway-progress-track');
+  if (cpTrack) cpTrack.style.display = showProgressBar ? 'block' : 'none';
+  const imgTrack = inner.querySelector('.giveaway-img-progress-track');
+  if (imgTrack) imgTrack.style.display = showProgressBar ? 'block' : 'none';
+
+  allBoxes.forEach(box => {
+    themes.forEach(t => box.classList.remove(`progress-theme-${t}`));
+    box.classList.add(`progress-theme-${borderTheme}`);
+  });
+
+  if (imgStatsBar) {
+    imgStatsBar.style.display = (c.overlay_show_stats !== false) ? 'flex' : 'none';
+  }
+  if (customImg && c.overlay_display_mode === 'image' && c.overlay_has_image) {
+    if (!customImg.src || (!customImg.src.startsWith('data:') && customImg.src.indexOf('/giveaway/image') === -1)) {
+      customImg.src = `/giveaway/image?t=${Date.now()}`;
+    }
+  }
+
+  const drawBox = inner.querySelector('.giveaway-draw-box');
+  if (drawBox) {
+    const scale = (c.draw_scale !== undefined ? c.draw_scale : 100) / 100;
+    const ox = c.draw_offset_x || 0;
+    const oy = c.draw_offset_y || 0;
+    const style = c.draw_animation_style || 'gachapon';
+    let nameSize = c.draw_name_size || 52;
+    if (style === 'slot' || style === 'slot_reel') {
+      nameSize = Math.min(nameSize, 50);
+    }
+    const prizeSize = c.draw_prize_size || 20;
+
+    drawBox.style.setProperty('--draw-scale', scale);
+    drawBox.style.setProperty('--draw-offset-x', ox + 'px');
+    drawBox.style.setProperty('--draw-offset-y', oy + 'px');
+    drawBox.style.setProperty('--winner-name-size', nameSize + 'px');
+    drawBox.style.setProperty('--prize-text-size', prizeSize + 'px');
+
+    if (style === 'gachapon') {
+      drawBox.classList.add('style-gachapon');
+    } else {
+      drawBox.classList.remove('style-gachapon');
+    }
+
+    // Theme class synchronization
+    const theme = c.draw_theme || 'gold';
+    const themeClasses = ['gw-theme-gold', 'gw-theme-cyberpunk', 'gw-theme-violet', 'gw-theme-emerald', 'gw-theme-sakura', 'gw-theme-ice', 'gw-theme-ruby'];
+    themeClasses.forEach(cls => drawBox.classList.remove(cls));
+    drawBox.classList.add(`gw-theme-${theme}`);
+
+    // Update SVG sunburst gradient colors
+    const sunburstStops = {
+      gold: ['#fbbf24', '#ea580c', '#7c2d12'],
+      cyberpunk: ['#22d3ee', '#d946ef', '#4a044e'],
+      violet: ['#c084fc', '#7c3aed', '#31104b'],
+      emerald: ['#34d399', '#059669', '#022c22'],
+      sakura: ['#f472b6', '#db2777', '#500724'],
+      ice: ['#38bdf8', '#0284c7', '#082f49'],
+      ruby: ['#fb7185', '#e11d48', '#4c0519']
+    };
+    const sCols = sunburstStops[theme] || sunburstStops.gold;
+    const grad = inner.querySelector('#gwSunburstGrad');
+    if (grad) {
+      const stops = grad.querySelectorAll('stop');
+      if (stops.length >= 3) {
+        stops[0].setAttribute('stop-color', sCols[0]);
+        stops[1].setAttribute('stop-color', sCols[1]);
+        stops[2].setAttribute('stop-color', sCols[2]);
+      }
+    }
+  }
+}
+
+function renderGiveawayInto(inner) {
+  if (!inner) return;
+  if (!inner.querySelector('.giveaway-cp-box')) {
+    inner.innerHTML = `
+      <!-- CHECKPOINT BANNER (STANDARD TEXT) -->
+      <div class="giveaway-cp-box">
+        <svg class="giveaway-countdown-svg border-theme-rainbow cp-countdown-svg">
+          <defs>
+            <linearGradient id="gwBorderGradRainbow" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#ff0055" />
+              <stop offset="20%" stop-color="#ff7700" />
+              <stop offset="40%" stop-color="#ffdd00" />
+              <stop offset="60%" stop-color="#00ff88" />
+              <stop offset="80%" stop-color="#00ddff" />
+              <stop offset="100%" stop-color="#aa00ff" />
+            </linearGradient>
+            <linearGradient id="gwBorderGradCyberpunk" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#22d3ee" />
+              <stop offset="100%" stop-color="#d946ef" />
+            </linearGradient>
+            <linearGradient id="gwBorderGradGold" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#fde047" />
+              <stop offset="100%" stop-color="#ea580c" />
+            </linearGradient>
+            <linearGradient id="gwBorderGradIce" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#a5f3fc" />
+              <stop offset="100%" stop-color="#0284c7" />
+            </linearGradient>
+            <linearGradient id="gwBorderGradSakura" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#fbcfe8" />
+              <stop offset="100%" stop-color="#db2777" />
+            </linearGradient>
+            <linearGradient id="gwBorderGradEmerald" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#6ee7b7" />
+              <stop offset="100%" stop-color="#059669" />
+            </linearGradient>
+            <linearGradient id="gwBorderGradRuby" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#fda4af" />
+              <stop offset="100%" stop-color="#e11d48" />
+            </linearGradient>
+            <linearGradient id="gwBorderGradViolet" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#d8b4fe" />
+              <stop offset="100%" stop-color="#7c3aed" />
+            </linearGradient>
+            <linearGradient id="gwBorderGradBlue" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#93c5fd" />
+              <stop offset="100%" stop-color="#2563eb" />
+            </linearGradient>
+          </defs>
+          <rect class="giveaway-countdown-rect" x="2" y="2" width="calc(100% - 4px)" height="calc(100% - 4px)" rx="14" ry="14"
+                fill="none" pathLength="100" />
+        </svg>
+        <div class="giveaway-cp-header">
+          <span class="giveaway-cp-badge">🎁 กิจกรรมเช็คชื่อลุ้นรางวัล</span>
+          <span class="giveaway-cp-status-pill">กำลังเปิดรับ</span>
+        </div>
+        <div class="giveaway-cp-code-row">
+          <div class="giveaway-cp-instruction">พิมพ์คำสั่งนี้ในแชทเพื่อรับสิทธิ์:</div>
+          <div class="giveaway-cp-code">#join</div>
+        </div>
+        <div class="giveaway-progress-track">
+          <div class="giveaway-progress-fill"></div>
+        </div>
+        <div class="giveaway-cp-footer">
+          <span class="giveaway-cp-timer">⏱️ เวลา: 01:00</span>
+          <span class="giveaway-cp-count">👥 ผู้เข้าร่วม: 0 คน</span>
+        </div>
+        <div class="giveaway-cp-toast"></div>
+      </div>
+
+      <!-- CUSTOM IMAGE BANNER -->
+      <div class="giveaway-image-box">
+        <div class="giveaway-image-card-wrapper">
+          <svg class="giveaway-countdown-svg border-theme-rainbow">
+            <defs>
+              <linearGradient id="gwBorderGradRainbow" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#ff0055" />
+                <stop offset="20%" stop-color="#ff7700" />
+                <stop offset="40%" stop-color="#ffdd00" />
+                <stop offset="60%" stop-color="#00ff88" />
+                <stop offset="80%" stop-color="#00ddff" />
+                <stop offset="100%" stop-color="#aa00ff" />
+              </linearGradient>
+              <linearGradient id="gwBorderGradCyberpunk" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#22d3ee" />
+                <stop offset="100%" stop-color="#d946ef" />
+              </linearGradient>
+              <linearGradient id="gwBorderGradGold" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#fde047" />
+                <stop offset="100%" stop-color="#ea580c" />
+              </linearGradient>
+              <linearGradient id="gwBorderGradIce" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#a5f3fc" />
+                <stop offset="100%" stop-color="#0284c7" />
+              </linearGradient>
+              <linearGradient id="gwBorderGradSakura" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#fbcfe8" />
+                <stop offset="100%" stop-color="#db2777" />
+              </linearGradient>
+              <linearGradient id="gwBorderGradEmerald" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#6ee7b7" />
+                <stop offset="100%" stop-color="#059669" />
+              </linearGradient>
+              <linearGradient id="gwBorderGradRuby" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#fda4af" />
+                <stop offset="100%" stop-color="#e11d48" />
+              </linearGradient>
+              <linearGradient id="gwBorderGradViolet" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#d8b4fe" />
+                <stop offset="100%" stop-color="#7c3aed" />
+              </linearGradient>
+              <linearGradient id="gwBorderGradBlue" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#93c5fd" />
+                <stop offset="100%" stop-color="#2563eb" />
+              </linearGradient>
+            </defs>
+            <rect class="giveaway-countdown-rect" x="2" y="2" width="calc(100% - 4px)" height="calc(100% - 4px)" rx="18" ry="18"
+                  fill="none" pathLength="100" />
+          </svg>
+          <img class="giveaway-custom-img" src="" alt="Giveaway Banner" />
+          <div class="giveaway-img-progress-track">
+            <div class="giveaway-img-progress-fill"></div>
+          </div>
+          <div class="giveaway-img-stats-bar">
+            <span class="giveaway-img-timer-text" style="color:#e2e8f0;">⏱️ 01:00</span>
+            <span class="giveaway-img-count-text" style="color:#34d399;">👥 0 คน</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLOT MACHINE / GACHAPON LUCKY DRAW STAGE -->
+      <div class="giveaway-draw-box style-gachapon">
+        <!-- SLOT STAGE (Reel Strip / Classic Shuffle) -->
+        <div class="giveaway-slot-stage">
+          <div class="giveaway-draw-header-title">🎰 สุ่มแจกรางวัลกิจกรรม</div>
+          <div class="giveaway-draw-prize-text">ของรางวัลกิจกรรม</div>
+          <div class="giveaway-slot-reel-box">
+            <div class="giveaway-slot-reel-vignette"></div>
+            <div class="giveaway-slot-reel-guides"></div>
+            <div class="giveaway-slot-reel-name">...</div>
+            <div class="giveaway-slot-strip-container">
+              <div class="giveaway-slot-strip"></div>
+            </div>
+          </div>
+          <div class="giveaway-draw-status-label">เตรียมพร้อมสุ่มรางวัล...</div>
+        </div>
+
+        <!-- GACHAPON STAGE (Takayu Studio Style) -->
+        <div class="giveaway-gacha-stage">
+          <svg class="gacha-sunburst" viewBox="0 0 600 600">
+            <defs>
+              <radialGradient id="gwSunburstGrad" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#fbbf24" stop-opacity="0.9" />
+                <stop offset="50%" stop-color="#ea580c" stop-opacity="0.45" />
+                <stop offset="100%" stop-color="#7c2d12" stop-opacity="0" />
+              </radialGradient>
+            </defs>
+            <g fill="url(#gwSunburstGrad)">
+              <polygon points="300,300 280,0 320,0" />
+              <polygon points="300,300 375,12 408,36" />
+              <polygon points="300,300 460,55 487,93" />
+              <polygon points="300,300 525,130 545,172" />
+              <polygon points="300,300 565,220 575,265" />
+              <polygon points="300,300 580,315 570,360" />
+              <polygon points="300,300 545,410 525,450" />
+              <polygon points="300,300 490,490 460,525" />
+              <polygon points="300,300 410,550 375,575" />
+              <polygon points="300,300 320,585 280,585" />
+              <polygon points="300,300 225,575 190,550" />
+              <polygon points="300,300 140,525 110,490" />
+              <polygon points="300,300 75,450 55,410" />
+              <polygon points="300,300 30,360 20,315" />
+              <polygon points="300,300 25,265 35,220" />
+              <polygon points="300,300 55,172 75,130" />
+              <polygon points="300,300 110,93 140,55" />
+              <polygon points="300,300 190,36 225,12" />
+            </g>
+          </svg>
+          <div class="gacha-aura"></div>
+          <div class="gacha-burst-ring"></div>
+          <div class="gacha-capsule-wrap">
+            <div class="gacha-cap-top"></div>
+            <div class="gacha-cap-belt"></div>
+            <div class="gacha-cap-bottom"></div>
+          </div>
+          <div class="gacha-result">
+            <div class="gacha-winner-name">...</div>
+            <div class="gacha-prize-box">
+              <div class="gacha-prize-label">🎉 ได้รับของรางวัล 🎉</div>
+              <div class="gacha-prize-text">ของรางวัลกิจกรรม</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <canvas class="giveaway-confetti-canvas"></canvas>
+    `;
+    inner.classList.add('giveaway-idle');
+  }
+
+  applyGiveawayConfigToInner(inner, _giveawayConfig);
+  if (_giveawayState) {
+    handleGiveawayEvent({ type: 'giveaway_state', state: _giveawayState });
+  }
+}
+
+function handleGiveawayEvent(data) {
+  if (!data) return;
+  const evtType = data.type;
+
+  if (data.state) {
+    _giveawayState = data.state;
+    Object.assign(_giveawayConfig, data.state);
+  }
+
+  const widgets = document.querySelectorAll('.widget.type-giveaway .widget-inner');
+  if (!widgets.length) return;
+
+  widgets.forEach(inner => {
+    applyGiveawayConfigToInner(inner, _giveawayConfig);
+
+    const cpBox = inner.querySelector('.giveaway-cp-box');
+    const cpCountdownRect = inner.querySelector('.giveaway-cp-box .giveaway-countdown-rect');
+    const cpBadge = inner.querySelector('.giveaway-cp-badge');
+    const cpStatus = inner.querySelector('.giveaway-cp-status-pill');
+    const cpCode = inner.querySelector('.giveaway-cp-code');
+    const cpFill = inner.querySelector('.giveaway-progress-fill');
+    const cpTimer = inner.querySelector('.giveaway-cp-timer');
+    const cpCount = inner.querySelector('.giveaway-cp-count');
+    const cpToast = inner.querySelector('.giveaway-cp-toast');
+
+    const imgBox = inner.querySelector('.giveaway-image-box');
+    const imgCountdownRect = inner.querySelector('.giveaway-image-box .giveaway-countdown-rect');
+    const imgTimerText = inner.querySelector('.giveaway-img-timer-text');
+    const imgCountText = inner.querySelector('.giveaway-img-count-text');
+
+    const drawBox = inner.querySelector('.giveaway-draw-box');
+    const drawPrize = inner.querySelector('.giveaway-draw-prize-text');
+    const drawTier = inner.querySelector('.giveaway-draw-tier-pill');
+    const slotName = inner.querySelector('.giveaway-slot-reel-name');
+    const drawStatus = inner.querySelector('.giveaway-draw-status-label');
+    const confettiCanvas = inner.querySelector('.giveaway-confetti-canvas');
+
+    const imgFill = inner.querySelector('.giveaway-img-progress-fill');
+
+    function resolveFlyInClass(animIn, pos) {
+      if (!animIn || animIn === 'slide') {
+        if (pos === 'top-right' || pos === 'bottom-right' || pos === 'right') return 'anim-in-from-right';
+        if (pos === 'top-left' || pos === 'bottom-left' || pos === 'left') return 'anim-in-from-left';
+        if (pos === 'top') return 'anim-in-from-top';
+        if (pos === 'bottom') return 'anim-in-from-bottom';
+        return 'anim-in-from-top';
+      }
+      if (animIn.startsWith('from-')) return `anim-in-${animIn}`;
+      return `anim-in-${animIn}`;
+    }
+
+    function resolveFlyOutClass(animOut, pos) {
+      if (!animOut || animOut === 'slide') {
+        if (pos === 'top-right' || pos === 'bottom-right' || pos === 'right') return 'anim-in-from-right';
+        if (pos === 'top-left' || pos === 'bottom-left' || pos === 'left') return 'anim-in-from-left';
+        if (pos === 'top') return 'anim-in-from-top';
+        if (pos === 'bottom') return 'anim-in-from-bottom';
+        return 'anim-in-from-top';
+      }
+      if (animOut.startsWith('from-')) return `anim-in-${animOut}`;
+      return `anim-in-${animOut}`;
+    }
+
+    const allAnimClasses = [
+      'visible', 'anim-in-slide', 'anim-in-fade', 'anim-in-zoom', 'anim-in-bounce',
+      'anim-in-from-top', 'anim-in-from-bottom', 'anim-in-from-left', 'anim-in-from-right',
+      'anim-in-from-top-left', 'anim-in-from-top-right', 'anim-in-from-bottom-left', 'anim-in-from-bottom-right'
+    ];
+
+    if (evtType === 'giveaway_state') {
+      if (data.state && (data.state.active || data.state.checkpoint_active)) {
+        handleGiveawayEvent({
+          type: 'giveaway_checkpoint_start',
+          cp_index: data.state.cp_index || data.state.current_checkpoint || 1,
+          code: data.state.code || ((data.state.checkpoints && data.state.checkpoints[data.state.current_checkpoint - 1]) ? data.state.checkpoints[data.state.current_checkpoint - 1].code : '!join'),
+          duration: (typeof data.state.duration_sec !== 'undefined') ? data.state.duration_sec : (data.state.checkpoint_duration || 0),
+          remaining: data.state.remaining_sec,
+          mode: data.state.mode,
+          total_checkpoints: data.state.total_checkpoints
+        });
+      }
+    } else if (evtType === 'giveaway_checkpoint_start') {
+      inner.classList.remove('giveaway-idle');
+      if (_gwCpDismissTimer) { clearTimeout(_gwCpDismissTimer); _gwCpDismissTimer = null; }
+      if (_gwCpHideTimer) { clearTimeout(_gwCpHideTimer); _gwCpHideTimer = null; }
+      _gwCpTotalDuration = (typeof data.duration !== 'undefined') ? data.duration : (_giveawayConfig.duration_sec || 0);
+
+      // ถ้าตั้งโหมดแสดงผลเป็น none (ซ่อนบนจอ / โหมดเบื้องหลัง) ให้เปิดรับเงียบๆ ไม่แสดง overlay ใดๆ บนจอ
+      if (_giveawayConfig.overlay_display_mode === 'none') {
+        if (cpBox) { cpBox.style.display = 'none'; cpBox.classList.remove('visible'); }
+        if (imgBox) { imgBox.style.display = 'none'; imgBox.classList.remove('visible'); }
+        return;
+      }
+
+      const isImageMode = (_giveawayConfig.overlay_display_mode === 'image' && _giveawayConfig.overlay_has_image);
+      const targetPos = _giveawayConfig.overlay_position || 'top-right';
+
+      if (isImageMode && imgBox) {
+        if (cpBox) { cpBox.style.display = 'none'; cpBox.classList.remove('visible'); }
+        if (imgFill) imgFill.style.width = '100%';
+        if (imgCountdownRect) {
+          if (_gwCpTotalDuration > 0 && typeof data.remaining !== 'undefined') {
+            const pct = Math.max(0, Math.min(100, (data.remaining / _gwCpTotalDuration) * 100));
+            imgCountdownRect.style.strokeDashoffset = String(100 - pct);
+            if (imgFill) imgFill.style.width = pct + '%';
+          } else {
+            imgCountdownRect.style.strokeDashoffset = '0';
+          }
+        }
+        if (data.duration > 0) {
+          const remSec = (typeof data.remaining !== 'undefined') ? data.remaining : data.duration;
+          const m = Math.floor(remSec / 60), s = Math.floor(remSec % 60);
+          if (imgTimerText) imgTimerText.textContent = `⏱️ ${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+        } else {
+          if (imgTimerText) imgTimerText.textContent = '⏱️ เปิดรับต่อเนื่อง';
+        }
+        const initialCount = (data.total !== undefined) ? data.total : ((data.state && data.state.participants && data.state.participants.length) || 0);
+        if (imgCountText) imgCountText.textContent = `👥 ${initialCount} คน`;
+
+        const animInClass = resolveFlyInClass(_giveawayConfig.overlay_anim_in, targetPos);
+        imgBox.classList.remove(...allAnimClasses);
+        imgBox.classList.add(animInClass);
+        imgBox.style.display = 'block';
+        void imgBox.offsetWidth;
+        requestAnimationFrame(() => requestAnimationFrame(() => imgBox.classList.add('visible')));
+      } else if (cpBox) {
+        if (imgBox) { imgBox.style.display = 'none'; imgBox.classList.remove('visible'); }
+        if (cpBadge) {
+          cpBadge.textContent = (data.mode === 'single') ? '🎯 เช็คชื่อรับสิทธิ์สุ่มรางวัล' : `📍 ด่านที่ ${data.cp_index} (สะสมแต้ม ${data.total_checkpoints || 2} ด่าน)`;
+        }
+        if (cpStatus) {
+          cpStatus.textContent = '🟢 กำลังเปิดรับ';
+          cpStatus.style.color = '#10b981';
+          cpStatus.style.background = 'rgba(16, 185, 129, 0.2)';
+        }
+        if (cpCode) cpCode.textContent = data.code || '!join';
+        if (cpFill) cpFill.style.width = '100%';
+        if (cpCountdownRect) {
+          if (_gwCpTotalDuration > 0 && typeof data.remaining !== 'undefined') {
+            const pct = Math.max(0, Math.min(100, (data.remaining / _gwCpTotalDuration) * 100));
+            cpCountdownRect.style.strokeDashoffset = String(100 - pct);
+            if (cpFill) cpFill.style.width = pct + '%';
+          } else {
+            cpCountdownRect.style.strokeDashoffset = '0';
+          }
+        }
+        if (data.duration > 0) {
+          const m = Math.floor(data.duration / 60), s = Math.floor(data.duration % 60);
+          if (cpTimer) cpTimer.textContent = `⏱️ เหลือเวลา: ${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+        } else {
+          if (cpTimer) cpTimer.textContent = '⏱️ เปิดรับต่อเนื่อง';
+        }
+        const initialCount = (data.total !== undefined) ? data.total : ((data.state && data.state.participants && data.state.participants.length) || 0);
+        if (cpCount) cpCount.textContent = `👥 ผู้เข้าร่วมรอบนี้: ${initialCount} คน`;
+
+        const animInClass = resolveFlyInClass(_giveawayConfig.overlay_anim_in, targetPos);
+        cpBox.classList.remove(...allAnimClasses);
+        cpBox.classList.add(animInClass);
+        cpBox.style.display = 'block';
+        void cpBox.offsetWidth;
+        requestAnimationFrame(() => requestAnimationFrame(() => cpBox.classList.add('visible')));
+      }
+    } else if (evtType === 'giveaway_tick') {
+      if (typeof data.duration !== 'undefined' && (!_gwCpTotalDuration || _gwCpTotalDuration <= 0)) {
+        _gwCpTotalDuration = data.duration;
+      }
+      if (_gwCpTotalDuration > 0) {
+        const pct = Math.max(0, Math.min(100, (data.remaining / _gwCpTotalDuration) * 100));
+        const m = Math.floor(data.remaining / 60), s = Math.floor(data.remaining % 60);
+        const timeStr = `⏱️ ${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+        if (cpFill) cpFill.style.width = pct + '%';
+        if (imgFill) imgFill.style.width = pct + '%';
+        if (cpTimer) cpTimer.textContent = `⏱️ เหลือเวลา: ${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+        if (cpCountdownRect) cpCountdownRect.style.strokeDashoffset = String(100 - pct);
+        if (imgCountdownRect) imgCountdownRect.style.strokeDashoffset = String(100 - pct);
+        if (imgTimerText) imgTimerText.textContent = timeStr;
+      } else {
+        if (cpCountdownRect) cpCountdownRect.style.strokeDashoffset = '0';
+        if (imgCountdownRect) imgCountdownRect.style.strokeDashoffset = '0';
+        if (imgTimerText) imgTimerText.textContent = '⏱️ เปิดรับต่อเนื่อง';
+      }
+      if (typeof data.total !== 'undefined') {
+        if (cpCount) cpCount.textContent = `👥 ผู้เข้าร่วมรอบนี้: ${data.total} คน`;
+        if (imgCountText) imgCountText.textContent = `👥 ${data.total} คน`;
+      }
+    } else if (evtType === 'giveaway_checkpoint_end') {
+      if (_gwCpDismissTimer) { clearTimeout(_gwCpDismissTimer); _gwCpDismissTimer = null; }
+      if (_gwCpHideTimer) { clearTimeout(_gwCpHideTimer); _gwCpHideTimer = null; }
+
+      const isImageMode = (_giveawayConfig.overlay_display_mode === 'image' && _giveawayConfig.overlay_has_image);
+      const targetPos = _giveawayConfig.overlay_position || 'top-right';
+
+      if (isImageMode && imgBox) {
+        if (imgFill) imgFill.style.width = '0%';
+        if (imgCountdownRect) imgCountdownRect.style.strokeDashoffset = '100';
+        if (imgTimerText) imgTimerText.textContent = '⏱️ หมดเวลา';
+        if (imgCountText) imgCountText.textContent = `👥 รวม: ${data.total} คน`;
+        _gwCpDismissTimer = setTimeout(() => {
+          const animOutClass = resolveFlyOutClass(_giveawayConfig.overlay_anim_out, targetPos);
+          imgBox.classList.remove('visible');
+          imgBox.classList.add(animOutClass);
+          _gwCpHideTimer = setTimeout(() => {
+            imgBox.style.display = 'none';
+            imgBox.classList.remove(...allAnimClasses);
+            inner.classList.add('giveaway-idle');
+          }, 500);
+        }, 1500);
+      } else if (cpBox) {
+        if (cpStatus) {
+          cpStatus.textContent = '⛔ ปิดรับรอบนี้แล้ว';
+          cpStatus.style.color = '#f87171';
+          cpStatus.style.background = 'rgba(239, 68, 68, 0.2)';
+        }
+        if (cpFill) cpFill.style.width = '0%';
+        if (cpCountdownRect) cpCountdownRect.style.strokeDashoffset = '100';
+        if (cpTimer) cpTimer.textContent = '⏱️ หมดเวลา';
+        if (cpCount) cpCount.textContent = `👥 รวมผ่านรอบนี้: ${data.total} คน`;
+        _gwCpDismissTimer = setTimeout(() => {
+          const animOutClass = resolveFlyOutClass(_giveawayConfig.overlay_anim_out, targetPos);
+          cpBox.classList.remove('visible');
+          cpBox.classList.add(animOutClass);
+          _gwCpHideTimer = setTimeout(() => {
+            cpBox.style.display = 'none';
+            cpBox.classList.remove(...allAnimClasses);
+            inner.classList.add('giveaway-idle');
+          }, 400);
+        }, 1500);
+      }
+    } else if (evtType === 'giveaway_participant') {
+      if (cpCount) cpCount.textContent = `👥 ผู้เข้าร่วมรอบนี้: ${data.round_participants} คน`;
+      if (imgCountText) imgCountText.textContent = `👥 ${data.round_participants} คน`;
+      if (_giveawayConfig.overlay_show_toast && cpToast) {
+        cpToast.textContent = `✨ ${data.author} เข้าร่วมแล้ว!`;
+        cpToast.classList.add('show');
+        if (_gwToastTimer) clearTimeout(_gwToastTimer);
+        _gwToastTimer = setTimeout(() => cpToast.classList.remove('show'), 1600);
+      }
+    } else if (evtType === 'giveaway_draw_start') {
+      inner.classList.remove('giveaway-idle');
+      if (_gwDrawAutoHideTimer) { clearTimeout(_gwDrawAutoHideTimer); _gwDrawAutoHideTimer = null; }
+      if (_gwSlotRollInterval) { clearInterval(_gwSlotRollInterval); _gwSlotRollInterval = null; }
+      if (_gwSlotReelSpinInterval) { clearInterval(_gwSlotReelSpinInterval); _gwSlotReelSpinInterval = null; }
+      _gwSlotReelDecelTimers.forEach(t => clearTimeout(t));
+      _gwSlotReelDecelTimers = [];
+
+      const chosenStyle = data.style || _giveawayConfig.draw_animation_style || 'gachapon';
+      const isGacha = (chosenStyle === 'gachapon');
+      const isReel = (chosenStyle === 'slot_reel');
+
+      _gwCandidatesPool = (data.candidates && data.candidates.length > 0) ? data.candidates : [];
+      _gwDrawWinner = data.winner || '';
+      _gwIsDrawRunning = false;
+
+      if (drawBox) {
+        drawBox.classList.remove('winner', 'fadeout');
+        drawBox.classList.remove('style-gachapon');
+        if (isGacha) drawBox.classList.add('style-gachapon');
+        drawBox.classList.add('visible');
+      }
+
+      const slotStage = inner.querySelector('.giveaway-slot-stage');
+      if (slotStage) {
+        if (isReel) slotStage.classList.add('is-reel');
+        else slotStage.classList.remove('is-reel');
+      }
+
+      if (drawPrize) drawPrize.textContent = data.prize || 'ของรางวัลกิจกรรม';
+      if (drawTier) drawTier.textContent = data.tier_label || 'ผู้มีสิทธิ์ลุ้นรางวัล';
+      if (drawStatus) drawStatus.textContent = '⚡ กำลังหมุนสุ่มรายชื่อ...';
+
+      const pool = (_gwCandidatesPool.length > 0) ? _gwCandidatesPool : ['ผู้เข้าร่วมกิจกรรม'];
+
+      if (_gwDrawWinner) {
+        // รู้ชื่อผู้ชนะตั้งแต่เริ่มสุ่ม -> รันอนิเมชั่นเลื่อนชะลอความเร็วแบบต่อเนื่องทันที ไม่มีการสะดุด
+        _gwIsDrawRunning = true;
+        if (isGacha) {
+          startGachaponDraw(inner, _gwDrawWinner, data.prize || 'ของรางวัลกิจกรรม');
+        } else if (isReel) {
+          startSmoothReelDraw(inner, _gwDrawWinner, pool);
+        } else {
+          startSmoothShuffleDraw(inner, _gwDrawWinner, pool);
+        }
+      } else {
+        // กรณีสำรอง (ถ้ายังไม่มีการส่งผู้ชนะมาใน draw_start)
+        if (isGacha) {
+          startGachaponDraw(inner, 'ผู้โชคดี', data.prize || 'ของรางวัลกิจกรรม');
+        } else if (isReel) {
+          const strip = inner.querySelector('.giveaway-slot-strip');
+          if (strip) {
+            strip.style.transition = 'none';
+            strip.style.transform = 'translateY(0px)';
+            let itemsHtml = '';
+            for (let r = 0; r < 14; r++) {
+              const name = pool[r % pool.length];
+              itemsHtml += `<div class="slot-reel-item"><span class="slot-reel-item-text">${name}</span></div>`;
+            }
+            strip.innerHTML = itemsHtml;
+            strip.classList.add('spinning');
+          }
+          let tick = 0;
+          _gwSlotReelSpinInterval = setInterval(() => {
+            tick++;
+            if (tick % 2 === 0) playGwTickSound();
+          }, 65);
+        } else {
+          if (slotName) slotName.classList.add('rolling');
+          let tick = 0;
+          _gwSlotRollInterval = setInterval(() => {
+            tick++;
+            const dummy = pool[Math.floor(Math.random() * pool.length)];
+            if (slotName) slotName.textContent = dummy;
+            if (tick % 2 === 0) playGwTickSound();
+          }, 75);
+        }
+      }
+    } else if (evtType === 'giveaway_draw_winner') {
+      const chosenStyle = data.style || _giveawayConfig.draw_animation_style || 'gachapon';
+      const isGacha = (chosenStyle === 'gachapon');
+      const isReel = (chosenStyle === 'slot_reel');
+      const winnerName = data.author || _gwDrawWinner || 'Streamer';
+      const prizeName = data.prize || 'ของรางวัลกิจกรรม';
+      const pool = (data.candidates && data.candidates.length > 0) ? data.candidates : (_gwCandidatesPool.length > 0 ? _gwCandidatesPool : [winnerName]);
+
+      if (drawBox) {
+        drawBox.classList.remove('fadeout');
+        if (isGacha) drawBox.classList.add('style-gachapon');
+      }
+      if (drawPrize) drawPrize.textContent = prizeName;
+
+      if (_gwIsDrawRunning && _gwDrawWinner === winnerName) {
+        // อนิเมชั่นกำลังเลื่อนชะลอตัวและมุ่งสู่ผู้ชนะอยู่แล้ว ปล่อยให้ทำงานอย่างสมูทจนจบ
+        return;
+      }
+
+      // ถ้ายังไม่ได้เริ่มสุ่มมาก่อน ให้เริ่มเลื่อนชะลอความเร็วสู่ผู้ชนะทันที
+      _gwIsDrawRunning = true;
+      _gwDrawWinner = winnerName;
+      if (isGacha) {
+        startGachaponDraw(inner, winnerName, prizeName);
+      } else if (isReel) {
+        startSmoothReelDraw(inner, winnerName, pool);
+      } else {
+        startSmoothShuffleDraw(inner, winnerName, pool);
+      }
+    } else if (evtType === 'giveaway_draw_reset') {
+      _gwIsDrawRunning = false;
+      _gwDrawWinner = '';
+      if (_gwDrawAutoHideTimer) { clearTimeout(_gwDrawAutoHideTimer); _gwDrawAutoHideTimer = null; }
+      if (_gwSlotRollInterval) { clearInterval(_gwSlotRollInterval); _gwSlotRollInterval = null; }
+      if (_gwSlotReelSpinInterval) { clearInterval(_gwSlotReelSpinInterval); _gwSlotReelSpinInterval = null; }
+      _gwSlotReelDecelTimers.forEach(t => clearTimeout(t));
+      _gwSlotReelDecelTimers = [];
+
+      if (drawBox && drawBox.classList.contains('visible')) {
+        drawBox.classList.add('fadeout');
+        setTimeout(() => {
+          drawBox.classList.remove('visible', 'winner', 'style-gachapon', 'fadeout');
+          const gachaStage = inner.querySelector('.giveaway-gacha-stage');
+          if (gachaStage) gachaStage.classList.remove('shaking', 'revealed', 'gacha-entering', 'gacha-wobble', 'gacha-charging');
+          const strip = inner.querySelector('.giveaway-slot-strip');
+          if (strip) {
+            strip.classList.remove('spinning');
+            strip.style.transition = 'none';
+            strip.style.transform = 'translateY(0px)';
+            strip.innerHTML = '';
+          }
+        }, 450);
+      } else if (drawBox) {
+        drawBox.classList.remove('visible', 'winner', 'style-gachapon', 'fadeout');
+        const gachaStage = inner.querySelector('.giveaway-gacha-stage');
+        if (gachaStage) gachaStage.classList.remove('shaking', 'revealed', 'gacha-entering', 'gacha-wobble', 'gacha-charging');
+        const strip = inner.querySelector('.giveaway-slot-strip');
+        if (strip) {
+          strip.classList.remove('spinning');
+          strip.style.transition = 'none';
+          strip.style.transform = 'translateY(0px)';
+          strip.innerHTML = '';
+        }
+      }
+    } else if (evtType === 'giveaway_data_cleared') {
+      if (cpBox) { cpBox.style.display = 'none'; cpBox.classList.remove('visible'); }
+      if (imgBox) { imgBox.style.display = 'none'; imgBox.classList.remove('visible'); }
+      if (drawBox) { drawBox.style.display = 'none'; drawBox.classList.remove('visible'); }
+      inner.classList.add('giveaway-idle');
+    } else if (evtType === 'giveaway_preview') {
+      if (data.action === 'stop' || data.show === false) {
+        if (cpBox) { cpBox.classList.remove('visible'); cpBox.style.display = 'none'; }
+        if (imgBox) { imgBox.classList.remove('visible'); imgBox.style.display = 'none'; }
+        inner.classList.add('giveaway-idle');
+        return;
+      }
+      inner.classList.remove('giveaway-idle');
+      handleGiveawayEvent({
+        type: 'giveaway_checkpoint_start',
+        cp_index: data.cp_index || 1,
+        code: data.code || '!join',
+        duration: data.duration || 60,
+        mode: data.mode || 'single',
+        total_checkpoints: data.total_checkpoints || 1
+      });
+      if (!data.stay) {
+        setTimeout(() => {
+          handleGiveawayEvent({ type: 'giveaway_checkpoint_end', total: 5 });
+        }, 4000);
+      }
+    }
+  });
+}
 
 // ════════════════════════════════════════════════════════════
 // Now Playing handler (Windows System Media)
@@ -6407,6 +8923,8 @@ function selectWidget(id) {
 function closeCanvasCtxMenu() {
   const m = document.getElementById('canvas-ctx-menu');
   if (m) m.remove();
+  const lm = document.getElementById('layer-ctx-menu');
+  if (lm) lm.remove();
   document.removeEventListener('click', closeCanvasCtxMenu);
   document.removeEventListener('contextmenu', closeCanvasCtxMenu);
   document.removeEventListener('keydown', _ctxMenuEscHandler);
@@ -6502,16 +9020,135 @@ function deleteWidget(id) {
   saveLayoutNow();
 }
 
+// ★ ทำซ้ำ Widget (Duplicate) — คัดลอกคุณสมบัติทั้งหมด ขยับตำแหน่งเล็กน้อย และวางไว้บนสุด
+function duplicateWidget(id) {
+  const orig = config.widgets.find(w => w.id === id);
+  if (!orig) return;
+
+  const clone = JSON.parse(JSON.stringify(orig));
+  clone.id = 'w' + Date.now();
+
+  const baseName = orig.name || WIDGET_LABELS[orig.type] || orig.type;
+  clone.name = baseName + ' (Copy)';
+
+  if (clone.type !== 'ask' && clone.type !== 'giveaway') {
+    const canvasW = config.canvas_w || 1920;
+    const canvasH = config.canvas_h || 1080;
+    const maxX = Math.max(0, canvasW - (clone.w || 300));
+    const maxY = Math.max(0, canvasH - (clone.h || 200));
+    clone.x = Math.min(maxX, Math.max(0, (orig.x || 0) + 30));
+    clone.y = Math.min(maxY, Math.max(0, (orig.y || 0) + 30));
+  }
+
+  const maxZ = config.widgets.reduce((m, x) => Math.max(m, x.z || 0), 0);
+  clone.z = maxZ + 1;
+
+  config.widgets.push(clone);
+  renderAll();
+  selectWidget(clone.id);
+  saveLayoutNow();
+  if (typeof renderLayersList === 'function') renderLayersList();
+}
+
+// ★ คลิกขวาที่ Layer — แสดง Context Menu (Duplicate, Rename, Settings, Toggle Vis, Delete)
+function showLayerContextMenu(e, id) {
+  const w = config.widgets.find(x => x.id === id);
+  if (!w) return;
+  e.preventDefault();
+  e.stopPropagation();
+  closeCanvasCtxMenu();
+  selectWidget(id);
+
+  const displayName = w.name || WIDGET_LABELS[w.type] || w.type;
+  const isHidden = w.enabled === false;
+  const menu = document.createElement('div');
+  menu.id = 'layer-ctx-menu';
+
+  menu.innerHTML = 
+    '<div class="ctx-title">'
+    + '<span style="margin-right:6px;">' + (WIDGET_ICONS[w.type] || '▣') + '</span>'
+    + '<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:160px; display:inline-block;">' + escapeHtml(displayName) + '</span>'
+    + '</div>'
+    + '<div class="ctx-item" id="ctx-layer-dup">'
+    + '<span class="ctx-icon">📋</span>'
+    + '<span class="ctx-name">ทำซ้ำ (Duplicate)</span>'
+    + '<span class="ctx-shortcut">Ctrl+D</span>'
+    + '</div>'
+    + '<div class="ctx-item" id="ctx-layer-rename">'
+    + '<span class="ctx-icon">✏️</span>'
+    + '<span class="ctx-name">เปลี่ยนชื่อ (Rename)</span>'
+    + '</div>'
+    + '<div class="ctx-item" id="ctx-layer-settings">'
+    + '<span class="ctx-icon">⚙️</span>'
+    + '<span class="ctx-name">ตั้งค่า (Settings)</span>'
+    + '</div>'
+    + '<div class="ctx-item" id="ctx-layer-vis">'
+    + '<span class="ctx-icon">' + (isHidden ? '👁️' : '🚫') + '</span>'
+    + '<span class="ctx-name">' + (isHidden ? 'แสดง Layer' : 'ซ่อน Layer') + '</span>'
+    + '</div>'
+    + '<div class="ctx-divider"></div>'
+    + '<div class="ctx-item ctx-danger" id="ctx-layer-del">'
+    + '<span class="ctx-icon">🗑️</span>'
+    + '<span class="ctx-name">ลบ Layer (Delete)</span>'
+    + '<span class="ctx-shortcut">Del</span>'
+    + '</div>';
+
+  document.body.appendChild(menu);
+
+  const mw = menu.offsetWidth, mh = menu.offsetHeight;
+  let left = e.clientX, top = e.clientY;
+  if (left + mw > window.innerWidth) left = Math.max(8, window.innerWidth - mw - 8);
+  if (top + mh > window.innerHeight) top = Math.max(8, window.innerHeight - mh - 8);
+  menu.style.left = left + 'px';
+  menu.style.top = top + 'px';
+
+  menu.querySelector('#ctx-layer-dup').addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    closeCanvasCtxMenu();
+    duplicateWidget(id);
+  });
+  menu.querySelector('#ctx-layer-rename').addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    closeCanvasCtxMenu();
+    const row = document.querySelector(`.layer-row[data-id="${id}"]`);
+    if (row) {
+      const nameEl = row.querySelector('.layer-name');
+      if (nameEl) startLayerRename(w, nameEl, row);
+    }
+  });
+  menu.querySelector('#ctx-layer-settings').addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    closeCanvasCtxMenu();
+    openSettingsModal(id);
+  });
+  menu.querySelector('#ctx-layer-vis').addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    closeCanvasCtxMenu();
+    toggleWidgetVisibility(id);
+  });
+  menu.querySelector('#ctx-layer-del').addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    closeCanvasCtxMenu();
+    deleteWidget(id);
+  });
+
+  setTimeout(() => {
+    document.addEventListener('click', closeCanvasCtxMenu);
+    document.addEventListener('contextmenu', closeCanvasCtxMenu);
+    document.addEventListener('keydown', _ctxMenuEscHandler);
+  }, 0);
+}
+
 // ═══════════════════════════════════════════════════════════════
 // ★ Layers Panel — จัดลำดับชั้น widget (drag เพื่อสลับ z-index)
 // ═══════════════════════════════════════════════════════════════
 const WIDGET_ICONS = {
   chat:'💬', alert:'🔔', viewer:'👥', clock:'🕐',
-  image:'🖼️', playroom:'🎮', webcam:'📷', text:'📝', video:'🎬', now_playing:'🎵', emote_party:'🎉', avatar:'😊', donate_goal:'🎯'
+  image:'🖼️', playroom:'🎮', webcam:'📷', text:'📝', video:'🎬', now_playing:'🎵', emote_party:'🎉', avatar:'😊', donate_goal:'🎯', ask:'🗳️', giveaway:'🎁'
 };
 const WIDGET_LABELS = {
   chat:'Chat', alert:'Custom URL', viewer:'Viewer Count', clock:'Clock',
-  image:'Image', playroom:'Playroom', webcam:'Webcam', text:'Text', video:'Video', now_playing:'Now Playing', emote_party:'Emote Party', avatar:'Avatar', donate_goal:'Donate Goal'
+  image:'Image', playroom:'Playroom', webcam:'Webcam', text:'Text', video:'Video', now_playing:'Now Playing', emote_party:'Emote Party', avatar:'Avatar', donate_goal:'Donate Goal', ask:'ASK (โพล)', giveaway:'Giveaway (แจกรางวัล)'
 };
 
 function renderLayersList() {
@@ -6534,7 +9171,7 @@ function renderLayersList() {
     // ★ tooltip บอกสถานะปัจจุบัน + สิ่งที่จะเกิดขึ้นถ้ากด (ไม่ใช่แค่ชื่อปุ่มเฉยๆ กันสับสนว่า "show/hide" หมายถึงอะไร)
     const visTitle = isHidden ? 'ซ่อนอยู่ตอนนี้ — คลิกเพื่อแสดง' : 'กำลังแสดงอยู่ — คลิกเพื่อซ่อน';
     row.innerHTML = '<span class="layer-icon">' + (WIDGET_ICONS[w.type] || '▣') + '</span>'
-      + '<span class="layer-name" title="ดับเบิ้ลคลิกเพื่อเปลี่ยนชื่อ">' + escapeHtml(displayName)
+      + '<span class="layer-name" title="คลิกเพื่อเลือก | ดับเบิ้ลคลิกเพื่อเปลี่ยนชื่อ | คลิกขวาเพื่อเปิดเมนู (Duplicate / Delete)">' + escapeHtml(displayName)
       + '<span class="sub">z:' + (w.z || 1) + '</span></span>'
       + '<div class="layer-actions">'
       + '<button class="layer-settings-btn" title="เปิดหน้าต่างตั้งค่า Widget นี้">⚙</button>'
@@ -6553,6 +9190,10 @@ function renderLayersList() {
       if (e.target.classList.contains('layer-name')) return; // ★ ปล่อยให้ dblclick จัดการ
       if (_clickTimer) { clearTimeout(_clickTimer); _clickTimer = null; }
       _clickTimer = setTimeout(() => { selectWidget(w.id); _clickTimer = null; }, 200);
+    });
+    // ★ คลิกขวาที่ Layer → เมนู Duplicate, Delete, Rename, Settings
+    row.addEventListener('contextmenu', (e) => {
+      showLayerContextMenu(e, w.id);
     });
     // ★ double-click name → rename
     const nameEl = row.querySelector('.layer-name');
@@ -6966,6 +9607,7 @@ const DEFAULT_SIZE = {
   avatar: { w: 300, h: 300 },
   donate_goal: { w: 340, h: 90 },
   ask: { w: 460, h: 340 },
+  giveaway: { w: 1920, h: 1080 },
 };
 
 // ★ Sidebar tabs — สลับ Widgets / Layers
@@ -7016,9 +9658,9 @@ document.querySelectorAll('.widget-add-btn').forEach(btn => {
       w.text_bg_enabled = false;
     }
 
-    // ★ ASK — เต็ม canvas ตั้งแต่ยังไม่วางลง canvas (เดิมเกิดเป็นกล่องเล็กแล้ว
+    // ★ ASK / Giveaway — เต็ม canvas ตั้งแต่ยังไม่วางลง canvas (เดิมเกิดเป็นกล่องเล็กแล้ว
     //   ต้องเข้า settings บันทึกก่อนถึงเต็มจอ — เพราะกฎบังคับอยู่แค่ updateWidgetElement)
-    if (type === 'ask') {
+    if (type === 'ask' || type === 'giveaway') {
       w.x = 0; w.y = 0;
       w.w = config.canvas_w || 1920;
       w.h = config.canvas_h || 1080;
@@ -7704,149 +10346,26 @@ function _openSettingsModalInner(id) {
     return;
   }
 
-  // ═════════ ASK (โพล) ═══════
-  if (w.type === 'ask') {
-    fields.innerHTML += `<div class="section-title">🗳️ ASK (โพล)</div>`;
-    fields.innerHTML += `<div style="color:#94a3b8;font-size:12px;line-height:1.6;">
-      เนื้อหา (คำถาม/ช้อยส์/เวลา) ควบคุมจาก<b>แผง ASK ในโปรแกรม</b> (ปุ่ม ASK บน TopBar)<br>
-      ตรงนี้ปรับได้เฉพาะหน้าตา / ทิศ animation / ขนาดตัวหนังสือของกล่องบน Overlay
-    </div>`;
-    // ★ เสาแนวตั้งรวมเป็นตัวเดียว — ฝั่งซ้าย/ขวาเลือกแยกด้านล่าง (โชว์เฉพาะโหมดเสา)
-    const _layRaw = w.ask_layout || 'vright';
-    const _layCur = (_layRaw === 'vleft' || _layRaw === 'vright') ? 'vertical' : _layRaw;
-    fields.innerHTML += fld('รูปแบบ', `<select id="f-ask_layout">
-      <option value="vertical"${_layCur=='vertical'?' selected':''}>🏛️ เสาแนวตั้ง (เต็มสูง ด้านข้าง)</option>
-      <option value="hband"${_layCur=='hband'?' selected':''}>📏 แถบแนวนอน (เต็มกว้าง บน/ล่าง)</option>
-      <option value="minimal"${_layCur=='minimal'?' selected':''}>📦 Minimal (กล่องเล็ก ย้ายอิสระ)</option>
-    </select>`);
-    // ★ section ยืด/ตำแหน่ง — โชว์ตามโหมดที่เลือก (สลับ live ตอนเปลี่ยน select)
-    fields.innerHTML += `<div id="ask-sec-side"></div>`;
-    fields.innerHTML += `<div id="ask-sec-extend"></div>`;
-    fields.innerHTML += `<div id="ask-sec-pos"></div>`;
-    const _thCur = { glass: 'ice', mono: 'steel' }[w.ask_theme] || w.ask_theme || 'violet';
-    const _thOpts = [
-      ['violet', '🟣 Violet (ม่วง)'],
-      ['neon', '🔵 Neon (ฟ้านีออน)'],
-      ['gold', '🟡 Gold (ทอง)'],
-      ['rose', '🌹 Rose (ชมพูแดง)'],
-      ['emerald', '💚 Emerald (เขียวมรกต)'],
-      ['sunset', '🌅 Sunset (ส้มพระอาทิตย์)'],
-      ['midnight', '🌌 Midnight (น้ำเงินลึก)'],
-      ['ocean', '🌊 Ocean (ฟ้าทะเล)'],
-      ['sakura', '🌸 Sakura (ซากุระ)'],
-      ['forest', '🌲 Forest (เขียวป่า)'],
-      ['ice', '🧊 Ice (ฟ้าน้ำแข็ง)'],
-      ['candy', '🍬 Candy (ชมพูหวานม่วง)'],
-      ['steel', '⚙️ Steel (เทาเหล็ก)'],
-      ['fire', '🔥 Fire (แดงไฟ)'],
-      ['cyberpunk', '🌆 Cyberpunk (เหลือง-ฟ้านีออน)'],
-      ['mint', '🍃 Mint (มินต์อ่อน)'],
-      ['space', '🪐 Space (น้ำเงินอวกาศ)'],
-      ['aurora', '🌟 Aurora (ขอบรุ้งเรืองแสง)'],
-      ['crystal', '💎 Crystal (กระจกเหลี่ยม+แสงวิ่ง)'],
-      ['magma', '🌋 Magma (ลุกไหม้+เต้น)'],
-      ['neonframe', '🕶️ Neon Frame (นีออนสว่างวาบ)'],
-      ['vintage', '🎭 Vintage (กรอบไม้คลาสสิก)'],
-      ['electric', '⚡ Electric (สายฟ้าวิบวับ)'],
-    ];
-    fields.innerHTML += fld('Theme', `<select id="f-ask_theme">` +
-      _thOpts.map(([v, l]) =>
-        `<option value="${v}"${_thCur == v ? ' selected' : ''}>${l}</option>`).join('') +
-      `</select>`);
-    const _barStyles = [
-      ['classic', '▬ แถบมน (Classic)'],
-      ['striped', '📐 ลายเฉียงวิ่ง (Striped)'],
-      ['segmented', '▬▬▬ แบ่งบล็อก (Segmented)'],
-      ['glow', '✨ เรืองแสง (Glow)'],
-      ['thin', '➖ เส้นบาง (Thin)'],
-      ['blocks', '🧱 บล็อกหนา (Blocks)'],
-      ['wavy', '〰️ คลื่นไหว (Wavy)'],
-      ['dots', '●●● จุดกลม (Dots)'],
-      ['neonline', '💡 เส้นนีออน (Neon Line)'],
-      ['gradientflow', '🌊 ไล่สีไหล (Gradient Flow)'],
-      ['chunky', '🧊 บล็อกหนาเหลี่ยม (Chunky)'],
-      ['pulse', '💓 เต้นเป็นจังหวะ (Pulse)'],
-    ];
-    fields.innerHTML += fld('รูปแบบหลอดโหวต', `<select id="f-ask_bar_style">` +
-      _barStyles.map(([v, l]) => `<option value="${v}"${(w.ask_bar_style||'classic')==v?' selected':''}>${l}</option>`).join('') + `</select>`);
-    const _frameStyles = [
-      ['classic', '📦 มนมีขอบ (Classic)'],
-      ['sharp', '📐 มุมแหลม (Sharp)'],
-      ['floating', '☁️ ลอยไร้ขอบ (Floating)'],
-      ['glow', '💡 ขอบเรืองแสง (Glow)'],
-      ['emboss', '🕳️ ฝังลึก (Emboss)'],
-      ['double', '⧉ ขอบคู่ (Double)'],
-      ['roundedlg', '🫧 มุมโค้งใหญ่ (Rounded LG)'],
-      ['ticket', '🎫 ขอบปรุ๊น (Ticket)'],
-      ['hologram', '🌈 เรืองรุ้ง (Hologram)'],
-      ['carbon', '🏎️ ลายคาร์บอน (Carbon)'],
-    ];
-    fields.innerHTML += fld('รูปแบบกรอบ', `<select id="f-ask_frame_style">` +
-      _frameStyles.map(([v, l]) => `<option value="${v}"${(w.ask_frame_style||'classic')==v?' selected':''}>${l}</option>`).join('') + `</select>`);
-    fields.innerHTML += fld('เวลานับถอยหลังแสดงเป็น', `<select id="f-ask_countdown_style">
-      <option value="text"${(w.ask_countdown_style||'text')=='text'?' selected':''}>🔢 ตัวเลข (00:15)</option>
-      <option value="bar"${(w.ask_countdown_style||'text')=='bar'?' selected':''}>📊 หลอดสีไล่เวลา (เขียว→เหลือง→แดง)</option>
-      <option value="both"${(w.ask_countdown_style||'text')=='both'?' selected':''}>🔢+📊 ทั้งเลขและหลอด</option>
-    </select>`);
-    fields.innerHTML += fldSlider('ความโปร่งใส (100% = ทึบชัด)', 'f-ask_opacity_pct',
-      w.ask_opacity_pct != null ? w.ask_opacity_pct : 100, 10, 100, 5, '%');
-    fields.innerHTML += fldSlider('ขนาดตัวอักษร — คำถาม', 'f-ask_question_fs',
-      w.ask_question_fs != null ? w.ask_question_fs : 24, 12, 60, 1, 'px');
-    fields.innerHTML += fldSlider('ขนาดตัวอักษร — ช้อยส์', 'f-ask_choice_fs',
-      w.ask_choice_fs != null ? w.ask_choice_fs : 18, 10, 40, 1, 'px');
-    fields.innerHTML += fldSlider('สัดส่วลกล่อง (ป้าย A-B / แถบ % / ระยะห่าง)', 'f-ask_scale',
-      w.ask_scale || 1.0, 0.5, 3.0, 0.05, 'x');
-    const askAnimIn = [
-      ['fade', 'Fade (ค่อยๆโผล่)'],
-      ['slide-up', 'Slide จากล่างขึ้นบน'],
-      ['slide-down', 'Slide จากบนลงล่าง'],
-      ['slide-left', 'Slide จากขวามาซ้าย'],
-      ['slide-right', 'Slide จากซ้ายมาขวา'],
-      ['corner-tl', 'จากมุมซ้ายบน (ทแยง)'],
-      ['corner-tr', 'จากมุมขวาบน (ทแยง)'],
-      ['corner-bl', 'จากมุมซ้ายล่าง (ทแยง)'],
-      ['corner-br', 'จากมุมขวาล่าง (ทแยง)'],
-    ];
-    const askAnimOut = [
-      ['fade', 'Fade (ค่อยๆจางหาย)'],
-      ['slide-up', 'กลับลงล่าง'],
-      ['slide-down', 'กลับขึ้นบน'],
-      ['slide-left', 'กลับไปขวา'],
-      ['slide-right', 'กลับไปซ้าย'],
-      ['corner-tl', 'กลับไปมุมซ้ายบน'],
-      ['corner-tr', 'กลับไปมุมขวาบน'],
-      ['corner-bl', 'กลับไปมุมซ้ายล่าง'],
-      ['corner-br', 'กลับไปมุมขวาล่าง'],
-    ];
-    fields.innerHTML += `<div class="section-title">🎬 Animation (เหมือน Image Timer)</div>`;
-    fields.innerHTML += fld('อนิเมชั่นโผล่ (เริ่มโพล)', `<select id="f-ask_anim_in">` +
-      askAnimIn.map(([v, l]) => `<option value="${v}"${(w.ask_anim_in||'fade')==v?' selected':''}>${l}</option>`).join('') + `</select>`);
-    fields.innerHTML += fld('อนิเมชั่นหาย (ปิดโพล)', `<select id="f-ask_anim_out">` +
-      askAnimOut.map(([v, l]) => `<option value="${v}"${(w.ask_anim_out||'fade')==v?' selected':''}>${l}</option>`).join('') + `</select>`);
-    fields.innerHTML += `<div class="row" style="gap:6px;">
-      <div style="flex:1;">${fldSlider('ความเร็วเข้า (ms)', 'f-ask_anim_in_ms',
-        w.ask_anim_in_ms || w.ask_anim_ms || 1200, 200, 5000, 100, 'ms')}</div>
-      <div style="flex:1;">${fldSlider('ความเร็วออก (ms)', 'f-ask_anim_out_ms',
-        w.ask_anim_out_ms || w.ask_anim_ms || 1200, 200, 5000, 100, 'ms')}</div>
-    </div>`;
-    fields.innerHTML += `<div class="section-title">👁 ตัวอย่างสด (แสดงบน Overlay จริง)</div>`;
-    fields.innerHTML += `<div style="color:#94a3b8;font-size:12px;margin-bottom:6px;">
-      ฉายโพลตัวอย่างไปทุกหน้ารวม Overlay ใน OBS — เล่น animation เข้า/ออกตามที่ตั้งไว้
-      ปรับค่าแล้วกดดูใหม่ได้เลย (ปิดหน้าต่างนี้ = หยุดตัวอย่างอัตโนมัติ)
-    </div>`;
-    fields.innerHTML += `<div class="row" style="gap:6px;">
-      <button type="button" id="f-ask-demo-vote"></button>
-      <button type="button" id="f-ask-demo-result"></button>
+  // ═════════ Giveaway (แจกรางวัล) ═══════
+  if (w.type === 'giveaway') {
+    fields.innerHTML += `<div class="section-title">🎁 Giveaway (แจกรางวัล)</div>`;
+    fields.innerHTML += `<div style="color:#94a3b8;font-size:12px;line-height:1.6;margin-bottom:12px;">
+      ควบคุมกิจกรรมทั้งหมดผ่าน <b>แผง Giveaway ในโปรแกรม</b> (ปุ่ม Giveaway บนแถบเครื่องมือ)<br>
+      แผงโปรแกรมสามารถปรับแต่ง รูปแบนเนอร์, ทิศทาง Animation, ตำแหน่ง Slider, สเกล, และสุ่มรายชื่อผู้โชคดีได้ครบวงจร
     </div>`;
     _showSettingsModal();
-    // ★ wiring + สถานะปุ่ม (กดแล้วกลายเป็น "หยุดตัวอย่าง")
-    const _dq = (id) => document.getElementById(id);
-    if (_dq('f-ask-demo-vote')) _dq('f-ask-demo-vote').onclick = () => askDemoToggle('vote');
-    if (_dq('f-ask-demo-result')) _dq('f-ask-demo-result').onclick = () => askDemoToggle('result');
-    updateAskDemoButtons();
-    // ★ แสดง slider/select ตามโหมด + อัปเดตสดตอนเปลี่ยน "รูปแบบ/ทิศทาง"
-    updateAskModeSections(w);
-    if (_dq('f-ask_layout')) _dq('f-ask_layout').addEventListener('change', () => updateAskModeSections(w));
+    return;
+  }
+
+  // ═════════ ASK (โพล) ═══════
+  if (w.type === 'ask') {
+    fields.innerHTML += `<div class="section-title">🗳️ ASK (โพล / โหวตบนจอ)</div>`;
+    fields.innerHTML += `<div style="background:#162032;border:1px solid #283548;border-radius:8px;padding:14px;color:#cbd5e1;font-size:13px;line-height:1.7;">
+      <div style="font-weight:700;color:#a855f7;font-size:14px;margin-bottom:8px;">⚙️ การตั้งค่าทั้งหมดถูกย้ายไปยังโปรแกรมแล้ว</div>
+      <div>ตอนนี้คุณสามารถปรับแต่งรูปแบบ Layout, ธีมสี 23 รูปแบบ, ตำแหน่ง, สเกล, ตัวอักษร, และอนิเมชัน ทั้งหมดได้โดยตรงจากแท็บ <b>"🎨 หน้าตา Overlay"</b> ในหน้าต่าง ASK ของโปรแกรม</div>
+      <div style="margin-top:10px;color:#94a3b8;font-size:12px;">💡 OBS Overlay จะอัปเดตตามการตั้งค่าในโปรแกรมแบบ Real-time ทันทีโดยไม่ต้องตั้งค่าในหน้านี้อีกต่อไป</div>
+    </div>`;
+    _showSettingsModal();
     return;
   }
 
@@ -10109,6 +12628,19 @@ if (isEditor) {
     if (modal && modal.classList.contains('active')) return;
     // ★ ข้ามถ้าไม่มี widget ที่เลือก
     if (!selectedWidget) return;
+
+    // ★ Hotkeys: Delete/Backspace (ลบ widget ที่เลือก), Ctrl+D (ทำซ้ำ widget ที่เลือก)
+    if ((e.key === 'Delete' || e.key === 'Del') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      deleteWidget(selectedWidget);
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'D')) {
+      e.preventDefault();
+      duplicateWidget(selectedWidget);
+      return;
+    }
+
     const arrows = { ArrowLeft: true, ArrowRight: true, ArrowUp: true, ArrowDown: true };
     if (!arrows[e.key]) return;
     e.preventDefault();

@@ -43,6 +43,7 @@ class OverlayServer:
         self._stop_event = threading.Event()
         self._started = False
         self._start_error: Optional[str] = None
+        self.giveaway_service = None
 
     # ------------------------------------------------------------------ #
     # Lifecycle
@@ -86,6 +87,10 @@ class OverlayServer:
         app.router.add_get("/logo/{platform}", self._handle_logo)
         app.router.add_get("/emote/{emote_id}", self._handle_emote)
         app.router.add_get("/character/{job}", self._handle_character_img)
+        app.router.add_get("/giveaway", self._handle_giveaway)
+        app.router.add_get("/giveaway/state", self._handle_giveaway_state)
+        app.router.add_get("/giveaway/image", self._handle_giveaway_image)
+        app.router.add_get("/dock", self._handle_dock)
 
         try:
             self._runner = web.AppRunner(app)
@@ -154,10 +159,56 @@ class OverlayServer:
                                 "Expires": "0",
                             })
 
+    async def _handle_dock(self, request):
+        """redirect ไปยัง composer server port /dock"""
+        import aiohttp.web as web
+        composer_port = int(getattr(self.settings, "composer_port", 8801))
+        raise web.HTTPFound(f"http://localhost:{composer_port}/dock")
+
     async def _handle_config(self, request):
         """serve overlay config as JSON (client โหลดตอนเริ่ม)"""
         import aiohttp.web as web
         return web.json_response(self._build_config())
+
+    async def _handle_giveaway(self, request):
+        """serve giveaway overlay HTML"""
+        html = self._read_giveaway_html()
+        import aiohttp.web as web
+        refresh_script = '<script>setTimeout(function(){if(!window.ws||window.ws.readyState!==1){location.reload();}},10000);</script>'
+        html = html.replace('</body>', refresh_script + '</body>') if '</body>' in html else html + refresh_script
+        return web.Response(text=html, content_type="text/html",
+                            headers={
+                                "Cache-Control": "no-cache, no-store, must-revalidate",
+                                "Pragma": "no-cache",
+                                "Expires": "0",
+                            })
+
+    async def _handle_giveaway_state(self, request):
+        """serve giveaway current state as JSON"""
+        import aiohttp.web as web
+        if self.giveaway_service is None:
+            return web.json_response({"active": False})
+        return web.json_response(self.giveaway_service.get_current_state())
+
+    async def _handle_giveaway_image(self, request):
+        """serve custom giveaway image configured by streamer"""
+        import aiohttp.web as web
+        if self.giveaway_service is None or not getattr(self.giveaway_service, "overlay_image_path", ""):
+            return web.Response(status=404, text="no giveaway image configured")
+        img_path = self.giveaway_service.overlay_image_path
+        if os.path.exists(img_path) and os.path.isfile(img_path):
+            return web.FileResponse(img_path, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+        return web.Response(status=404, text="image file not found")
+
+    def _read_giveaway_html(self) -> str:
+        path = os.path.join(get_base_dir(), "giveaway_overlay.html")
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return f.read()
+            except Exception:
+                pass
+        return "<h1>Giveaway Overlay Not Found</h1>"
 
     async def _handle_logo(self, request):
         """serve platform logo จาก assets/ (เช่น /logo/twitch → assets/twitch.png)"""
@@ -354,6 +405,11 @@ class OverlayServer:
             await ws.send_json({"type": "config", "config": self._build_config()})
         except Exception:  # noqa: BLE001
             pass
+        if self.giveaway_service is not None:
+            try:
+                await ws.send_json({"type": "giveaway_state", "state": self.giveaway_service.get_current_state()})
+            except Exception:
+                pass
         try:
             async for _ in ws:
                 pass  # รอจน client ปิด
@@ -389,6 +445,134 @@ class OverlayServer:
             except Exception:  # noqa: BLE001
                 dead.add(ws)
         self._clients -= dead
+
+    def push_chat_visibility(self, hidden: bool) -> None:
+        """ส่งคำสั่งซ่อน/แสดง Chat ไปยัง standalone overlay"""
+        if not self._started or not self._clients or self._loop is None:
+            return
+        data = {"type": "chat_visibility", "hidden": bool(hidden)}
+        try:
+            asyncio.run_coroutine_threadsafe(
+                self._broadcast(data), self._loop
+            )
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------ #
+    # Giveaway Overlay integration
+    # ------------------------------------------------------------------ #
+    def set_giveaway_service(self, service) -> None:
+        """เชื่อมต่อสัญญาณจาก GiveawayService เข้ากับ OverlayServer เพื่อส่งข้อมูลขึ้น OBS"""
+        self.giveaway_service = service
+        if service is not None:
+            service.config_changed.connect(self._on_giveaway_config_changed)
+            service.checkpoint_started.connect(self._on_giveaway_checkpoint_started)
+            service.checkpoint_tick.connect(self._on_giveaway_checkpoint_tick)
+            service.checkpoint_ended.connect(self._on_giveaway_checkpoint_ended)
+            service.participant_added.connect(self._on_giveaway_participant_added)
+            service.draw_started.connect(self._on_giveaway_draw_started)
+            service.draw_winner_shown.connect(self._on_giveaway_draw_winner)
+            service.draw_reset.connect(self._on_giveaway_draw_reset)
+            service.data_cleared.connect(self._on_giveaway_data_cleared)
+            service.preview_requested.connect(self._on_giveaway_preview_requested)
+
+    def push_giveaway_event(self, data: dict) -> None:
+        if not self._started or not self._clients or self._loop is None:
+            return
+        try:
+            asyncio.run_coroutine_threadsafe(self._broadcast(data), self._loop)
+        except Exception:
+            pass
+
+    def _on_giveaway_config_changed(self):
+        if self.giveaway_service:
+            self.push_giveaway_event({
+                "type": "giveaway_config",
+                "state": self.giveaway_service.get_current_state()
+            })
+
+    def _on_giveaway_checkpoint_started(self, cp_index: int, code: str, duration_sec: int):
+        state = self.giveaway_service.get_current_state() if self.giveaway_service else {}
+        cp_name = self.giveaway_service.get_checkpoint_name(cp_index) if self.giveaway_service else f"รอบที่ {cp_index}"
+        self.push_giveaway_event({
+            "type": "giveaway_checkpoint_start",
+            "cp_index": cp_index,
+            "cp_name": cp_name,
+            "code": code,
+            "duration": duration_sec,
+            "mode": getattr(self.giveaway_service, "mode", "multi"),
+            "total_checkpoints": getattr(self.giveaway_service, "total_checkpoints", 1),
+            "state": state,
+        })
+
+    def _on_giveaway_checkpoint_tick(self, remaining_sec: float, total_participants: int):
+        self.push_giveaway_event({
+            "type": "giveaway_tick",
+            "remaining": remaining_sec,
+            "duration": getattr(self.giveaway_service, "duration_sec", 60),
+            "total": total_participants,
+        })
+
+    def _on_giveaway_checkpoint_ended(self, cp_index: int, total_checked_in: int):
+        self.push_giveaway_event({
+            "type": "giveaway_checkpoint_end",
+            "cp_index": cp_index,
+            "total": total_checked_in,
+        })
+
+    def _on_giveaway_participant_added(self, participant, cp_index: int):
+        counts = self.giveaway_service.get_participant_counts() if self.giveaway_service else {}
+        self.push_giveaway_event({
+            "type": "giveaway_participant",
+            "author": participant.author,
+            "platform": participant.platform,
+            "cp_index": cp_index,
+            "round_participants": counts.get(f"cp{cp_index}", 0),
+            "total_participants": counts.get("all", 0),
+        })
+
+    def _on_giveaway_draw_started(self, prize: str, tier_label: str, candidates: list, winner_name: str = ""):
+        style = getattr(self.giveaway_service, 'draw_animation_style', 'gachapon') if self.giveaway_service else 'gachapon'
+        self.push_giveaway_event({
+            "type": "giveaway_draw_start",
+            "prize": prize,
+            "tier_label": tier_label,
+            "candidates": candidates,
+            "winner": winner_name,
+            "style": style,
+        })
+
+    def _on_giveaway_draw_winner(self, participant, prize: str, tier_label: str):
+        style = getattr(self.giveaway_service, 'draw_animation_style', 'gachapon') if self.giveaway_service else 'gachapon'
+        candidates = getattr(self.giveaway_service, '_last_draw_candidates', [])
+        self.push_giveaway_event({
+            "type": "giveaway_draw_winner",
+            "author": participant.author,
+            "platform": participant.platform,
+            "prize": prize,
+            "tier_label": tier_label,
+            "candidates": candidates,
+            "style": style,
+        })
+
+    def _on_giveaway_draw_reset(self):
+        self.push_giveaway_event({
+            "type": "giveaway_draw_reset",
+        })
+
+    def _on_giveaway_data_cleared(self):
+        self.push_giveaway_event({
+            "type": "giveaway_data_cleared",
+        })
+
+    def _on_giveaway_preview_requested(self, payload=None):
+        msg = {
+            "type": "giveaway_preview",
+            "state": self.giveaway_service.get_current_state() if self.giveaway_service else {},
+        }
+        if isinstance(payload, dict):
+            msg.update(payload)
+        self.push_giveaway_event(msg)
 
     def push_test_message(self) -> None:
         """ส่งข้อความตัวอย่างไป overlay (สำหรับปุ่ม '🎲 ทดสอบ' — เห็น animation ทันที)"""

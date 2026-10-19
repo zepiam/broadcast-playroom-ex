@@ -54,6 +54,8 @@ PATCH_PATTERNS = [
     "*.py",
     # HTML/CSS
     "*.html",
+    # Service Worker / JS
+    "*.js",
     # JSON config
     "neon.json",
     "version.json",

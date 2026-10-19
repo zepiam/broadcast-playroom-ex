@@ -31,6 +31,11 @@ datas = [
     ('game_overlay_qt.py', '.'),
     ('ffmpeg.exe', '.'),
     ('ui', 'ui'),
+    ('dock.html', '.'),
+    ('dock_launcher.html', '.'),
+    ('dock-offline.html', '.'),
+    ('dock-sw.js', '.'),
+    ('giveaway_overlay.html', '.'),
 ]
 for _clip in ['bad.mp4', 'good.mp4', 'normal.mp4']:
     datas += _data(f'media/{_clip}', 'playroom/media')

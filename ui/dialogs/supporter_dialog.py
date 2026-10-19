@@ -827,9 +827,7 @@ class SupportersWidget(QWidget):
         scroll.setWidget(self.list_container)
         scroll.setMinimumHeight(320)
         scroll.setStyleSheet(
-            "QScrollArea { background: transparent; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 0px; } "
-            "QScrollBar:vertical { background: #0c121e; width: 6px; margin: 0px; } "
-            "QScrollBar::handle:vertical { background: #334155; border-radius: 0px; min-height: 20px; }"
+            "QScrollArea { background: transparent; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 0px; }"
         )
         layout.addWidget(scroll, 1)
 
@@ -1262,6 +1260,7 @@ class SupportersDialog(QDialog):
         self.setWindowTitle(f"💚 สนับสนุน {self._app_name}")
         self.setModal(True)
         self.resize(560, 720)
+        self.setSizeGripEnabled(True)
         self.setStyleSheet(_DIALOG_STYLESHEET)
 
         layout = QVBoxLayout(self)

@@ -57,6 +57,10 @@ html, body {
   width: 100%;
   height: 100%;
 }
+body.chat-layer-hidden #chat,
+body.chat-layer-hidden .char-slot {
+  display: none !important;
+}
 #chat {
   padding: var(--chat-padding, 12px);
   height: 100%;
@@ -1065,6 +1069,9 @@ function connectWs() {
           if (config.character_mode) addCharacterMessage(data);
           else addMessage(data);
         }
+      }
+      else if (data.type === 'chat_visibility') {
+        document.body.classList.toggle('chat-layer-hidden', Boolean(data.hidden));
       }
       else if (data.type === 'eval_js') { try { eval(data.js); } catch(e){} }
       else if (data.type === 'reload_emotes') reloadEmoteImages();

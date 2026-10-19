@@ -84,13 +84,21 @@ echo [5/5] 📁 ไฟล์ที่พร้อมอัพโหลด:
 dir /b release\patch_lite.zip release\patch_full.zip release\version.json
 echo.
 
+for /f "delims=" %%v in ('python -c "import json; print(json.load(open('version.json', encoding='utf-8')).get('version', 'latest'))"') do set APP_VER=%%v
+
 if "%DO_UPLOAD%"=="1" (
-    echo 🚀 กำลังอัพโหลดขึ้น GitHub...
-    gh release upload latest ^
-        release\patch_lite.zip ^
-        release\patch_full.zip ^
-        release\version.json ^
-        --repo zepiam/broadcast-playroom-ex --clobber
+    echo 🚀 กำลังอัพโหลดขึ้น GitHub (v%APP_VER%)...
+    gh release view v%APP_VER% --repo zepiam/broadcast-playroom-ex >nul 2>&1
+    if errorlevel 1 (
+        echo   📌 ยังไม่พบ release v%APP_VER% → กำลังสร้าง release ใหม่...
+        if exist release\notes.txt (
+            gh release create v%APP_VER% release\patch_lite.zip release\patch_full.zip release\version.json --title "v%APP_VER%" --notes-file release\notes.txt --repo zepiam/broadcast-playroom-ex
+        ) else (
+            gh release create v%APP_VER% release\patch_lite.zip release\patch_full.zip release\version.json --title "v%APP_VER%" --repo zepiam/broadcast-playroom-ex
+        )
+    ) else (
+        gh release upload v%APP_VER% release\patch_lite.zip release\patch_full.zip release\version.json --repo zepiam/broadcast-playroom-ex --clobber
+    )
     if errorlevel 1 (
         echo   ❌ อัพโหลดล้มเหลว — ตรวจสอบ gh auth login
         pause
@@ -102,16 +110,11 @@ if "%DO_UPLOAD%"=="1" (
     echo ═══════════════════════════════════════════════════════════════
 ) else (
     echo ═══════════════════════════════════════════════════════════════
-    echo  ✅ พร้อมอัพโหลด! รันคำสั่งต่อไปนี้:
+    echo  ✅ พร้อมอัพโหลด! รันคำสั่งต่อไปนี้ (หรือรัน release.bat upload):
     echo ═══════════════════════════════════════════════════════════════
     echo.
-    echo   gh release upload latest ^
-    echo       release\patch_lite.zip ^
-    echo       release\patch_full.zip ^
-    echo       release\version.json ^
-    echo       --repo zepiam/broadcast-playroom-ex --clobber
+    echo   release.bat upload
     echo.
-    echo  หรือรันใหม่ด้วย:  release.bat upload
 )
 
 echo.

@@ -1,0 +1,1303 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Broadcast Playroom - Giveaway Overlay</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════
+   GIVEAWAY OBS BROWSER OVERLAY PRO
+   Zero GPU Lockup Compliant:
+   - Semi-solid opaque dark container rgba(2, 6, 23, 0.96)
+   - contain: layout style; isolation: isolate;
+   - SVG Normalized Path Countdown (pathLength="100")
+   - Pure CSS transitions that settle into 0% GPU idle state
+   ══════════════════════════════════════════════════════════════════ */
+:root {
+  --font-family: "Kanit", "Leelawadee UI", "Segoe UI", sans-serif;
+  --bg-card: rgba(2, 6, 23, 0.96);
+  --border-glow: rgba(56, 189, 248, 0.6);
+  --primary-gold: #fbbf24;
+  --primary-cyan: #38bdf8;
+  --primary-green: #34d399;
+  --primary-red: #f87171;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+
+  /* Dynamic Custom Image Properties */
+  --base-tx: 0px;
+  --base-ty: 0px;
+  --offset-x: 0px;
+  --offset-y: 0px;
+  --scale: 1;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  background: transparent;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  font-family: var(--font-family);
+  color: var(--text-main);
+  user-select: none;
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   CHECKPOINT OVERLAYS: SHARED POSITIONS FOR ALL 9 SCREEN ANCHORS
+   ────────────────────────────────────────────────────────────────── */
+#checkpoint-container.pos-top-right, #image-container.pos-top-right {
+  top: 28px; right: 28px; bottom: auto; left: auto;
+  --base-tx: 0px; --base-ty: 0px;
+}
+#checkpoint-container.pos-top-left, #image-container.pos-top-left {
+  top: 28px; left: 28px; bottom: auto; right: auto;
+  --base-tx: 0px; --base-ty: 0px;
+}
+#checkpoint-container.pos-bottom-right, #image-container.pos-bottom-right {
+  bottom: 28px; right: 28px; top: auto; left: auto;
+  --base-tx: 0px; --base-ty: 0px;
+}
+#checkpoint-container.pos-bottom-left, #image-container.pos-bottom-left {
+  bottom: 28px; left: 28px; top: auto; right: auto;
+  --base-tx: 0px; --base-ty: 0px;
+}
+#checkpoint-container.pos-top, #image-container.pos-top {
+  top: 28px; left: 50%; bottom: auto; right: auto;
+  --base-tx: -50%; --base-ty: 0px;
+}
+#checkpoint-container.pos-bottom, #image-container.pos-bottom {
+  bottom: 28px; left: 50%; top: auto; right: auto;
+  --base-tx: -50%; --base-ty: 0px;
+}
+#checkpoint-container.pos-left, #image-container.pos-left {
+  top: 50%; left: 28px; bottom: auto; right: auto;
+  --base-tx: 0px; --base-ty: -50%;
+}
+#checkpoint-container.pos-right, #image-container.pos-right {
+  top: 50%; right: 28px; bottom: auto; left: auto;
+  --base-tx: 0px; --base-ty: -50%;
+}
+#checkpoint-container.pos-center, #image-container.pos-center {
+  top: 50%; left: 50%; bottom: auto; right: auto;
+  --base-tx: -50%; --base-ty: -50%;
+}
+
+#checkpoint-container, #image-container {
+  position: fixed;
+  contain: layout style;
+  isolation: isolate;
+  z-index: 100;
+  opacity: 0;
+  display: none;
+  transition: opacity 0.4s ease, transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#checkpoint-container {
+  width: 390px;
+  max-width: 90vw;
+  background: var(--bg-card);
+  border: 1.5px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 18px 22px;
+  box-sizing: border-box;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+}
+
+.cp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.cp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--primary-gold);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cp-status-pill {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.cp-code-row {
+  margin: 6px 0 12px 0;
+  text-align: center;
+}
+
+.cp-instruction {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.cp-code {
+  display: inline-block;
+  font-size: 26px;
+  font-weight: 900;
+  color: #38bdf8;
+  background: #0b1528;
+  border: 1px dashed #0284c7;
+  padding: 4px 18px;
+  border-radius: 8px;
+  letter-spacing: 1px;
+}
+
+.progress-track {
+  width: 100%;
+  height: 8px;
+  background: #1e293b;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #0284c7, #38bdf8);
+  border-radius: 999px;
+  transition: width 0.3s linear;
+}
+
+.cp-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.cp-timer { color: #e2e8f0; }
+.cp-count { color: var(--primary-green); }
+
+/* Toast แจ้งเตือนเมื่อมีคนพิมพ์ */
+#cp-toast {
+  position: absolute;
+  bottom: -32px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid #0369a1;
+  color: #38bdf8;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+  white-space: nowrap;
+}
+#cp-toast.show { opacity: 1; }
+
+.image-card-wrapper {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  line-height: normal;
+}
+
+.img-progress-track {
+  width: 100%;
+  height: 6px;
+  background: rgba(15, 23, 42, 0.9);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7);
+  box-sizing: border-box;
+}
+
+.img-progress-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #0284c7, #38bdf8);
+  border-radius: 999px;
+  transition: width 0.3s linear;
+}
+
+/* PROGRESS THEME GRADIENTS */
+.progress-theme-rainbow .progress-fill,
+.progress-theme-rainbow .img-progress-fill {
+  background: linear-gradient(90deg, #ff0055, #ff7700, #ffdd00, #00ff88, #00ddff, #aa00ff);
+}
+.progress-theme-cyberpunk .progress-fill,
+.progress-theme-cyberpunk .img-progress-fill {
+  background: linear-gradient(90deg, #22d3ee, #d946ef);
+}
+.progress-theme-gold .progress-fill,
+.progress-theme-gold .img-progress-fill {
+  background: linear-gradient(90deg, #ea580c, #fde047);
+}
+.progress-theme-ice .progress-fill,
+.progress-theme-ice .img-progress-fill {
+  background: linear-gradient(90deg, #0284c7, #a5f3fc);
+}
+.progress-theme-sakura .progress-fill,
+.progress-theme-sakura .img-progress-fill {
+  background: linear-gradient(90deg, #db2777, #fbcfe8);
+}
+.progress-theme-emerald .progress-fill,
+.progress-theme-emerald .img-progress-fill {
+  background: linear-gradient(90deg, #059669, #6ee7b7);
+}
+.progress-theme-ruby .progress-fill,
+.progress-theme-ruby .img-progress-fill {
+  background: linear-gradient(90deg, #e11d48, #fda4af);
+}
+.progress-theme-violet .progress-fill,
+.progress-theme-violet .img-progress-fill {
+  background: linear-gradient(90deg, #7c3aed, #d8b4fe);
+}
+.progress-theme-blue .progress-fill,
+.progress-theme-blue .img-progress-fill {
+  background: linear-gradient(90deg, #2563eb, #93c5fd);
+}
+
+#giveaway-custom-img {
+  display: block;
+  max-width: 520px;
+  max-height: 480px;
+  object-fit: contain;
+  background: transparent;
+  /* เงาและขอบมิติคมชัดตามทรงโปร่งใสของภาพ (PNG/GIF/WebP) ไม่กลืนกับฉาก Live */
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.95))
+          drop-shadow(0 4px 16px rgba(0, 0, 0, 0.85))
+          drop-shadow(0 12px 32px rgba(0, 0, 0, 0.75));
+}
+
+/* SVG Border Countdown (แม่นยำ 100% กับทุกขนาดรูปด้วย pathLength="100") */
+.countdown-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 10;
+}
+#image-container .countdown-svg {
+  display: none !important;
+}
+
+.countdown-rect {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 0;
+  stroke: url(#gwBorderGradRainbow);
+  stroke-width: 4;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 8px rgba(0, 221, 255, 0.85));
+  transition: stroke-dashoffset 0.3s linear;
+}
+
+.countdown-svg.border-theme-rainbow .countdown-rect {
+  stroke: url(#gwBorderGradRainbow);
+  filter: drop-shadow(0 0 8px rgba(0, 221, 255, 0.85));
+}
+.countdown-svg.border-theme-cyberpunk .countdown-rect {
+  stroke: url(#gwBorderGradCyberpunk);
+  filter: drop-shadow(0 0 8px rgba(217, 70, 239, 0.85));
+}
+.countdown-svg.border-theme-gold .countdown-rect {
+  stroke: url(#gwBorderGradGold);
+  filter: drop-shadow(0 0 8px rgba(250, 204, 21, 0.85));
+}
+.countdown-svg.border-theme-ice .countdown-rect {
+  stroke: url(#gwBorderGradIce);
+  filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.85));
+}
+.countdown-svg.border-theme-sakura .countdown-rect {
+  stroke: url(#gwBorderGradSakura);
+  filter: drop-shadow(0 0 8px rgba(244, 114, 182, 0.85));
+}
+.countdown-svg.border-theme-emerald .countdown-rect {
+  stroke: url(#gwBorderGradEmerald);
+  filter: drop-shadow(0 0 8px rgba(52, 211, 153, 0.85));
+}
+.countdown-svg.border-theme-ruby .countdown-rect {
+  stroke: url(#gwBorderGradRuby);
+  filter: drop-shadow(0 0 8px rgba(251, 113, 133, 0.85));
+}
+.countdown-svg.border-theme-violet .countdown-rect {
+  stroke: url(#gwBorderGradViolet);
+  filter: drop-shadow(0 0 8px rgba(192, 132, 252, 0.85));
+}
+.countdown-svg.border-theme-blue .countdown-rect {
+  stroke: url(#gwBorderGradBlue);
+  filter: drop-shadow(0 0 8px rgba(96, 165, 250, 0.85));
+}
+
+/* แถบสถิติด้านล่างภาพ (ถ้าเปิดใช้งาน) */
+.img-stats-bar {
+  margin-top: 8px;
+  align-self: center;
+  background: rgba(2, 6, 23, 0.95);
+  border: 1px solid #1e293b;
+  border-radius: 999px;
+  padding: 3px 14px;
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+/* FLY-IN ANIMATIONS: FROM ALL 8 DIRECTIONS / CORNERS / FADE / ZOOM / BOUNCE */
+#checkpoint-container.anim-in-from-top, #image-container.anim-in-from-top {
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px) - 120vh)) scale(var(--scale, 1)) !important;
+  opacity: 0 !important;
+}
+#checkpoint-container.anim-in-from-bottom, #image-container.anim-in-from-bottom {
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px) + 120vh)) scale(var(--scale, 1)) !important;
+  opacity: 0 !important;
+}
+#checkpoint-container.anim-in-from-left, #image-container.anim-in-from-left {
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) - 120vw), calc(var(--base-ty) + var(--offset-y, 0px))) scale(var(--scale, 1)) !important;
+  opacity: 0 !important;
+}
+#checkpoint-container.anim-in-from-right, #image-container.anim-in-from-right {
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) + 120vw), calc(var(--base-ty) + var(--offset-y, 0px))) scale(var(--scale, 1)) !important;
+  opacity: 0 !important;
+}
+#checkpoint-container.anim-in-from-top-left, #image-container.anim-in-from-top-left {
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) - 120vw), calc(var(--base-ty) + var(--offset-y, 0px) - 120vh)) scale(var(--scale, 1)) !important;
+  opacity: 0 !important;
+}
+#checkpoint-container.anim-in-from-top-right, #image-container.anim-in-from-top-right {
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) + 120vw), calc(var(--base-ty) + var(--offset-y, 0px) - 120vh)) scale(var(--scale, 1)) !important;
+  opacity: 0 !important;
+}
+#checkpoint-container.anim-in-from-bottom-left, #image-container.anim-in-from-bottom-left {
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) - 120vw), calc(var(--base-ty) + var(--offset-y, 0px) + 120vh)) scale(var(--scale, 1)) !important;
+  opacity: 0 !important;
+}
+#checkpoint-container.anim-in-from-bottom-right, #image-container.anim-in-from-bottom-right {
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) + 120vw), calc(var(--base-ty) + var(--offset-y, 0px) + 120vh)) scale(var(--scale, 1)) !important;
+  opacity: 0 !important;
+}
+#checkpoint-container.anim-in-fade, #image-container.anim-in-fade {
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px))) scale(var(--scale, 1)) !important;
+  opacity: 0 !important;
+}
+#checkpoint-container.anim-in-zoom, #image-container.anim-in-zoom {
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px))) scale(0.2) !important;
+  opacity: 0 !important;
+}
+#checkpoint-container.anim-in-bounce, #image-container.anim-in-bounce {
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px))) scale(0.6) !important;
+  opacity: 0 !important;
+}
+
+#checkpoint-container.visible, #image-container.visible {
+  display: block !important;
+  opacity: 1 !important;
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px))) scale(var(--scale, 1)) !important;
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   SLOT MACHINE / LUCKY DRAW STAGE (เวทีสุ่มแจกรางวัลกลางจอ)
+   ────────────────────────────────────────────────────────────────── */
+#draw-container {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.95);
+  width: 620px;
+  max-width: 92vw;
+  background: var(--bg-card);
+  border: 2px solid var(--border-glow);
+  border-radius: 20px;
+  padding: 28px 32px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.85);
+  contain: layout style;
+  isolation: isolate;
+  display: none;
+  opacity: 0;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+  z-index: 200;
+  text-align: center;
+}
+
+#draw-container.visible {
+  display: block;
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.draw-header-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--primary-gold);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.draw-prize-text {
+  font-size: 22px;
+  font-weight: 900;
+  color: #f8fafc;
+  margin-bottom: 4px;
+}
+
+.draw-tier-pill {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  padding: 3px 12px;
+  border-radius: 999px;
+  margin-bottom: 16px;
+}
+
+.slot-reel-box {
+  background: #090e1a;
+  border: 2px solid #1e293b;
+  border-radius: 14px;
+  height: 110px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  margin: 8px 0 16px 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.slot-reel-name {
+  font-size: 36px;
+  font-weight: 900;
+  color: var(--primary-cyan);
+  text-shadow: 0 2px 10px rgba(56, 189, 248, 0.4);
+  letter-spacing: 0.5px;
+  transition: transform 0.1s ease;
+}
+
+.slot-reel-name.rolling {
+  color: #cbd5e1;
+  text-shadow: none;
+}
+
+.draw-status-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+#draw-container.winner .draw-status-label { color: #10b981; }
+#draw-container.winner .slot-reel-name {
+  color: var(--primary-gold);
+  font-size: 40px;
+  text-shadow: 0 0 20px rgba(251, 191, 36, 0.6);
+}
+
+/* Confetti Canvas */
+#confetti-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 190;
+  display: none;
+}
+</style>
+</head>
+<body>
+
+<!-- ── CHECKPOINT BANNER (STANDARD TEXT) ── -->
+<div id="checkpoint-container">
+  <svg class="countdown-svg border-theme-rainbow" id="cp-countdown-svg">
+    <defs>
+      <linearGradient id="gwBorderGradRainbow" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#ff0055" />
+        <stop offset="20%" stop-color="#ff7700" />
+        <stop offset="40%" stop-color="#ffdd00" />
+        <stop offset="60%" stop-color="#00ff88" />
+        <stop offset="80%" stop-color="#00ddff" />
+        <stop offset="100%" stop-color="#aa00ff" />
+      </linearGradient>
+      <linearGradient id="gwBorderGradCyberpunk" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#22d3ee" />
+        <stop offset="100%" stop-color="#d946ef" />
+      </linearGradient>
+      <linearGradient id="gwBorderGradGold" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#fde047" />
+        <stop offset="100%" stop-color="#ea580c" />
+      </linearGradient>
+      <linearGradient id="gwBorderGradIce" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#a5f3fc" />
+        <stop offset="100%" stop-color="#0284c7" />
+      </linearGradient>
+      <linearGradient id="gwBorderGradSakura" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#fbcfe8" />
+        <stop offset="100%" stop-color="#db2777" />
+      </linearGradient>
+      <linearGradient id="gwBorderGradEmerald" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#6ee7b7" />
+        <stop offset="100%" stop-color="#059669" />
+      </linearGradient>
+      <linearGradient id="gwBorderGradRuby" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#fda4af" />
+        <stop offset="100%" stop-color="#e11d48" />
+      </linearGradient>
+      <linearGradient id="gwBorderGradViolet" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#d8b4fe" />
+        <stop offset="100%" stop-color="#7c3aed" />
+      </linearGradient>
+      <linearGradient id="gwBorderGradBlue" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#93c5fd" />
+        <stop offset="100%" stop-color="#2563eb" />
+      </linearGradient>
+    </defs>
+    <rect class="countdown-rect" id="cp-countdown-rect" x="2" y="2" width="calc(100% - 4px)" height="calc(100% - 4px)" rx="14" ry="14"
+          fill="none" pathLength="100" />
+  </svg>
+  <div class="cp-header">
+    <span class="cp-badge" id="cp-title-badge">🎁 กิจกรรมเช็คชื่อลุ้นรางวัล</span>
+    <span class="cp-status-pill" id="cp-status-pill">กำลังเปิดรับ</span>
+  </div>
+  <div class="cp-code-row">
+    <div class="cp-instruction">พิมพ์คำสั่งนี้ในแชทเพื่อรับสิทธิ์:</div>
+    <div class="cp-code" id="cp-code-text">!join</div>
+  </div>
+  <div class="progress-track" id="cp-progress-track">
+    <div class="progress-fill" id="cp-progress-fill"></div>
+  </div>
+  <div class="cp-footer">
+    <span class="cp-timer" id="cp-timer-text">⏱️ เวลา: 01:00</span>
+    <span class="cp-count" id="cp-count-text">👥 ผู้เข้าร่วม: 0 คน</span>
+  </div>
+  <div id="cp-toast"></div>
+</div>
+
+<!-- ── CUSTOM IMAGE BANNER ── -->
+<div id="image-container">
+  <div class="image-card-wrapper">
+    <svg class="countdown-svg border-theme-rainbow" id="img-countdown-svg">
+      <rect class="countdown-rect" id="img-countdown-rect" x="2" y="2" width="calc(100% - 4px)" height="calc(100% - 4px)" rx="18" ry="18"
+            fill="none" pathLength="100" />
+    </svg>
+    <img id="giveaway-custom-img" src="" alt="Giveaway Banner" />
+    <div class="img-progress-track" id="img-progress-track">
+      <div class="img-progress-fill" id="img-progress-fill"></div>
+    </div>
+    <div id="img-stats-bar" class="img-stats-bar">
+      <span id="img-timer-text" style="color:#e2e8f0;">⏱️ 01:00</span>
+      <span id="img-count-text" style="color:#34d399;">👥 0 คน</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── SLOT MACHINE / LUCKY DRAW STAGE ── -->
+<div id="draw-container">
+  <div class="draw-header-title">🎰 สุ่มแจกรางวัลกิจกรรม</div>
+  <div class="draw-prize-text" id="draw-prize-text">รางวัล: บัตรกำนัล 500 บาท</div>
+  <div class="draw-tier-pill" id="draw-tier-pill">🏆 Tier 1 (ครบทุกด่าน)</div>
+
+  <div class="slot-reel-box">
+    <div class="slot-reel-name" id="slot-reel-name">...</div>
+  </div>
+
+  <div class="draw-status-label" id="draw-status-label">เตรียมพร้อมสุ่มรางวัล...</div>
+</div>
+
+<canvas id="confetti-canvas"></canvas>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   AUDIO SYNTHESIZER (Web Audio API - 100% Offline, Zero External Files)
+   ══════════════════════════════════════════════════════════════════ */
+let audioCtx = null;
+function getAudioContext() {
+  if (!audioCtx) {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (AudioContext) audioCtx = new AudioContext();
+  }
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+  return audioCtx;
+}
+
+function playTickSound() {
+  if (currentConfig.sound_enabled === false) return;
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(580 + Math.random() * 80, ctx.currentTime);
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.05);
+  } catch(e) {}
+}
+
+function playFanfareSound() {
+  if (currentConfig.sound_enabled === false) return;
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    const notes = [523.25, 659.25, 783.99, 1046.50];
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const startTime = ctx.currentTime + idx * 0.12;
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, startTime);
+      gain.gain.setValueAtTime(0.12, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.6);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(startTime);
+      osc.stop(startTime + 0.6);
+    });
+  } catch(e) {}
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   CONFETTI (3.5s -> 0% GPU Idle)
+   ══════════════════════════════════════════════════════════════════ */
+const canvas = document.getElementById('confetti-canvas');
+const ctx = canvas.getContext('2d');
+let confettiAnimId = null;
+let particles = [];
+
+function triggerConfetti() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  canvas.style.display = 'block';
+
+  particles = [];
+  const colors = ['#fbbf24', '#38bdf8', '#34d399', '#f472b6', '#a78bfa', '#f87171'];
+  for (let i = 0; i < 70; i++) {
+    particles.push({
+      x: canvas.width / 2 + (Math.random() * 200 - 100),
+      y: canvas.height / 2,
+      vx: (Math.random() - 0.5) * 16,
+      vy: Math.random() * -14 - 4,
+      size: Math.random() * 8 + 5,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      rotation: Math.random() * 360,
+      vRot: (Math.random() - 0.5) * 10,
+      alpha: 1
+    });
+  }
+
+  const startTime = performance.now();
+  if (confettiAnimId) cancelAnimationFrame(confettiAnimId);
+
+  function loop(now) {
+    const elapsed = now - startTime;
+    if (elapsed > 3500) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      canvas.style.display = 'none';
+      confettiAnimId = null;
+      return;
+    }
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const fade = Math.max(0, 1 - (elapsed - 2000) / 1500);
+
+    for (let p of particles) {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.38;
+      p.vx *= 0.98;
+      p.rotation += p.vRot;
+
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rotation * Math.PI / 180);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = p.alpha * fade;
+      ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+      ctx.restore();
+    }
+
+    confettiAnimId = requestAnimationFrame(loop);
+  }
+  confettiAnimId = requestAnimationFrame(loop);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   OVERLAY STATE & ELEMENTS
+   ══════════════════════════════════════════════════════════════════ */
+const cpBox = document.getElementById('checkpoint-container');
+const cpProgressTrack = document.getElementById('cp-progress-track');
+const cpCountdownSvg = document.getElementById('cp-countdown-svg');
+const cpCountdownRect = document.getElementById('cp-countdown-rect');
+const cpBadge = document.getElementById('cp-title-badge');
+const cpStatus = document.getElementById('cp-status-pill');
+const cpCode = document.getElementById('cp-code-text');
+const cpFill = document.getElementById('cp-progress-fill');
+const cpTimer = document.getElementById('cp-timer-text');
+const cpCount = document.getElementById('cp-count-text');
+const cpToast = document.getElementById('cp-toast');
+
+const imgBox = document.getElementById('image-container');
+const customImg = document.getElementById('giveaway-custom-img');
+const imgProgressTrack = document.getElementById('img-progress-track');
+const imgProgressFill = document.getElementById('img-progress-fill');
+const imgCountdownSvg = document.getElementById('img-countdown-svg');
+const imgCountdownRect = document.getElementById('img-countdown-rect');
+const imgStatsBar = document.getElementById('img-stats-bar');
+const imgTimerText = document.getElementById('img-timer-text');
+const imgCountText = document.getElementById('img-count-text');
+
+const drawBox = document.getElementById('draw-container');
+const drawPrize = document.getElementById('draw-prize-text');
+const drawTier = document.getElementById('draw-tier-pill');
+const slotName = document.getElementById('slot-reel-name');
+const drawStatus = document.getElementById('draw-status-label');
+
+let cpTotalDuration = 0;
+let cpDismissTimer = null;
+let cpHideTimer = null;
+let toastTimer = null;
+let slotRollInterval = null;
+let currentConfig = {
+  overlay_display_mode: 'banner',
+  overlay_has_image: false,
+  overlay_position: 'top-right',
+  overlay_offset_x: 0,
+  overlay_offset_y: 0,
+  overlay_scale: 100,
+  overlay_anim_in: 'slide',
+  overlay_anim_out: 'slide',
+  overlay_show_progress_bar: true,
+  overlay_show_countdown_border: true,
+  overlay_border_theme: 'rainbow',
+  overlay_show_toast: true,
+  overlay_show_stats: true
+};
+
+function resolveFlyInClass(animIn, pos) {
+  if (!animIn || animIn === 'slide') {
+    if (pos === 'top-right' || pos === 'bottom-right' || pos === 'right') return 'anim-in-from-right';
+    if (pos === 'top-left' || pos === 'bottom-left' || pos === 'left') return 'anim-in-from-left';
+    if (pos === 'top') return 'anim-in-from-top';
+    if (pos === 'bottom') return 'anim-in-from-bottom';
+    return 'anim-in-from-top';
+  }
+  if (animIn.startsWith('from-')) return `anim-in-${animIn}`;
+  return `anim-in-${animIn}`;
+}
+
+function resolveFlyOutClass(animOut, pos) {
+  if (!animOut || animOut === 'slide') {
+    if (pos === 'top-right' || pos === 'bottom-right' || pos === 'right') return 'anim-in-from-right';
+    if (pos === 'top-left' || pos === 'bottom-left' || pos === 'left') return 'anim-in-from-left';
+    if (pos === 'top') return 'anim-in-from-top';
+    if (pos === 'bottom') return 'anim-in-from-bottom';
+    return 'anim-in-from-top';
+  }
+  if (animOut.startsWith('from-')) return `anim-in-${animOut}`;
+  return `anim-in-${animOut}`;
+}
+
+const allAnimClasses = [
+  'visible', 'anim-in-slide', 'anim-in-fade', 'anim-in-zoom', 'anim-in-bounce',
+  'anim-in-from-top', 'anim-in-from-bottom', 'anim-in-from-left', 'anim-in-from-right',
+  'anim-in-from-top-left', 'anim-in-from-top-right', 'anim-in-from-bottom-left', 'anim-in-from-bottom-right'
+];
+
+function applyConfig(cfg) {
+  if (!cfg) return;
+  Object.assign(currentConfig, cfg);
+
+  const targetBoxes = [cpBox, imgBox].filter(Boolean);
+  const pos = currentConfig.overlay_position || 'top-right';
+  const posClasses = [
+    'pos-top-right', 'pos-top-left', 'pos-bottom-right', 'pos-bottom-left',
+    'pos-top', 'pos-bottom', 'pos-left', 'pos-right', 'pos-center'
+  ];
+  targetBoxes.forEach(box => {
+    posClasses.forEach(p => box.classList.remove(p));
+    box.classList.add(`pos-${pos}`);
+    box.style.setProperty('--offset-x', (currentConfig.overlay_offset_x || 0) + 'px');
+    box.style.setProperty('--offset-y', (currentConfig.overlay_offset_y || 0) + 'px');
+    box.style.setProperty('--scale', ((currentConfig.overlay_scale || 100) / 100));
+  });
+
+  // แสดง/ซ่อน ขอบนับถอยหลัง & ธีมสี (ทั้งการ์ดข้อความและรูปภาพ)
+  const allCountdownSvgs = [cpCountdownSvg, imgCountdownSvg].filter(Boolean);
+  const showBorder = (currentConfig.overlay_show_countdown_border !== false);
+  const borderTheme = currentConfig.overlay_border_theme || 'rainbow';
+  const bThemes = ['rainbow', 'cyberpunk', 'gold', 'ice', 'sakura', 'emerald', 'ruby', 'violet', 'blue'];
+  allCountdownSvgs.forEach(svg => {
+    svg.style.display = showBorder ? 'block' : 'none';
+    bThemes.forEach(t => svg.classList.remove(`border-theme-${t}`));
+    svg.classList.add(`border-theme-${borderTheme}`);
+  });
+
+  // แสดง/ซ่อน หลอดนับถอยหลัง & ธีมสี (ทั้งการ์ดข้อความและรูปภาพ)
+  const showProgressBar = (currentConfig.overlay_show_progress_bar !== false);
+  if (cpProgressTrack) cpProgressTrack.style.display = showProgressBar ? 'block' : 'none';
+  if (imgProgressTrack) imgProgressTrack.style.display = showProgressBar ? 'block' : 'none';
+
+  targetBoxes.forEach(box => {
+    bThemes.forEach(t => box.classList.remove(`progress-theme-${t}`));
+    box.classList.add(`progress-theme-${borderTheme}`);
+  });
+
+  if (imgStatsBar) {
+    imgStatsBar.style.display = (currentConfig.overlay_show_stats !== false) ? 'flex' : 'none';
+  }
+
+  // ถ้าเป็นโหมดภาพ ให้ตั้ง src ของรูปภาพ
+  if (currentConfig.overlay_display_mode === 'image' && currentConfig.overlay_has_image) {
+    if (!customImg.src || (!customImg.src.startsWith('data:') && customImg.src.indexOf('/giveaway/image') === -1)) {
+      customImg.src = `/giveaway/image?t=${Date.now()}`;
+    }
+  }
+}
+
+// แสดง Checkpoint (แยกตามโหมด Banner หรือ Image)
+function showCheckpoint(cp_index, code, duration_sec, mode, total_cps, cp_name) {
+  if (cpDismissTimer) {
+    clearTimeout(cpDismissTimer);
+    cpDismissTimer = null;
+  }
+  if (cpHideTimer) {
+    clearTimeout(cpHideTimer);
+    cpHideTimer = null;
+  }
+  cpTotalDuration = duration_sec;
+
+  // ── โหมดซ่อนบนจอ (รับโค้ดเงียบๆ เบื้องหลัง ไม่ขึ้นขวางจอ) ──
+  if (currentConfig.overlay_display_mode === 'none') {
+    cpBox.style.display = 'none';
+    cpBox.classList.remove('visible');
+    imgBox.style.display = 'none';
+    imgBox.classList.remove('visible');
+    return;
+  }
+
+  const isImageMode = (currentConfig.overlay_display_mode === 'image' && currentConfig.overlay_has_image);
+  const targetPos = currentConfig.overlay_position || 'top-right';
+
+  if (isImageMode) {
+    // ── โหมดรูปภาพแบนเนอร์ ──
+    cpBox.style.display = 'none';
+    cpBox.classList.remove('visible');
+
+    if (imgProgressFill) imgProgressFill.style.width = '100%';
+    imgCountdownRect.style.strokeDashoffset = '0';
+    if (duration_sec > 0) {
+      const m = Math.floor(duration_sec / 60);
+      const s = Math.floor(duration_sec % 60);
+      imgTimerText.textContent = `⏱️ ${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    } else {
+      imgTimerText.textContent = '⏱️ เปิดรับต่อเนื่อง';
+    }
+    imgCountText.textContent = '👥 0 คน';
+
+    const animInClass = resolveFlyInClass(currentConfig.overlay_anim_in, targetPos);
+    imgBox.classList.remove(...allAnimClasses);
+    imgBox.classList.add(animInClass);
+    imgBox.style.display = 'block';
+    void imgBox.offsetWidth;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        imgBox.classList.add('visible');
+      });
+    });
+
+  } else {
+    // ── โหมดการ์ดข้อความ & โค้ดมาตรฐาน ──
+    imgBox.style.display = 'none';
+    imgBox.classList.remove('visible');
+
+    const displayName = cp_name || (mode === 'single' ? 'เช็คชื่อรับสิทธิ์สุ่มรางวัล' : `รอบที่ ${cp_index}`);
+    if (mode === 'single') {
+      cpBadge.textContent = `🎯 ${displayName}`;
+    } else {
+      cpBadge.textContent = `📍 ${displayName} (สะสมแต้ม ${total_cps || 2} รอบ)`;
+    }
+
+    cpStatus.textContent = '🟢 กำลังเปิดรับ';
+    cpStatus.style.color = '#10b981';
+    cpStatus.style.background = 'rgba(16, 185, 129, 0.2)';
+
+    cpCode.textContent = code;
+    if (cpFill) cpFill.style.width = '100%';
+    if (cpCountdownRect) cpCountdownRect.style.strokeDashoffset = '0';
+
+    if (duration_sec > 0) {
+      const m = Math.floor(duration_sec / 60);
+      const s = Math.floor(duration_sec % 60);
+      cpTimer.textContent = `⏱️ เหลือเวลา: ${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    } else {
+      cpTimer.textContent = '⏱️ เปิดรับต่อเนื่อง';
+    }
+
+    cpCount.textContent = '👥 ผู้เข้าร่วมรอบนี้: 0 คน';
+
+    const animInClass = resolveFlyInClass(currentConfig.overlay_anim_in, targetPos);
+    cpBox.classList.remove(...allAnimClasses);
+    cpBox.classList.add(animInClass);
+    cpBox.style.display = 'block';
+    void cpBox.offsetWidth;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        cpBox.classList.add('visible');
+      });
+    });
+  }
+}
+
+// อัปเดตเวลานับถอยหลัง
+function updateTick(remaining_sec, total_count) {
+  if (cpTotalDuration > 0) {
+    const pct = Math.max(0, Math.min(100, (remaining_sec / cpTotalDuration) * 100));
+    const m = Math.floor(remaining_sec / 60);
+    const s = Math.floor(remaining_sec % 60);
+    const timeStr = `⏱️ ${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+
+    // หลอดและการ์ดมาตรฐาน
+    if (cpFill) cpFill.style.width = pct + '%';
+    if (imgProgressFill) imgProgressFill.style.width = pct + '%';
+    if (cpTimer) cpTimer.textContent = `⏱️ เหลือเวลา: ${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    const offset = 100 - pct;
+    if (cpCountdownRect) cpCountdownRect.style.strokeDashoffset = String(offset);
+
+    // เส้นขอบรอบภาพแบนเนอร์ (ค่อยๆ หายตามเวลา)
+    if (imgCountdownRect) imgCountdownRect.style.strokeDashoffset = String(offset);
+    if (imgTimerText) imgTimerText.textContent = timeStr;
+  }
+  if (typeof total_count !== 'undefined') {
+    if (cpCount) cpCount.textContent = `👥 ผู้เข้าร่วมรอบนี้: ${total_count} คน`;
+    if (imgCountText) imgCountText.textContent = `👥 ${total_count} คน`;
+  }
+}
+
+// ปิดรอบเช็คชื่อ
+function endCheckpoint(cp_index, total) {
+  if (cpDismissTimer) {
+    clearTimeout(cpDismissTimer);
+    cpDismissTimer = null;
+  }
+  if (cpHideTimer) {
+    clearTimeout(cpHideTimer);
+    cpHideTimer = null;
+  }
+
+  const isImageMode = (currentConfig.overlay_display_mode === 'image' && currentConfig.overlay_has_image);
+  const targetPos = currentConfig.overlay_position || 'top-right';
+
+  if (isImageMode) {
+    if (imgProgressFill) imgProgressFill.style.width = '0%';
+    if (imgCountdownRect) imgCountdownRect.style.strokeDashoffset = '100'; // เส้นขอบหายหมด
+    if (imgTimerText) imgTimerText.textContent = '⏱️ หมดเวลา';
+    if (imgCountText) imgCountText.textContent = `👥 รวม: ${total} คน`;
+
+    // Animation Out ตามที่เลือก
+    cpDismissTimer = setTimeout(() => {
+      const animOutClass = resolveFlyOutClass(currentConfig.overlay_anim_out, targetPos);
+      imgBox.classList.remove('visible');
+      imgBox.classList.add(animOutClass);
+      cpHideTimer = setTimeout(() => {
+        imgBox.style.display = 'none';
+        imgBox.classList.remove(...allAnimClasses);
+      }, 500);
+    }, 1500);
+
+  } else {
+    if (cpStatus) {
+      cpStatus.textContent = '⛔ ปิดรับรอบนี้แล้ว';
+      cpStatus.style.color = '#f87171';
+      cpStatus.style.background = 'rgba(239, 68, 68, 0.2)';
+    }
+    if (cpFill) cpFill.style.width = '0%';
+    if (cpCountdownRect) cpCountdownRect.style.strokeDashoffset = '100';
+    if (cpTimer) cpTimer.textContent = '⏱️ หมดเวลา';
+    if (cpCount) cpCount.textContent = `👥 รวมผ่านรอบนี้: ${total} คน`;
+
+    cpDismissTimer = setTimeout(() => {
+      const animOutClass = resolveFlyOutClass(currentConfig.overlay_anim_out, targetPos);
+      cpBox.classList.remove('visible');
+      cpBox.classList.add(animOutClass);
+      cpHideTimer = setTimeout(() => { 
+        cpBox.style.display = 'none';
+        cpBox.classList.remove(...allAnimClasses);
+      }, 400);
+    }, 1500);
+  }
+}
+
+// แจ้งเตือนเมื่อมีคนพิมพ์เช็คชื่อสำเร็จ (เคารพการตั้งค่า Silent Mode สำหรับรายการใหญ่)
+function showParticipantToast(author, round_count) {
+  cpCount.textContent = `👥 ผู้เข้าร่วมรอบนี้: ${round_count} คน`;
+  imgCountText.textContent = `👥 ${round_count} คน`;
+
+  // ถ้าผู้สตรีมปิดการแจ้งเตือนบนจอ หรือเลือกโหมดซ่อนบนจอ (none) จะไม่เด้งขึ้นมารกจอ
+  if (currentConfig.overlay_display_mode === 'none' || !currentConfig.overlay_show_toast) {
+    return;
+  }
+
+  cpToast.textContent = `✨ ${author} เข้าร่วมแล้ว!`;
+  cpToast.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    cpToast.classList.remove('show');
+  }, 1600);
+}
+
+/* ── SLOT MACHINE / DRAW LOGIC ── */
+let _gwDecelTimers = [];
+let _gwLastPool = [];
+
+function startDraw(prize, tier_label, candidates) {
+  if (slotRollInterval) clearInterval(slotRollInterval);
+  _gwDecelTimers.forEach(t => clearTimeout(t));
+  _gwDecelTimers = [];
+  drawBox.classList.remove('winner');
+  drawBox.classList.add('visible');
+
+  drawPrize.textContent = prize || 'ของรางวัลกิจกรรม';
+  drawTier.textContent = tier_label || 'ผู้มีสิทธิ์ลุ้นรางวัล';
+  drawStatus.textContent = '⚡ กำลังหมุนสุ่มรายชื่อ...';
+  slotName.classList.add('rolling');
+
+  _gwLastPool = (candidates && candidates.length > 0) ? candidates : ['ผู้เข้าร่วมกิจกรรม'];
+  let tickCount = 0;
+
+  slotRollInterval = setInterval(() => {
+    tickCount++;
+    const dummy = _gwLastPool[Math.floor(Math.random() * _gwLastPool.length)];
+    slotName.textContent = dummy;
+    if (tickCount % 2 === 0) playTickSound();
+  }, 75);
+}
+
+function showWinner(author, platform, prize, tier_label) {
+  if (slotRollInterval) clearInterval(slotRollInterval);
+  _gwDecelTimers.forEach(t => clearTimeout(t));
+  _gwDecelTimers = [];
+
+  drawPrize.textContent = prize || 'ของรางวัลกิจกรรม';
+
+  const others = _gwLastPool.filter(n => n !== author);
+  const pool = others.length > 0 ? others : [author];
+
+  // ค่อยๆ ชะลอความเร็วการหมุนชื่อก่อนหยุดลงที่ผู้ชนะ
+  const steps = [45, 50, 60, 75, 95, 120, 150, 190, 240, 305, 385, 480, 600, 750];
+  let acc = 0;
+  steps.forEach(s => {
+    acc += s;
+    const t = setTimeout(() => {
+      const dummy = pool[Math.floor(Math.random() * pool.length)];
+      slotName.textContent = dummy;
+      playTickSound();
+    }, acc);
+    _gwDecelTimers.push(t);
+  });
+
+  const finishTimer = setTimeout(() => {
+    drawBox.classList.add('winner');
+    slotName.classList.remove('rolling');
+    slotName.textContent = author;
+    drawStatus.textContent = '🎉 ขอแสดงความยินดีกับผู้โชคดี! 🎉';
+    playFanfareSound();
+    triggerConfetti();
+  }, acc + 850);
+  _gwDecelTimers.push(finishTimer);
+}
+
+function resetDraw() {
+  if (slotRollInterval) clearInterval(slotRollInterval);
+  drawBox.classList.remove('visible');
+  drawBox.classList.remove('winner');
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   WEBSOCKET CONNECTION
+   ══════════════════════════════════════════════════════════════════ */
+let ws = null;
+function connectWS() {
+  const host = window.location.host || 'localhost:8765';
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = `${proto}//${host}/ws`;
+
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    console.log('Giveaway Overlay connected to server');
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      handleServerEvent(data);
+    } catch(err) {
+      console.error('WS parse error:', err);
+    }
+  };
+
+  ws.onclose = () => {
+    try {
+      resetDraw();
+      if (drawBox) {
+        drawBox.classList.remove('visible', 'winner');
+        drawBox.style.display = 'none';
+      }
+      if (cpBox && (!currentConfig || !currentConfig.active)) {
+        cpBox.classList.remove('visible');
+        cpBox.style.display = 'none';
+      }
+      if (imgBox && (!currentConfig || !currentConfig.active)) {
+        imgBox.classList.remove('visible');
+        imgBox.style.display = 'none';
+      }
+    } catch(e) {}
+    setTimeout(connectWS, 2500);
+  };
+
+  ws.onerror = () => {
+    try { ws.close(); } catch(e) {}
+  };
+}
+
+function handleServerEvent(msg) {
+  switch(msg.type) {
+    case 'giveaway_state':
+    case 'giveaway_config':
+      if (msg.state) {
+        applyConfig(msg.state);
+        if (msg.state.active) {
+          showCheckpoint(
+            msg.state.cp_index,
+            msg.state.code,
+            msg.state.duration_sec,
+            msg.state.mode,
+            msg.state.total_checkpoints,
+            msg.state.cp_name
+          );
+          updateTick(msg.state.remaining_sec, msg.state.round_participants);
+          cpCount.textContent = `👥 ผู้เข้าร่วมรอบนี้: ${msg.state.round_participants} คน`;
+          imgCountText.textContent = `👥 ${msg.state.round_participants} คน`;
+        }
+      }
+      break;
+
+    case 'giveaway_checkpoint_start':
+      if (msg.state) applyConfig(msg.state);
+      showCheckpoint(msg.cp_index, msg.code, msg.duration, msg.mode, msg.total_checkpoints, msg.cp_name);
+      break;
+
+    case 'giveaway_tick':
+      updateTick(msg.remaining, msg.total);
+      break;
+
+    case 'giveaway_checkpoint_end':
+      endCheckpoint(msg.cp_index, msg.total);
+      break;
+
+    case 'giveaway_participant':
+      showParticipantToast(msg.author, msg.round_participants);
+      break;
+
+    case 'giveaway_draw_start':
+      startDraw(msg.prize, msg.tier_label, msg.candidates);
+      break;
+
+    case 'giveaway_draw_winner':
+      showWinner(msg.author, msg.platform, msg.prize, msg.tier_label);
+      break;
+
+    case 'giveaway_draw_reset':
+      resetDraw();
+      break;
+
+    case 'giveaway_preview':
+      if (msg.state) applyConfig(msg.state);
+      showCheckpoint(
+        (msg.state && msg.state.cp_index) || 1,
+        (msg.state && msg.state.code) || '!join',
+        10,
+        (msg.state && msg.state.mode) || 'single',
+        (msg.state && msg.state.total_checkpoints) || 1
+      );
+      setTimeout(() => {
+        endCheckpoint((msg.state && msg.state.cp_index) || 1, 0);
+      }, 3500);
+      break;
+
+    case 'giveaway_data_cleared':
+      resetDraw();
+      cpBox.classList.remove('visible');
+      imgBox.classList.remove('visible');
+      break;
+  }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  const params = new URLSearchParams(window.location.search);
+  const preview = params.get('preview');
+
+  if (preview === 'checkpoint') {
+    showCheckpoint(1, '!join', 120, 'multi', 3);
+    updateTick(75, 12);
+    cpCount.textContent = '👥 ผู้เข้าร่วมรอบนี้: 12 คน';
+    showParticipantToast('NongMild_Channel', 12);
+  } else if (preview === 'image') {
+    applyConfig({
+      overlay_display_mode: 'image',
+      overlay_has_image: true,
+      overlay_position: 'right',
+      overlay_show_countdown_border: true,
+      overlay_show_stats: true
+    });
+    // จำลองภาพตัวอย่างถ้าไม่มีภาพจริง
+    customImg.style.width = '380px';
+    customImg.style.height = '240px';
+    customImg.style.background = 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)';
+    showCheckpoint(1, '!join', 120, 'multi', 3);
+    updateTick(70, 15);
+  } else if (preview === 'winner') {
+    startDraw('บัตรเติมเงิน 500 บาท', '🏆 Tier 1 (แฟนพันธุ์แท้ ครบ 3 ด่าน)', ['Somchai', 'CatLover', 'NongMild']);
+    showWinner('⭐ NongMild_Channel ⭐', 'tiktok', 'บัตรเติมเงิน 500 บาท', '🏆 Tier 1');
+  } else {
+    connectWS();
+  }
+});
+</script>
+</body>
+</html>

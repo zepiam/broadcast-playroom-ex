@@ -264,7 +264,7 @@ class HintSectionWidget(QWidget):
         # ── Card ด้านบน: ข้อมูล + ปุ่ม Copy สรุปทั้งหมด ──
         top_card = QFrame()
         top_card.setStyleSheet(
-            f"QFrame {{ background-color: {COLOR_CARD}; border: 1px solid {COLOR_BORDER}; border-radius: 8px; }}"
+            "QFrame { background-color: #0e1726; border: 1px solid #1e293b; border-radius: 8px; }"
         )
         tcl = QVBoxLayout(top_card)
         tcl.setContentsMargins(14, 12, 14, 12)
@@ -276,7 +276,7 @@ class HintSectionWidget(QWidget):
             "💡 ตารางสรุปคำสั่งที่คนดูสามารถพิมพ์ในแชทได้ (Danmaku สี, สปีดอ่าน, เลือกเสียง, มาร์กคลิป, มินิเกม)\n"
             "สตรีมเมอร์สามารถคลิกปุ่มด้านขวาเพื่อคัดลอกสรุปคำสั่งไปโพสต์ใน Discord, แชทบอท หรือใต้คลิปได้ทันที"
         )
-        desc_lbl.setStyleSheet("color: #9ca3af; font-size: 12px; line-height: 1.4;")
+        desc_lbl.setStyleSheet("color: #94a3b8; font-size: 12px; line-height: 1.4;")
         desc_lbl.setWordWrap(True)
         th.addWidget(desc_lbl, 1)
 
@@ -285,10 +285,10 @@ class HintSectionWidget(QWidget):
         self.btn_copy_all.setCursor(Qt.PointingHandCursor)
         self.btn_copy_all.setToolTip("คัดลอกสรุปคำสั่งทั้งหมดลงคลิปบอร์ด เพื่อนำไปใส่ในแชทบอทหรือหน้าสตรีม")
         self.btn_copy_all.setStyleSheet(
-            "QPushButton { background: #7c3aed; color: #ffffff; border: none; "
-            "border-radius: 6px; padding: 0 14px; font-size: 12px; font-weight: 700; }"
-            "QPushButton:hover { background: #6d28d9; }"
-            "QPushButton:pressed { background: #5b21b6; }"
+            "QPushButton { background: #0c2135; color: #38bdf8; border: 1px solid #0284c7; "
+            "border-radius: 6px; padding: 0 16px; font-size: 13px; font-weight: 700; }"
+            "QPushButton:hover { background: #0e3052; border-color: #38bdf8; color: #e0f2fe; }"
+            "QPushButton:pressed { background: #075985; }"
         )
         self.btn_copy_all.clicked.connect(self._copy_all_commands)
         th.addWidget(self.btn_copy_all)
@@ -313,12 +313,12 @@ class HintSectionWidget(QWidget):
 
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("🔍 ค้นหาคำสั่ง / ฟังก์ชั่น...")
-        self.search_input.setFixedHeight(28)
-        self.search_input.setFixedWidth(200)
+        self.search_input.setFixedHeight(30)
+        self.search_input.setFixedWidth(220)
         self.search_input.setStyleSheet(
-            f"QLineEdit {{ background: #0a0e1a; color: #e5e7eb; border: 1px solid #2a2f45; "
-            f"border-radius: 6px; padding: 0 8px; font-size: 12px; }}"
-            f"QLineEdit:focus {{ border-color: {COLOR_ACCENT}; }}"
+            "QLineEdit { background: #131d31; color: #f8fafc; border: 1.5px solid #283548; "
+            "border-radius: 6px; padding: 0 10px; font-size: 12.5px; }"
+            "QLineEdit:focus { border-color: #38bdf8; background: #16243d; }"
         )
         self.search_input.textChanged.connect(self._on_search_changed)
         tb_row.addWidget(self.search_input)
@@ -342,24 +342,24 @@ class HintSectionWidget(QWidget):
         self.table.setWordWrap(True)
         self.table.setStyleSheet("""
             QTableWidget {
-                background-color: #0b0f19;
-                border: 1px solid #2a2f45;
+                background-color: #0e1726;
+                border: 1px solid #1e293b;
                 border-radius: 6px;
-                gridline-color: #1e2638;
-                color: #e5e7eb;
+                gridline-color: #1e293b;
+                color: #e2e8f0;
             }
             QTableWidget::item {
                 padding: 8px 10px;
-                border-bottom: 1px solid #1a2234;
+                border-bottom: 1px solid #1e293b;
             }
             QHeaderView::section {
-                background-color: #131726;
-                color: #facc15;
+                background-color: #131d31;
+                color: #38bdf8;
                 padding: 8px;
                 border: none;
-                border-bottom: 2px solid #2a2f45;
+                border-bottom: 1px solid #1e293b;
                 font-weight: 700;
-                font-size: 12px;
+                font-size: 12.5px;
             }
         """)
         layout.addWidget(self.table, 1)
@@ -370,6 +370,8 @@ class HintSectionWidget(QWidget):
             item = self.cat_btn_layout.takeAt(0)
             w = item.widget()
             if w:
+                w.hide()
+                w.setParent(None)
                 w.deleteLater()
         self.btn_cats.clear()
 
@@ -406,14 +408,14 @@ class HintSectionWidget(QWidget):
     def _update_cat_btn_style(self, btn, is_selected):
         if is_selected:
             btn.setStyleSheet(
-                "QPushButton { background: #7c3aed; color: #ffffff; border: 1px solid #a78bfa; "
-                "border-radius: 4px; padding: 0 10px; font-size: 11px; font-weight: 700; }"
+                "QPushButton { background: #0284c7; color: #ffffff; border: 1px solid #38bdf8; "
+                "border-radius: 6px; padding: 0 12px; font-size: 11.5px; font-weight: 700; }"
             )
         else:
             btn.setStyleSheet(
-                "QPushButton { background: #131726; color: #94a3b8; border: 1px solid #2a2f45; "
-                "border-radius: 4px; padding: 0 10px; font-size: 11px; font-weight: 600; }"
-                "QPushButton:hover { background: #1e293b; color: #f1f5f9; }"
+                "QPushButton { background: #162032; color: #94a3b8; border: 1px solid #283548; "
+                "border-radius: 6px; padding: 0 12px; font-size: 11.5px; font-weight: 600; }"
+                "QPushButton:hover { background: #1e293b; color: #f1f5f9; border-color: #38bdf8; }"
             )
 
     def _set_category_filter(self, cat_key):

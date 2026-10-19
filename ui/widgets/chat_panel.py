@@ -24,6 +24,7 @@ class ChatPanel(QFrame):
     code_mute_toggled = Signal(bool)  # emit True = muted (ปิดเสียงโค้ดลับ)
     send_requested = Signal(str, str, bool)  # ★ emit (text, platforms_json, read_tts) — JSON string กัน Qt signal issue
     ask_toggled = Signal()                    # ★ ปุ่ม ASK — toggle แผงโพล
+    giveaway_toggled = Signal()               # ★ ปุ่ม Giveaway — toggle แผงสุ่มแจกรางวัล
     connect_bot_requested = Signal()  # ★ emit เมื่อกดปุ่ม "เชื่อมต่อแชทบอท"
     bot_toggle_requested = Signal(bool)  # ★ emit เมื่อ toggle Enable/Disable Chat Bot
     bot_platforms_changed = Signal(dict)  # ★ emit {platform: bool} เมื่อติ๊กเมนูเร็ว
@@ -94,6 +95,15 @@ class ChatPanel(QFrame):
         self._ask_active = False
         self.btn_ask.clicked.connect(self._on_ask_btn)
         hlayout.addWidget(self.btn_ask)
+        # ★ Giveaway — เปิด/ปิดแผงสุ่มแจกรางวัล
+        self.btn_giveaway = QPushButton("🎁")
+        self.btn_giveaway.setObjectName("IconButton")
+        self.btn_giveaway.setFixedSize(34, 30)
+        self.btn_giveaway.setCursor(Qt.PointingHandCursor)
+        self.btn_giveaway.setToolTip("ระบบเช็คชื่อ & สุ่มแจกรางวัล (Giveaway)")
+        self.btn_giveaway.setStyleSheet("font-size: 15px; padding: 0px;")
+        self.btn_giveaway.clicked.connect(self.giveaway_toggled.emit)
+        hlayout.addWidget(self.btn_giveaway)
         # ★ System message toggle
         self.btn_system = QPushButton("🔔")
         self.btn_system.setObjectName("IconButton")

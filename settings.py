@@ -219,6 +219,23 @@ class AppSettings:
     twitch_bot_enabled: bool = False    # เปิด/ปิด bot
     ask_post_result: bool = True        # ★ ASK — โพสผลสรุปโหวตลงแชทเมื่อจบโหวต
     ask_presets: list = field(default_factory=list)  # ★ [{name, question, choices, answer_mode}]
+    ask_layout: str = "vright"          # vright | vleft | hband | minimal | lite
+    ask_theme: str = "violet"           # violet, neon, gold, rose, emerald, etc.
+    ask_scale: float = 1.0              # 0.5 - 2.0
+    ask_extend_pct: int = 20            # 20 - 30 %
+    ask_min_width: int = 340            # 220 - 700 px
+    ask_pos_x: int = 85                 # 5 - 95 %
+    ask_pos_y: int = 12                 # 5 - 95 %
+    ask_offset_x: int = 0               # -500 to +500 px
+    ask_offset_y: int = 0               # -500 to +500 px
+    ask_opacity_pct: int = 100          # 10 - 100 %
+    ask_question_fs: int = 24           # 12 - 60 px
+    ask_choice_fs: int = 18             # 10 - 40 px
+    ask_countdown_style: str = "text"   # text | bar | both
+    ask_bar_style: str = "classic"      # classic, striped, segmented, glow, etc.
+    ask_frame_style: str = "classic"    # classic, sharp, floating, glow, etc.
+    ask_anim_in: str = "fade"           # fade | slide-up | slide-down | slide-left | slide-right | etc.
+    ask_anim_out: str = "fade"
     twitch_bot_name: str = "Baitoei-Bot"  # ★ ชื่อบอท (label ในโปรแกรม — ใช้ดัก TTS ไม่อ่าน)
     twitch_bot_commands: dict = field(default_factory=lambda: {
         "!dc": "Discord: https://discord.gg/xxx",
@@ -773,6 +790,23 @@ class AppSettings:
             "twitch_bot_enabled": bool(self.twitch_bot_enabled),
             "ask_post_result": bool(self.ask_post_result),
             "ask_presets": list(self.ask_presets),
+            "ask_layout": str(self.ask_layout),
+            "ask_theme": str(self.ask_theme),
+            "ask_scale": float(self.ask_scale),
+            "ask_extend_pct": int(self.ask_extend_pct),
+            "ask_min_width": int(self.ask_min_width),
+            "ask_pos_x": int(self.ask_pos_x),
+            "ask_pos_y": int(self.ask_pos_y),
+            "ask_offset_x": int(self.ask_offset_x),
+            "ask_offset_y": int(self.ask_offset_y),
+            "ask_opacity_pct": int(self.ask_opacity_pct),
+            "ask_question_fs": int(self.ask_question_fs),
+            "ask_choice_fs": int(self.ask_choice_fs),
+            "ask_countdown_style": str(self.ask_countdown_style),
+            "ask_bar_style": str(self.ask_bar_style),
+            "ask_frame_style": str(self.ask_frame_style),
+            "ask_anim_in": str(self.ask_anim_in),
+            "ask_anim_out": str(self.ask_anim_out),
             "twitch_bot_name": self.twitch_bot_name,
             "twitch_bot_commands": self.twitch_bot_commands,
             "twitch_bot_timers": self.twitch_bot_timers,
@@ -1146,6 +1180,40 @@ class AppSettings:
             s.ask_post_result = bool(data["ask_post_result"])
         if "ask_presets" in data:
             s.ask_presets = list(data["ask_presets"] or [])
+        if "ask_layout" in data:
+            s.ask_layout = str(data["ask_layout"])
+        if "ask_theme" in data:
+            s.ask_theme = str(data["ask_theme"])
+        if "ask_scale" in data:
+            s.ask_scale = float(data["ask_scale"])
+        if "ask_extend_pct" in data:
+            s.ask_extend_pct = int(data["ask_extend_pct"])
+        if "ask_min_width" in data:
+            s.ask_min_width = int(data["ask_min_width"])
+        if "ask_pos_x" in data:
+            s.ask_pos_x = int(data["ask_pos_x"])
+        if "ask_pos_y" in data:
+            s.ask_pos_y = int(data["ask_pos_y"])
+        if "ask_offset_x" in data:
+            s.ask_offset_x = int(data["ask_offset_x"])
+        if "ask_offset_y" in data:
+            s.ask_offset_y = int(data["ask_offset_y"])
+        if "ask_opacity_pct" in data:
+            s.ask_opacity_pct = int(data["ask_opacity_pct"])
+        if "ask_question_fs" in data:
+            s.ask_question_fs = int(data["ask_question_fs"])
+        if "ask_choice_fs" in data:
+            s.ask_choice_fs = int(data["ask_choice_fs"])
+        if "ask_countdown_style" in data:
+            s.ask_countdown_style = str(data["ask_countdown_style"])
+        if "ask_bar_style" in data:
+            s.ask_bar_style = str(data["ask_bar_style"])
+        if "ask_frame_style" in data:
+            s.ask_frame_style = str(data["ask_frame_style"])
+        if "ask_anim_in" in data:
+            s.ask_anim_in = str(data["ask_anim_in"])
+        if "ask_anim_out" in data:
+            s.ask_anim_out = str(data["ask_anim_out"])
         if "twitch_bot_name" in data:
             s.twitch_bot_name = str(data["twitch_bot_name"])
         if "twitch_bot_commands" in data:

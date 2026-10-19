@@ -82,6 +82,10 @@ class StatusBar(QFrame):
         theme.styled(self.version_label, "color: #6b7280; font-size: 13px;")
         layout.addWidget(self.version_label)
 
+        from PySide6.QtWidgets import QSizeGrip
+        self.sizegrip = QSizeGrip(self)
+        layout.addWidget(self.sizegrip, 0, Qt.AlignBottom | Qt.AlignRight)
+
     def set_status(self, msg):
         self.status_label.setText(msg)
 

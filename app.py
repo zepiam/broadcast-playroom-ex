@@ -96,6 +96,8 @@ class TTSForLivestreamApp(QMainWindow):
     _tts_status_sig = Signal(str, str, object)  # (tts_id, status, info dict)
     # ★ TTS server health status — probe / pipeline → main thread (status, latency, error)
     _tts_health_sig = Signal(str, float, str)
+    # ★ OBS Quick Control Dock action — aiohttp thread → main thread
+    _dock_action_sig = Signal(dict)
 
     def __init__(self):
         super().__init__()
@@ -109,6 +111,7 @@ class TTSForLivestreamApp(QMainWindow):
         self._chat_message.connect(self._on_chat_message)
         self._tts_status_sig.connect(self._on_tts_status_ui)
         self._tts_health_sig.connect(self._on_tts_health_ui)
+        self._dock_action_sig.connect(self._handle_dock_action_main)
         self._tts_health_alerted = False  # แจ้งเตือนลง Live Chat แค่ครั้งเดียวต่อการเปิดโปรแกรม 1 ครั้ง
         self._platform_error.connect(self._on_platform_error_signal)
         self._viewer_update.connect(self._update_viewer_ui)
@@ -259,6 +262,9 @@ class TTSForLivestreamApp(QMainWindow):
         self._ask_state = None          # poll active หรือ None
         self._ask_gen = 0               # token กัน timer รุ่นเก่าปิดโพลใหม่
         self._ask_panel = None          # AskPanel (สร้างเมื่อกดปุ่มครั้งแรก)
+        # ★ Giveaway / Loyalty Draw (สร้างเมื่อกดปุ่มครั้งแรก)
+        self._giveaway_service = None
+        self._giveaway_panel = None
         # ★ ข้อความที่เพิ่งส่งผ่านช่องพิมพ์โปรแกรม [(text, ts), ...]
         #   ใช้แยก: IRC echo ของที่โปรแกรมส่ง (ซ่อน — โปรแกรม echo แล้ว)
         #   กับข้อความที่เราพิมพ์ตรง ๆ บนหน้า Twitch (แสดงปกติ แต่ไม่อ่าน TTS)
@@ -645,6 +651,10 @@ class TTSForLivestreamApp(QMainWindow):
             self.overlay_server = OverlayServer(self.settings)
             if self.overlay_server.start():
                 logger.info("Overlay server started")
+                if self._giveaway_service is None:
+                    from giveaway_service import GiveawayService
+                    self._giveaway_service = GiveawayService(self)
+                self.overlay_server.set_giveaway_service(self._giveaway_service)
             else:
                 self.overlay_server = None
         except Exception as e:
@@ -660,9 +670,12 @@ class TTSForLivestreamApp(QMainWindow):
             # ★ callbacks
             self.composer_server.on_save_widgets = self._save_composer_widgets
             self.composer_server.on_save_playroom_triggers = self._save_playroom_triggers
+            # ★ callback คำสั่งควบคุมด่วนจาก OBS Dock
+            self.composer_server.on_dock_action = lambda data: self._dock_action_sig.emit(data)
             # ★ "เพิ่ม/แก้ไข Trigger" ใน composer → เปิดแท็บ Playroom settings
             #   (ถูกเรียกจาก aiohttp thread → emit Signal เพื่อ marshal ไป main thread)
             self.composer_server.on_open_playroom_settings = lambda: self._open_playroom_sig.emit()
+            self.composer_server._last_voice_gender = getattr(self.settings, 'edge_voice', 'premwadee')
             if self.composer_server.start():
                 actual_port = self.composer_server.port  # ★ port จริง (อาจเปลี่ยนถ้า default ไม่ว่าง)
                 logger.info(f"Composer server: http://localhost:{actual_port}")
@@ -688,6 +701,8 @@ class TTSForLivestreamApp(QMainWindow):
                         except Exception:
                             pass
                     QTimer.singleShot(3000, _warn_port_changed)
+                # ★ เชื่อมต่อ GiveawayService ตั้งแต่เริ่ม เพื่อให้ OBS Dock ใช้งานได้ทันที
+                self._ensure_giveaway_service()
             else:
                 logger.error("Composer server failed to start")
                 self.composer_server = None
@@ -1349,6 +1364,8 @@ class TTSForLivestreamApp(QMainWindow):
         self.chat_panel.send_requested.connect(self._on_chat_send)
         # ★ ปุ่ม ASK (หลัง A+) — toggle แผงโพล
         self.chat_panel.ask_toggled.connect(self._toggle_ask_panel)
+        # ★ ปุ่ม Giveaway (ข้างปุ่ม ASK) — toggle แผงสุ่มแจกรางวัล
+        self.chat_panel.giveaway_toggled.connect(self._toggle_giveaway_panel)
         # ★ checkbox "TTS" ข้างปุ่มส่ง — โหลดค่าล่าสุดจาก settings + บันทึกทุกครั้งที่ติ๊ก
         try:
             self.chat_panel.tts_check.setChecked(
@@ -2017,6 +2034,20 @@ class TTSForLivestreamApp(QMainWindow):
                 and getattr(msg, 'event', 'message') == 'message'):
             if self._ask_try_vote(getattr(msg, 'platform', ''), msg.author or '', msg.text or ''):
                 skip_tts = True
+        # ★ Giveaway — ดักจับโค้ดเช็คชื่อ/สะสมแต้ม → บันทึกผู้เข้าร่วม + ไม่อ่าน TTS
+        #   (ต้องไม่ติด skip_tts จาก is_command เพราะโค้ด giveaway มักเป็นคำสั่ง เช่น !join)
+        if (not is_bot and getattr(self, '_giveaway_service', None) is not None
+                and self._giveaway_service.is_checkpoint_active()
+                and getattr(msg, 'event', 'message') == 'message'):
+            try:
+                if self._giveaway_service.try_checkin(
+                        getattr(msg, 'platform', ''),
+                        getattr(msg, 'author', '') or '',
+                        getattr(msg, 'text', '') or '',
+                        getattr(msg, 'avatar', '') or ''):
+                    skip_tts = True
+            except Exception as e:
+                logger.debug(f"giveaway checkin error: {e}")
 
         # ★ ไอคอนสถานะ TTS — ข้าม → ⊘ / pipeline ไม่พร้อม → ⊘
         if getattr(msg, 'event', 'message') == 'message':
@@ -2640,24 +2671,62 @@ class TTSForLivestreamApp(QMainWindow):
         except Exception:
             return False
 
-    def _ask_require_widget(self) -> bool:
-        """★ เช็คก่อนใช้ ASK — ไม่มี widget ใน Overlay → บล็อก + แจ้งวิธีแก้"""
+    def _ensure_ask_widget(self) -> bool:
+        """★ ตรวจสอบว่ามี ASK widget ใน Composer ไหม — ถ้ายังไม่มี ให้ auto-add ให้อัตโนมัติ"""
         if self._ask_widget_exists():
             return True
-        self._post_system_message(
-            "⚠️ โหมด ASK จำเป็นต้องใส่ Overlay ASK ก่อนถึงจะใช้ได้ "
-            "(เพิ่มได้ที่ Composer → เพิ่ม Widget → 🗳️ ASK)")
-        self.status_bar.set_status("⚠️ ยังไม่มี ASK widget ใน Overlay — เพิ่มก่อนที่ Composer")
-        return False
+        try:
+            widgets = list(getattr(self.settings, "composer_widgets", []) or [])
+            found = False
+            for w in widgets:
+                if isinstance(w, dict) and w.get("type") == "ask":
+                    w["enabled"] = True
+                    found = True
+                    break
+            if not found:
+                widgets.append({
+                    "id": f"ask_{int(time.time())}",
+                    "type": "ask",
+                    "name": "ASK โพล",
+                    "x": 0, "y": 0,
+                    "w": 1920, "h": 1080,
+                    "z": len(widgets) + 1,
+                    "enabled": True,
+                    "alpha": 1.0,
+                    "ask_layout": getattr(self.settings, "ask_layout", "vright"),
+                    "ask_theme": getattr(self.settings, "ask_theme", "violet"),
+                    "ask_bar_style": getattr(self.settings, "ask_bar_style", "classic"),
+                    "ask_frame_style": getattr(self.settings, "ask_frame_style", "classic"),
+                    "ask_countdown_style": getattr(self.settings, "ask_countdown_style", "text"),
+                    "ask_scale": getattr(self.settings, "ask_scale", 1.0),
+                    "ask_extend_pct": getattr(self.settings, "ask_extend_pct", 20),
+                    "ask_min_width": getattr(self.settings, "ask_min_width", 340),
+                    "ask_pos_x": getattr(self.settings, "ask_pos_x", 85),
+                    "ask_pos_y": getattr(self.settings, "ask_pos_y", 12),
+                    "ask_opacity_pct": getattr(self.settings, "ask_opacity_pct", 100),
+                    "ask_question_fs": getattr(self.settings, "ask_question_fs", 24),
+                    "ask_choice_fs": getattr(self.settings, "ask_choice_fs", 18),
+                    "ask_anim_in": getattr(self.settings, "ask_anim_in", "fade"),
+                    "ask_anim_out": getattr(self.settings, "ask_anim_out", "fade"),
+                })
+            self.settings.composer_widgets = widgets
+            if self.composer_server:
+                self.composer_server.update_config(self.settings)
+            self._post_system_message("🗳️ เปิดใช้งาน Overlay ASK บน Composer อัตโนมัติเรียบร้อย!")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to auto-add ask widget: {e}")
+            return False
+
+    def _ask_require_widget(self) -> bool:
+        """★ เช็คก่อนใช้ ASK — ถ้ายังไม่มี ให้ auto-add ให้อัตโนมัติ"""
+        if self._ask_widget_exists():
+            return True
+        return self._ensure_ask_widget()
 
     def _toggle_ask_panel(self):
-        """เปิด/ปิดแผง ASK (หน้าต่างลอยด้านขวา ใต้ TopBar)
-
-        ★ ต้องมี ASK widget ใน Composer layout ก่อน — ไม่มี = กดไม่ได้ + แจ้งเตือน
-        """
+        """เปิด/ปิดแผง ASK (หน้าต่างลอยด้านขวา ใต้ TopBar)"""
         try:
-            if not self._ask_require_widget():
-                return
             if self._ask_panel is None:
                 from ui.widgets.ask_panel import AskPanel
                 self._ask_panel = AskPanel(self)
@@ -2668,6 +2737,31 @@ class TTSForLivestreamApp(QMainWindow):
                 self._ask_panel.presets_load_requested.connect(self._ask_push_presets)
                 self._ask_panel.preset_save_requested.connect(self._ask_save_preset)
                 self._ask_panel.preset_delete_requested.connect(self._ask_delete_preset)
+                # ★ display settings & preview
+                self._ask_panel.display_settings_changed.connect(self._on_ask_display_settings_changed)
+                self._ask_panel.preview_requested.connect(self._on_ask_preview_requested)
+                self._ask_panel.closed.connect(self._update_ask_panel_btn)
+                
+                # โหลดการตั้งค่าหน้าตาปัจจุบันเข้าแผง
+                self._ask_panel.set_display_settings({
+                    "ask_layout": getattr(self.settings, "ask_layout", "vright"),
+                    "ask_theme": getattr(self.settings, "ask_theme", "violet"),
+                    "ask_bar_style": getattr(self.settings, "ask_bar_style", "classic"),
+                    "ask_frame_style": getattr(self.settings, "ask_frame_style", "classic"),
+                    "ask_countdown_style": getattr(self.settings, "ask_countdown_style", "text"),
+                    "ask_scale": getattr(self.settings, "ask_scale", 1.0),
+                    "ask_extend_pct": getattr(self.settings, "ask_extend_pct", 20),
+                    "ask_min_width": getattr(self.settings, "ask_min_width", 340),
+                    "ask_pos_x": getattr(self.settings, "ask_pos_x", 85),
+                    "ask_pos_y": getattr(self.settings, "ask_pos_y", 12),
+                    "ask_offset_x": getattr(self.settings, "ask_offset_x", 0),
+                    "ask_offset_y": getattr(self.settings, "ask_offset_y", 0),
+                    "ask_opacity_pct": getattr(self.settings, "ask_opacity_pct", 100),
+                    "ask_question_fs": getattr(self.settings, "ask_question_fs", 24),
+                    "ask_choice_fs": getattr(self.settings, "ask_choice_fs", 18),
+                    "ask_anim_in": getattr(self.settings, "ask_anim_in", "fade"),
+                    "ask_anim_out": getattr(self.settings, "ask_anim_out", "fade"),
+                })
                 self._ask_push_presets()
                 # restore สถานะโพลเดิม (ถ้ามี)
                 if self._ask_state:
@@ -2676,25 +2770,94 @@ class TTSForLivestreamApp(QMainWindow):
                         self._ask_panel.show_voting(self._ask_payload())
                     else:
                         self._ask_panel.show_ended(self._ask_payload())
+            self._ask_panel._check_widget_status()
             if self._ask_panel.isVisible():
                 self._ask_panel.hide()
             else:
-                # ★ ข้อ 6: ชิดขวาตามขอบโปรแกรมเสมอ (resize/เต็มจอก็ตาม)
-                self._ask_panel.adjustSize()
-                self._ask_panel.move(
-                    max(10, self.width() - self._ask_panel.width() - 16), 84)
                 self._ask_panel.show()
                 self._ask_panel.raise_()
-            # ★ sync สีปุ่ม ASK ใน composer toolbar (เทา=ปิด / เขียว=เปิด)
+                self._ask_panel.activateWindow()
             self._update_ask_panel_btn()
         except Exception as e:
             logger.error(f"_toggle_ask_panel error: {e}", exc_info=True)
 
-    def _ask_push_presets(self):
-        """ส่งรายการ preset ล่าสุดให้ panel"""
+    def _giveaway_widget_exists(self) -> bool:
+        """★ มี Giveaway widget ใน Composer layout ไหม (เปิดใช้งานอยู่)"""
         try:
+            widgets = getattr(self.settings, "composer_widgets", None) or []
+            return any(isinstance(w, dict) and w.get("type") == "giveaway"
+                       and w.get("enabled", True) for w in widgets)
+        except Exception:
+            return False
+
+    def _ensure_giveaway_widget(self) -> bool:
+        """★ ตรวจสอบว่ามี Giveaway widget ใน Composer ไหม — ถ้ายังไม่มี ให้ auto-add ให้อัตโนมัติ"""
+        if self._giveaway_widget_exists():
+            return True
+        try:
+            widgets = list(getattr(self.settings, "composer_widgets", []) or [])
+            found = False
+            for w in widgets:
+                if isinstance(w, dict) and w.get("type") == "giveaway":
+                    w["enabled"] = True
+                    found = True
+                    break
+            if not found:
+                widgets.append({
+                    "id": f"giveaway_{int(time.time())}",
+                    "type": "giveaway",
+                    "name": "Giveaway",
+                    "x": 0, "y": 0,
+                    "w": 1920, "h": 1080,
+                    "z": len(widgets) + 1,
+                    "enabled": True,
+                    "alpha": 1.0,
+                })
+            self.settings.composer_widgets = widgets
+            if self.composer_server:
+                self.composer_server.update_config(self.settings)
+            self._post_system_message("🎁 เปิดใช้งาน Overlay Giveaway บน Composer อัตโนมัติเรียบร้อย!")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to auto-add giveaway widget: {e}")
+            return False
+
+    def _ensure_giveaway_service(self):
+        """มั่นใจว่า GiveawayService ถูกสร้างและเชื่อมต่อกับ composer_server และ overlay_server เสมอ"""
+        if self._giveaway_service is None:
+            from giveaway_service import GiveawayService
+            self._giveaway_service = GiveawayService(self)
+        if self.composer_server is not None and getattr(self.composer_server, 'giveaway_service', None) is None:
+            self.composer_server.set_giveaway_service(self._giveaway_service)
+        if getattr(self, "overlay_server", None) is not None and getattr(self.overlay_server, 'giveaway_service', None) is None:
+            self.overlay_server.set_giveaway_service(self._giveaway_service)
+        return self._giveaway_service
+
+    def _toggle_giveaway_panel(self):
+        """เปิด/ปิดหน้าต่างระบบเช็คชื่อ & สุ่มแจกรางวัล (Loyalty Giveaway)"""
+        try:
+            self._ensure_giveaway_service()
+            if self._giveaway_panel is None:
+                from ui.widgets.giveaway_panel import GiveawayPanel
+                self._giveaway_panel = GiveawayPanel(self._giveaway_service)
+            self._giveaway_panel._check_widget_status()
+            if self._giveaway_panel.isVisible():
+                self._giveaway_panel.hide()
+            else:
+                self._giveaway_panel.show()
+                self._giveaway_panel.raise_()
+                self._giveaway_panel.activateWindow()
+        except Exception as e:
+            logger.error(f"_toggle_giveaway_panel error: {e}", exc_info=True)
+
+    def _ask_push_presets(self):
+        """ส่งรายการ preset ล่าสุดให้ panel และ OBS Dock ผ่าน composer_server"""
+        try:
+            presets = getattr(self.settings, 'ask_presets', []) or []
             if self._ask_panel:
-                self._ask_panel.set_presets(getattr(self.settings, 'ask_presets', []) or [])
+                self._ask_panel.set_presets(presets)
+            if getattr(self, "composer_server", None):
+                self.composer_server.push_ask_presets(presets)
         except Exception as e:
             logger.debug(f"_ask_push_presets error: {e}")
 
@@ -2738,7 +2901,10 @@ class TTSForLivestreamApp(QMainWindow):
         ★ ต้องมี ASK widget อยู่ก่อน (เช็คตอนเปิดแผง — อันนี้กัน double)
         """
         try:
-            if not self._ask_require_widget():
+            if not self._ask_widget_exists():
+                self._post_system_message("⚠️ ยังไม่ได้เพิ่ม Widget ASK บน Overlay ครับ กรุณาเปิด Composer เพื่อเพิ่ม Widget ก่อนครับ")
+                if self._ask_panel:
+                    self._ask_panel._check_widget_status()
                 return
             import time as _t
             self._ask_gen += 1
@@ -2993,6 +3159,24 @@ class TTSForLivestreamApp(QMainWindow):
             "realtime": st.get("realtime", True),
             "end_ts": st.get("end_ts"),
             "duration_sec": st.get("duration_sec"),  # ★ ใช้คิด % หลอดเวลานับถอยหลัง
+            # ★ ค่าตกแต่งหน้าตาจาก Settings เพื่อให้อัปเดตสดบน Overlay
+            "ask_layout": getattr(self.settings, "ask_layout", "vright"),
+            "ask_theme": getattr(self.settings, "ask_theme", "violet"),
+            "ask_bar_style": getattr(self.settings, "ask_bar_style", "classic"),
+            "ask_frame_style": getattr(self.settings, "ask_frame_style", "classic"),
+            "ask_countdown_style": getattr(self.settings, "ask_countdown_style", "text"),
+            "ask_scale": getattr(self.settings, "ask_scale", 1.0),
+            "ask_extend_pct": getattr(self.settings, "ask_extend_pct", 20),
+            "ask_min_width": getattr(self.settings, "ask_min_width", 340),
+            "ask_pos_x": getattr(self.settings, "ask_pos_x", 85),
+            "ask_pos_y": getattr(self.settings, "ask_pos_y", 12),
+            "ask_offset_x": getattr(self.settings, "ask_offset_x", 0),
+            "ask_offset_y": getattr(self.settings, "ask_offset_y", 0),
+            "ask_opacity_pct": getattr(self.settings, "ask_opacity_pct", 100),
+            "ask_question_fs": getattr(self.settings, "ask_question_fs", 24),
+            "ask_choice_fs": getattr(self.settings, "ask_choice_fs", 18),
+            "ask_anim_in": getattr(self.settings, "ask_anim_in", "fade"),
+            "ask_anim_out": getattr(self.settings, "ask_anim_out", "fade"),
         }
 
     def _ask_push(self):
@@ -3002,6 +3186,106 @@ class TTSForLivestreamApp(QMainWindow):
                 self.composer_server.push_ask_state(self._ask_payload())
         except Exception as e:
             logger.debug(f"_ask_push error: {e}")
+
+    def _on_ask_display_settings_changed(self, cfg: dict):
+        """บันทึกและ sync การตั้งค่าหน้าตา ASK ไปยัง settings + composer_widgets + composer_server"""
+        try:
+            for k, v in cfg.items():
+                setattr(self.settings, k, v)
+            # Sync ไปยัง widget ใน composer_widgets เพื่อให้ config ใน editor และ overlay ตรงกัน
+            widgets = list(getattr(self.settings, "composer_widgets", []) or [])
+            updated = False
+            for w in widgets:
+                if isinstance(w, dict) and w.get("type") == "ask":
+                    for k, v in cfg.items():
+                        w[k] = v
+                    updated = True
+            if updated:
+                self.settings.composer_widgets = widgets
+            self.save_settings()
+            if self.composer_server:
+                self.composer_server.update_config(self.settings)
+            # ถ้ามีโพลกำลังทำงานอยู่ หรือโพลพรีวิว ให้ push state ซ้ำทันที
+            if self._ask_state is not None:
+                self._ask_push()
+            elif hasattr(self, '_ask_panel') and self._ask_panel and getattr(self._ask_panel, '_active_demo', None):
+                self._on_ask_preview_requested(self._ask_panel._active_demo, silent=True)
+        except Exception as e:
+            logger.debug(f"_on_ask_display_settings_changed error: {e}")
+
+    def _on_ask_preview_requested(self, mode: str = "vote", silent: bool = False):
+        """แสดงตัวอย่าง ASK บนหน้าจอ OBS จริงค้างไว้จนกว่าจะกดปิดหรือปิดหน้าต่าง"""
+        try:
+            if mode == "stop":
+                self._ask_gen += 1
+                if self.composer_server:
+                    self.composer_server.push_ask_state({"active": False})
+                if not silent:
+                    self._post_system_message("⏹️ ปิดตัวอย่างแสดงผล ASK บน OBS แล้ว")
+                return
+
+            if self._ask_state is not None:
+                self._post_system_message("⚠️ มีโพลจริงกำลังทำงานอยู่ ไม่สามารถเปิดตัวอย่างได้")
+                if hasattr(self, '_ask_panel') and self._ask_panel:
+                    self._ask_panel.reset_demo_state()
+                return
+
+            self._ask_gen += 1
+            gen = self._ask_gen
+            if mode == "result":
+                sample = {
+                    "active": True,
+                    "phase": "ended",
+                    "question": "🍕 มื้อนี้กินอะไรดี? (ตัวอย่างบน OBS)",
+                    "choices": ["ชาบู / หมูกระทะ", "พิซซ่าเตาฟืน", "ส้มตำแซ่บๆ", "ข้าวมันไก่"],
+                    "keys": ["A", "B", "C", "D"],
+                    "counts": [42, 28, 15, 8],
+                    "total_voters": 93,
+                    "per_platform": {"twitch": 50, "youtube": 43},
+                    "realtime": True,
+                    "end_ts": None,
+                    "duration_sec": 30,
+                    "is_demo": True,
+                }
+            else:
+                sample = {
+                    "active": True,
+                    "phase": "voting",
+                    "question": "🎮 คืนนี้เล่นเกมอะไรต่อดี? (ตัวอย่างบน OBS)",
+                    "choices": ["Valorant", "Apex Legends", "Minecraft", "Story Game"],
+                    "keys": ["A", "B", "C", "D"],
+                    "counts": [18, 25, 12, 7],
+                    "total_voters": 62,
+                    "per_platform": {"twitch": 35, "youtube": 27},
+                    "realtime": True,
+                    "end_ts": time.time() + 10,
+                    "duration_sec": 10,
+                    "is_demo": True,
+                }
+            # เติมค่าตกแต่งหน้าตาจาก Settings
+            for k in [
+                "ask_layout", "ask_theme", "ask_bar_style", "ask_frame_style",
+                "ask_countdown_style", "ask_scale", "ask_extend_pct", "ask_min_width",
+                "ask_pos_x", "ask_pos_y", "ask_offset_x", "ask_offset_y", "ask_opacity_pct",
+                "ask_question_fs", "ask_choice_fs", "ask_anim_in", "ask_anim_out"
+            ]:
+                sample[k] = getattr(self.settings, k, None)
+
+            if self.composer_server:
+                self.composer_server.push_ask_state(sample)
+            if not silent:
+                mode_th = "กำลังโหวต" if mode == "vote" else "สรุปผล"
+                self._post_system_message(f"👁️ แสดงตัวอย่าง ASK ({mode_th}) บน OBS ค้างไว้สำหรับการปรับแต่ง (กดปุ่มเดิมหรือปิดหน้าต่างเพื่อปิด)")
+        except Exception as e:
+            logger.debug(f"_on_ask_preview_requested error: {e}")
+
+    def _clear_ask_preview_guarded(self, gen: int):
+        try:
+            if gen == self._ask_gen and self._ask_state is None:
+                if self.composer_server:
+                    self.composer_server.push_ask_state({"active": False})
+        except Exception as e:
+            logger.debug(f"_clear_ask_preview_guarded error: {e}")
 
     def _on_tts_status_ui(self, tts_id: str, status: str, info):
         """★ อัปเดตไอคอนสถานะ TTS ริมข้อความ (main thread — รับจาก pipeline ผ่าน signal)
@@ -3033,6 +3317,13 @@ class TTSForLivestreamApp(QMainWindow):
         """★ อัปเดต UI เม็ดสีสถานะ TTS และแจ้งเตือนลงช่อง Live Chat ถ้ามีปัญหา (Main Thread)"""
         if hasattr(self, "sidebar") and self.sidebar:
             self.sidebar.set_tts_status(status, latency, err_detail)
+
+        # ★ ส่งสถานะไปยัง OBS Dock ด้วย
+        if getattr(self, "composer_server", None):
+            try:
+                self.composer_server.push_tts_health(status, latency, err_detail)
+            except Exception:
+                pass
 
         # แจ้งเตือนลง Live Chat เฉพาะกรณีเหลืองหรือแดง และยังไม่เคยแจ้งในเซสชั่นนี้
         if not getattr(self, "_tts_health_alerted", False):
@@ -3950,6 +4241,11 @@ class TTSForLivestreamApp(QMainWindow):
         # ★ sync settings dialog
         self._sync_settings_dialog_voice()
         self._save_settings()
+        if getattr(self, "composer_server", None):
+            try:
+                self.composer_server.push_voice_gender(edge_val)
+            except Exception:
+                pass
 
     def _on_rvc_change(self, index):
         """เลือก/ยกเลิกโมเดล RVC — เกิดเมื่อ user เลือกจาก dropdown"""
@@ -5042,15 +5338,6 @@ class TTSForLivestreamApp(QMainWindow):
         # ★ re-position floating "‹" button (ตอน events panel ซ่อน)
         if hasattr(self, '_events_show_btn'):
             self._position_events_show_btn()
-        # ★ ASK panel — ตามชิดขวาเสมอ (ไม่ค้างกลางจอเวลา maximize/resize)
-        #   เดิม logic นี้อยู่ resizeEvent อีกอันที่ถูก override โดยอันนี้ (Python ใช้ method ท้ายสุด)
-        try:
-            if getattr(self, '_ask_panel', None) and self._ask_panel.isVisible():
-                self._ask_panel.move(
-                    max(10, self.width() - self._ask_panel.width() - 16),
-                    min(self._ask_panel.y(), max(84, self.height() - 100)))
-        except Exception:
-            pass
 
     def _toggle_translate(self):
         """เปิด/ปิดการแปลอัตโนมัติ (#6)"""
@@ -5361,6 +5648,147 @@ class TTSForLivestreamApp(QMainWindow):
                 logger.debug(f"set_master_muted error: {e}")
         state = "อ่านแชท TTS" if on else "ปิดการอ่านแชท"
         self.status_bar.set_status(f"🔊 {state}")
+        if getattr(self, "composer_server", None):
+            try:
+                self.composer_server.push_tts_state(on)
+            except Exception:
+                pass
+
+    def _handle_dock_action_main(self, data: dict):
+        """จัดการคำสั่งควบคุมด่วนจาก OBS Dock บน main thread"""
+        action = data.get("action")
+        if action == "toggle_tts":
+            reading = data.get("reading")
+            if reading is None:
+                reading = not getattr(self.topbar, "_tts_on", True)
+            if hasattr(self, "topbar") and self.topbar:
+                self.topbar.set_tts_state(reading)
+            self._on_tts_toggled(reading)
+        elif action == "toggle_translate":
+            mode = data.get("mode")
+            if not mode:
+                curr = getattr(self.topbar, "_translate_mode", "translate")
+                mode = "multilang" if curr == "translate" else "translate"
+            if hasattr(self, "topbar") and self.topbar:
+                self.topbar.set_translate_mode(mode)
+            if self.settings:
+                if mode == "translate":
+                    self.settings.mode_translate = True
+                    self.settings.mode_multilang = False
+                elif mode == "multilang":
+                    self.settings.mode_translate = False
+                    self.settings.mode_multilang = True
+            if getattr(self, "composer_server", None):
+                try:
+                    self.composer_server.push_translate_state(mode)
+                except Exception:
+                    pass
+        elif action == "clear_tts_queue":
+            if self.pipeline:
+                try:
+                    self.pipeline.clear_queues()
+                except Exception:
+                    pass
+        elif action == "ask_start":
+            q = data.get("question", "คำถามด่วนจากสตรีมเมอร์")
+            ch = data.get("choices") or ["A", "B"]
+            ans_mode = data.get("answer_mode", "letters")
+            dur = None if (data.get("no_limit") or data.get("duration_sec") is None) else int(data.get("duration_sec", 60))
+            res_dur = None if (data.get("forever") or data.get("results_duration_sec") is None) else int(data.get("results_duration_sec", 10))
+            realtime = bool(data.get("realtime", True))
+            self._ask_start({
+                "question": q,
+                "choices": ch,
+                "duration_sec": dur,
+                "answer_mode": ans_mode,
+                "results_duration_sec": res_dur,
+                "realtime": realtime
+            })
+        elif action == "ask_save_preset":
+            pr = data.get("preset")
+            if pr and isinstance(pr, dict):
+                self._ask_save_preset(pr)
+        elif action == "ask_delete_preset":
+            name = data.get("name")
+            if name:
+                self._ask_delete_preset(str(name))
+        elif action == "ask_end":
+            self._ask_end_vote()
+        elif action == "ask_close":
+            self._ask_close()
+        elif action == "giveaway_start":
+            if not self._giveaway_widget_exists():
+                self._post_system_message("⚠️ ยังไม่ได้เพิ่ม Widget Giveaway บน Overlay ครับ กรุณาเปิด Composer เพื่อเพิ่ม Widget ก่อนครับ")
+                return
+            sec = data.get("duration_sec", 60)
+            code = data.get("code", "#join")
+            svc = self._ensure_giveaway_service()
+            # OBS Dock เน้นความเรียบง่าย ใช้เฉพาะโหมดด่านเดียว (Single-Stage)
+            svc.mode = "single"
+            svc.total_checkpoints = 1
+            svc.start_checkpoint(1, code, sec)
+            self.status_bar.set_status(f"🎰 เปิดรับเช็คชื่อ Giveaway {sec} วิ (พิมพ์ {code})")
+            self._post_system_message(f"🎰 เริ่มเปิดรับเช็คชื่อ Giveaway ({sec} วินาที) พิมพ์คำว่า: {code}")
+            if getattr(self, "_giveaway_panel", None):
+                try:
+                    self._giveaway_panel.on_checkpoint_started(1, code, sec)
+                except Exception:
+                    pass
+        elif action == "giveaway_stop":
+            svc = self._ensure_giveaway_service()
+            svc.stop_checkpoint()
+            self.status_bar.set_status("⏹️ ปิดรับเช็คชื่อ Giveaway แล้ว")
+            self._post_system_message("⏹️ ปิดรับการเช็คชื่อรอบนี้เรียบร้อยแล้วครับ")
+            if getattr(self, "_giveaway_panel", None):
+                try:
+                    self._giveaway_panel.on_checkpoint_stopped()
+                except Exception:
+                    pass
+        elif action == "giveaway_draw":
+            svc = self._ensure_giveaway_service()
+            if getattr(self, "_giveaway_panel", None):
+                self._giveaway_panel._start_slot_spin()
+            else:
+                groups = svc.get_tier_groups()
+                pool = groups.get("all", [])
+                if pool:
+                    import random
+                    cand_names = [p.author for p in pool]
+                    winner = random.choice(pool)
+                    svc.broadcast_draw_start("ของรางวัล", "ผู้มีสิทธิ์", cand_names, winner.author)
+                    from PySide6.QtCore import QTimer
+                    QTimer.singleShot(3400, lambda w=winner: svc.broadcast_draw_winner(w, "ของรางวัล", "ผู้โชคดี"))
+                else:
+                    self._post_system_message("⚠️ ยังไม่มีผู้เข้าร่วมเช็คชื่อในรอบนี้ครับ (ให้เปิดรับเช็คชื่อก่อน)")
+        elif action == "giveaway_confirm":
+            if getattr(self, "_giveaway_panel", None):
+                self._giveaway_panel._on_confirm_winner()
+        elif action == "open_giveaway_tool":
+            self._ensure_giveaway_service()
+            if self._giveaway_panel is None:
+                from ui.widgets.giveaway_panel import GiveawayPanel
+                self._giveaway_panel = GiveawayPanel(self._giveaway_service)
+            self._giveaway_panel._check_widget_status()
+            self._giveaway_panel.show()
+            self._giveaway_panel.raise_()
+            self._giveaway_panel.activateWindow()
+        elif action == "open_ask_tool":
+            self._toggle_ask_panel()
+        elif action == "open_composer":
+            self._open_composer()
+        elif action == "toggle_voice_gender":
+            gender = data.get("gender")
+            if not gender:
+                current_edge = getattr(self.settings, "edge_voice", "premwadee")
+                gender = "male" if current_edge == "premwadee" else "female"
+            self._on_base_voice_click(gender)
+        elif action == "toggle_hide_chat":
+            hidden = data.get("hidden")
+            if getattr(self, "overlay_server", None) is not None:
+                try:
+                    self.overlay_server.push_chat_visibility(hidden)
+                except Exception:
+                    pass
 
     def _restore_topbar_state(self):
         """restore topbar state จาก settings (เรียกตอน init)"""
@@ -6169,6 +6597,13 @@ class TTSForLivestreamApp(QMainWindow):
                 pass
         # ★ หยุด Overlay+ (MoreOverlay) ทั้งหมด
         self._stop_all_more_overlays()
+        # ★ ล้างหน้าต่างสุ่มรางวัลและเดโม Giveaway บน Overlay ก่อนปิดโปรแกรม
+        if getattr(self, '_giveaway_service', None) is not None:
+            try:
+                self._giveaway_service.broadcast_draw_reset()
+                self._giveaway_service.trigger_preview({"action": "stop", "show": False})
+            except Exception:
+                pass
         # ★ หยุด servers
         for srv_attr in ('composer_server', 'overlay_server', 'playroom_server'):
             srv = getattr(self, srv_attr, None)

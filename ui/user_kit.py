@@ -371,12 +371,13 @@ def make_scroll() -> QScrollArea:
 
 
 def scrollbar_qss() -> str:
-    """แถบเลื่อนบางแนวตั้งที่ตามธีม (ใช้กับ QListView — กันลายตาหมากรุกของ style เดิมตอนพื้นโปร่ง)"""
-    return (f"QScrollBar:vertical {{ background: {rgba('#ffffff', 0.03)}; width: 10px; margin: 2px; border-radius: 5px; }}"
-            f"QScrollBar::handle:vertical {{ background: {C('BORDER_LIGHT')}; min-height: 36px; border-radius: 5px; }}"
-            f"QScrollBar::handle:vertical:hover {{ background: {C('TEXT_FAINT')}; }}"
-            f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}"
-            f"QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}")
+    """แถบเลื่อนแนวตั้งที่ตามธีม ขนาด 12px จับง่าย สบายตา"""
+    return (f"QScrollBar:vertical {{ background: rgba(0, 0, 0, 0.25); width: 12px; margin: 0px; border-radius: 6px; }}"
+            f"QScrollBar::handle:vertical {{ background: #475569; min-height: 36px; border-radius: 5px; border: 1px solid rgba(255, 255, 255, 0.08); margin: 1px; }}"
+            f"QScrollBar::handle:vertical:hover {{ background: #64748b; border: 1px solid rgba(255, 255, 255, 0.2); }}"
+            f"QScrollBar::handle:vertical:pressed {{ background: {C('ACCENT')}; border: 1px solid rgba(255, 255, 255, 0.4); }}"
+            f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0px; background: none; border: none; }}"
+            f"QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: none; }}")
 
 
 class EscLineEdit(QLineEdit):

@@ -1,16 +1,16 @@
 {
-  "version": "2.8.15",
-  "changelog": "- แก้ไขระบบเสียง TTS (อัปเดต edge-tts 7.3.1 รองรับมาตรการรักษาความปลอดภัยใหม่ของ Microsoft)\n- เพิ่มไฟสถานะเช็คเซิฟเวอร์ Microsoft ว่าสามารถอ่านเสียง TTS ได้หรือไม่ ผู้ใช้งานสามารถเช็คได้ด้วยตนเองเสมอ\n- ปรับปรุงความเสถียรของระบบอัปเดตอัตโนมัติ (แตกไฟล์ผ่าน Python ป้องกันโปรแกรมดับค้าง)",
+  "version": "2.9.0",
+  "changelog": "- ปรับแต่ง UI ทั้งโปรแกรม ในหลายๆส่วน ให้ดูสวยงามยิ่งขึ้น\n- เพิ่มระบบ OBS Dock เชื่อมต่อกับเครื่องมือขึ้นบน OBS Dock เพื่อกดใช้งานได้อย่างรวดเร็ว\n- ปรับย้ายระบบ ASK การตั้งค่าต่างๆ จากเดิมต้องทำผ่าน Overlay Composer มาอยู่ในปุ่ม ASK ทั้งหมด\n- เพิ่มโหมด Giveaway ใช้ในการสุ่มรางวัลให้ผู้ชม ที่พิมพ์คำสั่ง\n- มี Giveaway Widget สำหรับใช้แสดงการเปิดรับการเข้าร่วม และแสดงการสุ่มรางวัลของ Giveaway ขึ้นบนจอ Live\n- ปรับแต่ง Canvas Editor ทำให้สามารถคลิกขวาที่ Layer ทำการ Duplicate Widget หรือลบ Widget ได้โดยตรง\n- เพิ่มประสิทธิภาพโปรแกรม ทำให้กิน GPU น้อยลง",
   "lite": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.15/patch_lite.zip",
-    "size": 18570668,
-    "sha256": "7d4ba58c3bd6c541b2cbe838d25daba35c42eefd63b4e1ae9d564b0c1d7b57af"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.9.0/patch_lite.zip",
+    "size": 19379297,
+    "sha256": "d92a9f228e519d476053232a9ce7e6d70e0a3183fd0179f423b4babbf5c8a8c8"
   },
   "full": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.8.15/patch_full.zip",
-    "size": 73337045,
-    "sha256": "ba6bdb868cb236d170f7c36e2f971f1df0dd499d0a927adfd5c39cc8148cd90a"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.9.0/patch_full.zip",
+    "size": 74145745,
+    "sha256": "e09baa939d3e9c4ed354dbec9a2e7a6af39c40aa4f651cf9e824e34f45d39329"
   }
 }

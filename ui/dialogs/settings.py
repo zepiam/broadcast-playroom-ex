@@ -61,9 +61,11 @@ class SettingsDialog(QDialog):
         self.parent_app = parent_app
         self.settings = getattr(parent_app, 'settings', None)
         self.setWindowTitle("⚙ ตั้งค่า")
+        self.setObjectName("SettingsDialog")
         self.setGeometry(150, 110, 980, 720)
         self.setMinimumSize(880, 640)
         self.setModal(True)
+        self.setSizeGripEnabled(True)
         # ★ Twitch OAuth handlers (จะถูก setup จาก app.py หลังสร้าง dialog)
         self._twitch_oauth_connect_handler = None
         self._twitch_oauth_disconnect_handler = None
@@ -121,6 +123,7 @@ class SettingsDialog(QDialog):
         #   dialog (QVBoxLayout)
         #     ├─ body (QHBoxLayout): category sidebar | settings content | preview pane
         #     └─ bottom bar (buttons)
+        self._apply_dialog_qss()
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
@@ -144,6 +147,7 @@ class SettingsDialog(QDialog):
             ("🎮 Playroom", "playroom"),
             ("🎨 Canvas", "canvas"),
             ("🔌 OBS WebSocket", "obs_ws"),
+            ("🎛️ Dock OBS", "dock_obs"),
             ("🔔 แจ้งเตือน", "notifications"),
             ("🚫 NG Words", "ng"),
             ("🔄 Replace", "replace"),
@@ -195,6 +199,7 @@ class SettingsDialog(QDialog):
         self._build_playroom_section()
         self._build_canvas_section()
         self._build_obs_ws_section()
+        self._build_dock_obs_section()
         self._build_notifications_section()
         self._build_ng_section()
         self._build_replace_section()
@@ -215,19 +220,27 @@ class SettingsDialog(QDialog):
         # ★ Bottom bar (ปุ่มปิดอย่างเดียว — auto-save ทำงาน live)
         bottom = QFrame()
         self._bottom_bar = bottom
-        bottom.setFixedHeight(50)
+        bottom.setFixedHeight(52)
         bottom.setStyleSheet(
-            f"background-color: {theme.COLOR_CARD}; border-top: 1px solid {theme.COLOR_BORDER};"
+            "background-color: #080d1a; border-top: 1px solid #1e293b;"
         )
         bottom_layout = QHBoxLayout(bottom)
         bottom_layout.setContentsMargins(20, 0, 20, 0)
         # ★ auto-save hint
         hint = QLabel("✓ บันทึกอัตโนมัติทุกครั้งที่เปลี่ยนแปลง")
-        hint.setStyleSheet("color: #10b981; font-size: 12px;")
+        hint.setStyleSheet("color: #10b981; font-size: 12.5px; font-weight: 600;")
         bottom_layout.addWidget(hint)
         bottom_layout.addStretch()
         btn_close = QPushButton("ปิด")
-        btn_close.setFixedWidth(90)
+        btn_close.setObjectName("BtnSettingsClose")
+        btn_close.setFixedWidth(100)
+        btn_close.setCursor(Qt.PointingHandCursor)
+        btn_close.setStyleSheet(
+            "QPushButton#BtnSettingsClose { background-color: #162032; border: 1px solid #283548; "
+            "border-radius: 6px; padding: 8px 18px; color: #e2e8f0; font-weight: 700; font-size: 13px; }"
+            "QPushButton#BtnSettingsClose:hover { background-color: #1e293b; border-color: #38bdf8; color: #ffffff; }"
+            "QPushButton#BtnSettingsClose:pressed { background-color: #0f172a; }"
+        )
         btn_close.clicked.connect(self._save)  # save ครั้งสุดท้าย + accept
         bottom_layout.addWidget(btn_close)
         outer.addWidget(bottom)
@@ -304,42 +317,306 @@ class SettingsDialog(QDialog):
             if key == "hint" and hasattr(self, "hint_widget"):
                 self.hint_widget.refresh(self.settings)
 
-    def _apply_sidebar_theme_qss(self):
-        """สไตล์ sidebar หมวดหมู่ (ซ้ายสุดของ Settings) ตามธีมปัจจุบัน — เรียกซ้ำได้เวลาเปลี่ยนธีมสด"""
-        self.sidebar.setStyleSheet(f"""
-            QListWidget {{
-                background-color: {theme.COLOR_BG_DARK};
+    def _apply_dialog_qss(self):
+        """★ ดีไซน์ modern studio dark เดียวกับ Ask และ Giveaway สวยงาม มีระดับ และคงเส้นคงวา"""
+        self.setStyleSheet("""
+            QDialog#SettingsDialog {
+                background-color: #0b1120;
+                color: #f8fafc;
+            }
+            QScrollArea {
+                background: transparent;
                 border: none;
-                border-right: 1px solid {theme.COLOR_BORDER};
+            }
+            QScrollArea > QWidget > QWidget {
+                background: transparent;
+            }
+
+            /* Labels */
+            QLabel {
+                color: #e2e8f0;
+                font-size: 13px;
+                background: transparent;
+            }
+            QLabel#Heading {
+                color: #38bdf8;
+                font-size: 20px;
+                font-weight: 700;
+            }
+            QLabel#Dim {
+                color: #94a3b8;
+                font-size: 12.5px;
+            }
+
+            /* Cards */
+            QFrame#PlatformCard, QFrame#Card, QFrame#BackupCard, QFrame#DefenderCard {
+                background-color: #0e1726;
+                border: 1px solid #1e293b;
+                border-radius: 8px;
+            }
+
+            /* Inputs (QLineEdit, QTextEdit, QPlainTextEdit) */
+            QLineEdit, QTextEdit, QPlainTextEdit {
+                background-color: #131d31;
+                border: 1.5px solid #283548;
+                border-radius: 6px;
+                padding: 7px 11px;
+                font-size: 13px;
+                color: #f8fafc;
+                selection-background-color: #0284c7;
+                selection-color: #ffffff;
+            }
+            QLineEdit:hover, QTextEdit:hover, QPlainTextEdit:hover {
+                border-color: #3b4d6b;
+                background-color: #162238;
+            }
+            QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
+                border-color: #38bdf8;
+                background-color: #16243d;
+                color: #ffffff;
+            }
+            QLineEdit:disabled, QTextEdit:disabled, QPlainTextEdit:disabled {
+                background-color: #0a0f1d;
+                border-color: #1e293b;
+                color: #475569;
+            }
+
+            /* Dropdowns (QComboBox) */
+            QComboBox {
+                background-color: #131d31;
+                border: 1.5px solid #283548;
+                border-radius: 6px;
+                padding: 6px 11px;
+                font-size: 13px;
+                color: #f8fafc;
+                min-height: 20px;
+            }
+            QComboBox:hover {
+                border-color: #3b4d6b;
+                background-color: #162238;
+            }
+            QComboBox:focus {
+                border-color: #38bdf8;
+                background-color: #16243d;
+            }
+            QComboBox::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 24px;
+                border-left: none;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 5px solid #94a3b8;
+                margin-right: 6px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #0f172a;
+                border: 1px solid #334155;
+                border-radius: 6px;
+                color: #f8fafc;
+                selection-background-color: #0284c7;
+                selection-color: #ffffff;
+                padding: 4px;
                 outline: none;
-                padding: 8px 0;
-            }}
-            QListWidget::item {{
-                padding: 12px 16px;
-                color: {theme.COLOR_TEXT_DIM};
+            }
+
+            /* Number spinboxes */
+            QSpinBox, QDoubleSpinBox {
+                background-color: #131d31;
+                border: 1.5px solid #283548;
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-size: 13px;
+                font-weight: 700;
+                color: #fbbf24;
+            }
+            QSpinBox:hover, QDoubleSpinBox:hover {
+                border-color: #3b4d6b;
+            }
+            QSpinBox:focus, QDoubleSpinBox:focus {
+                border-color: #38bdf8;
+                background-color: #16243d;
+            }
+            QSpinBox::up-button, QDoubleSpinBox::up-button,
+            QSpinBox::down-button, QDoubleSpinBox::down-button {
+                background: transparent;
                 border: none;
-            }}
-            QListWidget::item:selected {{
-                background-color: {theme.COLOR_CARD};
-                color: {theme.COLOR_ACCENT};
-                border-left: 3px solid {theme.COLOR_ACCENT};
-            }}
-            QListWidget::item:hover {{
-                background-color: {theme.COLOR_CARD};
-            }}
+                width: 16px;
+            }
+
+            /* Buttons */
+            QPushButton {
+                background-color: #162032;
+                border: 1px solid #283548;
+                border-radius: 6px;
+                padding: 7px 15px;
+                color: #cbd5e1;
+                font-weight: 600;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #1e293b;
+                border-color: #38bdf8;
+                color: #ffffff;
+            }
+            QPushButton:pressed {
+                background-color: #0f172a;
+                border-color: #0284c7;
+            }
+            QPushButton:disabled {
+                background-color: #0a0f1d;
+                border-color: #1e293b;
+                color: #475569;
+            }
+
+            /* Primary / Action button */
+            QPushButton#Primary, QPushButton[role="primary"] {
+                background-color: #0c2135;
+                border: 1px solid #0284c7;
+                color: #38bdf8;
+                font-weight: 700;
+            }
+            QPushButton#Primary:hover, QPushButton[role="primary"]:hover {
+                background-color: #0e3052;
+                border-color: #38bdf8;
+                color: #e0f2fe;
+            }
+
+            /* Success / Save button */
+            QPushButton#Success, QPushButton[role="success"] {
+                background-color: #062319;
+                border: 1px solid #059669;
+                color: #34d399;
+                font-weight: 700;
+            }
+            QPushButton#Success:hover, QPushButton[role="success"]:hover {
+                background-color: #0a3526;
+                border-color: #10b981;
+                color: #a7f3d0;
+            }
+
+            /* Danger button */
+            QPushButton#Danger, QPushButton[role="danger"] {
+                background-color: #271216;
+                border: 1px solid #7f1d1d;
+                color: #f87171;
+                font-weight: 700;
+            }
+            QPushButton#Danger:hover, QPushButton[role="danger"]:hover {
+                background-color: #3b181e;
+                border-color: #ef4444;
+                color: #fecaca;
+            }
+
+            /* Checkboxes & Radio buttons */
+            QCheckBox, QRadioButton {
+                color: #cbd5e1;
+                font-size: 13px;
+                background: transparent;
+                spacing: 8px;
+            }
+            QCheckBox:hover, QRadioButton:hover {
+                color: #f1f5f9;
+            }
+            QCheckBox::indicator {
+                width: 17px;
+                height: 17px;
+                border: 1.5px solid #334155;
+                border-radius: 4px;
+                background-color: #131d31;
+            }
+            QCheckBox::indicator:hover {
+                border-color: #38bdf8;
+                background-color: #162238;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #0284c7;
+                border-color: #38bdf8;
+            }
+            QRadioButton::indicator {
+                width: 17px;
+                height: 17px;
+                border: 1.5px solid #334155;
+                border-radius: 9px;
+                background-color: #131d31;
+            }
+            QRadioButton::indicator:hover {
+                border-color: #38bdf8;
+                background-color: #162238;
+            }
+            QRadioButton::indicator:checked {
+                background-color: #0284c7;
+                border-color: #38bdf8;
+            }
+
+
+            /* Sliders */
+            QSlider::groove:horizontal {
+                height: 5px;
+                background: #1e293b;
+                border-radius: 2px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #0284c7;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background: #38bdf8;
+                border: 1px solid #7dd3fc;
+                width: 14px;
+                margin-top: -5px;
+                margin-bottom: -5px;
+                border-radius: 7px;
+            }
+            QSlider::handle:horizontal:hover {
+                background: #ffffff;
+                border-color: #38bdf8;
+            }
+        """)
+
+    def _apply_sidebar_theme_qss(self):
+        """สไตล์ sidebar หมวดหมู่ (ซ้ายสุดของ Settings) — ดีไซน์ studio dark สะอาดตา"""
+        self.sidebar.setStyleSheet("""
+            QListWidget#SettingsSidebar {
+                background-color: #080d1a;
+                border: none;
+                border-right: 1px solid #1e293b;
+                outline: none;
+                padding: 8px 4px;
+            }
+            QListWidget#SettingsSidebar::item {
+                padding: 10px 14px;
+                color: #94a3b8;
+                border: none;
+                border-radius: 6px;
+                margin: 2px 4px;
+                font-size: 13px;
+                font-weight: 500;
+            }
+            QListWidget#SettingsSidebar::item:selected {
+                background-color: #131d31;
+                color: #38bdf8;
+                font-weight: 700;
+                border-left: 3px solid #38bdf8;
+            }
+            QListWidget#SettingsSidebar::item:hover:!selected {
+                background-color: #0f172a;
+                color: #e2e8f0;
+            }
         """)
 
     def _apply_dialog_chrome_theme(self):
-        """re-apply สีของ chrome ทั้งหมดของ Settings dialog เอง (sidebar + หัวข้อทุก section +
-        bottom bar) — เรียกตอนเปิด dialog และตอนคลิกเปลี่ยนธีมสด (ไม่งั้นค้างสีเดิมเพราะ
-        setStyleSheet() ระดับ widget ไม่ได้ผูกกับ global QSS ของ apply_theme())
-        """
+        """re-apply สีของ chrome ทั้งหมดของ Settings dialog เอง (sidebar + หัวข้อทุก section + bottom bar)"""
+        self._apply_dialog_qss()
         self._apply_sidebar_theme_qss()
         for lbl in getattr(self, '_section_heading_labels', []):
-            lbl.setStyleSheet(f"font-size: 20px; font-weight: 700; color: {theme.COLOR_HEADING};")
+            lbl.setStyleSheet(f"font-size: 20px; font-weight: 700; color: #38bdf8;")
         if hasattr(self, '_bottom_bar'):
             self._bottom_bar.setStyleSheet(
-                f"background-color: {theme.COLOR_CARD}; border-top: 1px solid {theme.COLOR_BORDER};"
+                "background-color: #080d1a; border-top: 1px solid #1e293b;"
             )
 
     def _add_section(self, key, title, description=""):
@@ -401,7 +678,7 @@ class SettingsDialog(QDialog):
             card = QFrame()
             card.setObjectName("PlatformCard")
             card.setStyleSheet(
-                "QFrame#PlatformCard { background: #1e293b; border: 1px solid #334155; border-radius: 8px; }"
+                "QFrame#PlatformCard { background: #0e1726; border: 1px solid #1e293b; border-radius: 8px; }"
             )
             outer = QVBoxLayout(card)
             outer.setContentsMargins(0, 0, 0, 0)
@@ -421,9 +698,9 @@ class SettingsDialog(QDialog):
                 header_btn.setIcon(icon)
                 header_btn.setIconSize(QSize(18, 18))
             header_btn.setStyleSheet(
-                "QPushButton { background: transparent; border: none; color: #e5e7eb; "
+                "QPushButton { background: transparent; border: none; color: #f1f5f9; "
                 "font-weight: 600; font-size: 13px; padding: 10px 12px; text-align: left; }"
-                "QPushButton:hover { background: #263449; border-radius: 8px; }"
+                "QPushButton:hover { background: #162032; border-radius: 8px; color: #38bdf8; }"
             )
 
             def _toggle(checked, _btn=header_btn, _body=body, _title=title):
@@ -458,7 +735,7 @@ class SettingsDialog(QDialog):
                           connect_label, on_connect, on_disconnect):
             divider = QFrame()
             divider.setFrameShape(QFrame.HLine)
-            divider.setStyleSheet("background: #334155; max-height: 1px; border: none;")
+            divider.setStyleSheet("background: #1e293b; max-height: 1px; border: none;")
             body_layout.addWidget(divider)
 
             title = QLabel(title_text)
@@ -475,24 +752,24 @@ class SettingsDialog(QDialog):
             btn_connect = QPushButton(connect_label)
             btn_connect.setCursor(Qt.PointingHandCursor)
             btn_connect.setStyleSheet(
-                "QPushButton { background: #334155; color: #e2e8f0; border: 1px solid #475569; "
-                "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
-                "QPushButton:hover { background: #475569; }"
+                "QPushButton { background: #0c2135; color: #38bdf8; border: 1px solid #0284c7; "
+                "border-radius: 6px; padding: 7px 16px; font-weight: 700; font-size: 13px; }"
+                "QPushButton:hover { background: #0e3052; border-color: #38bdf8; color: #e0f2fe; }"
             )
             btn_disconnect = QPushButton("⚪ ยกเลิกการเชื่อมต่อ")
             btn_disconnect.setCursor(Qt.PointingHandCursor)
             btn_disconnect.setStyleSheet(
-                "QPushButton { background: #dc2626; color: white; border: none; "
-                "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
-                "QPushButton:hover { background: #b91c1c; }"
+                "QPushButton { background: #271216; color: #f87171; border: 1px solid #7f1d1d; "
+                "border-radius: 6px; padding: 7px 16px; font-weight: 700; font-size: 13px; }"
+                "QPushButton:hover { background: #3b181e; border-color: #ef4444; color: #fecaca; }"
             )
             # ★ ปุ่ม "ตั้งค่า Chat Bot" — แสดงหลังเชื่อมต่อสำเร็จ → เด้งไป section Chat Bot
             btn_bot = QPushButton("🤖 ตั้งค่า Chat Bot")
             btn_bot.setCursor(Qt.PointingHandCursor)
             btn_bot.setStyleSheet(
-                "QPushButton { background: #7c3aed; color: white; border: none; "
-                "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
-                "QPushButton:hover { background: #6d28d9; }"
+                "QPushButton { background: #1e1533; color: #c4b5fd; border: 1px solid #7c3aed; "
+                "border-radius: 6px; padding: 7px 16px; font-weight: 700; font-size: 13px; }"
+                "QPushButton:hover { background: #2e1d52; border-color: #a78bfa; color: #ede9fe; }"
             )
             btn_bot.setVisible(False)  # ★ ซ่อนจนกว่าจะเชื่อมต่อสำเร็จ
             btn_bot.clicked.connect(self._goto_chat_bot_section)
@@ -1231,6 +1508,7 @@ class SettingsDialog(QDialog):
         # ★ ปุ่มทดสอบการเชื่อมต่อ
         btn_test = QPushButton("🔌 ทดสอบการเชื่อมต่อ")
         btn_test.setObjectName("Primary")
+        btn_test.setCursor(Qt.PointingHandCursor)
         btn_test.clicked.connect(self._test_obs_ws)
         self._current_section_layout.insertWidget(
             self._current_section_layout.count() - 1, btn_test
@@ -1255,6 +1533,7 @@ class SettingsDialog(QDialog):
         import webbrowser
         btn_guide = QPushButton("📖 วิธีเชื่อม WebSocket")
         btn_guide.setObjectName("Primary")
+        btn_guide.setCursor(Qt.PointingHandCursor)
         btn_guide.clicked.connect(lambda: webbrowser.open(
             "https://men9ch.com/broadcastplayroom-websocket-setting/"))
         self._current_section_layout.insertWidget(
@@ -1346,6 +1625,136 @@ class SettingsDialog(QDialog):
             btn.setEnabled(True)
             btn.setText("🔌 ทดสอบเชื่อมต่อ")
         QMessageBox.information(self, "OBS WebSocket", message)
+
+    def _build_dock_obs_section(self):
+        """🎛️ OBS Quick Control Dock — แผงควบคุมด่วนใน OBS Studio และการติดตั้ง 1-Click"""
+        self._add_section(
+            "dock_obs", "🎛️ Dock OBS (Quick Control)",
+            "แผงควบคุมด่วนสำหรับแปะข้างจอ OBS Studio: ควบคุมอ่าน/หยุด TTS, สลับโหมดแปลภาษา, "
+            "เช็คยอดคนดูและสถานะ Microsoft TTS, ถาม ASK ด่วน และสุ่ม Giveaway"
+        )
+        import obs_dock_installer as odi
+        port = (self.parent_app.composer_server.port if (hasattr(self.parent_app, 'composer_server') and self.parent_app.composer_server and hasattr(self.parent_app.composer_server, 'port')) else odi.get_dock_port())
+        dock_url = f"http://localhost:{port}/dock"
+
+        # ── Card 1: สถานะการติดตั้ง Dock ในเครื่อง ──
+        card = QFrame()
+        card.setObjectName("Card")
+        c_layout = QVBoxLayout(card)
+        c_layout.setContentsMargins(18, 16, 18, 16)
+        c_layout.setSpacing(12)
+
+        lbl_head = QLabel("สถานะการลงทะเบียน Dock ใน OBS Studio")
+        lbl_head.setStyleSheet("font-size: 14.5px; font-weight: 700; color: #38bdf8;")
+        c_layout.addWidget(lbl_head)
+
+        # Check OBS status
+        obs_detected = odi.is_obs_installed()
+        dock_installed = odi.is_dock_installed(dock_url)
+
+        st_row = QHBoxLayout()
+        lbl_obs_icon = QLabel("🟢" if obs_detected else "⚪")
+        lbl_obs_txt = QLabel("ตรวจพบ OBS Studio ในเครื่อง" if obs_detected else "ไม่พบโฟลเดอร์ตั้งค่าของ OBS Studio")
+        lbl_obs_txt.setStyleSheet("font-size: 13px; font-weight: 600;")
+        st_row.addWidget(lbl_obs_icon)
+        st_row.addWidget(lbl_obs_txt)
+        st_row.addStretch()
+        c_layout.addLayout(st_row)
+
+        st_dock_row = QHBoxLayout()
+        self._lbl_dock_icon = QLabel("🟢" if dock_installed else "⚪")
+        self._lbl_dock_st = QLabel("ติดตั้งแถบ Dock ใน OBS แล้ว (Broadcast Playroom)" if dock_installed else "ยังไม่ได้ติดตั้ง Dock ใน OBS")
+        self._lbl_dock_st.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {'#34d399' if dock_installed else '#94a3b8'};")
+        st_dock_row.addWidget(self._lbl_dock_icon)
+        st_dock_row.addWidget(self._lbl_dock_st)
+        st_dock_row.addStretch()
+        c_layout.addLayout(st_dock_row)
+
+        # URL row
+        url_row = QHBoxLayout()
+        lbl_url_title = QLabel("URL Dock:")
+        lbl_url_title.setStyleSheet("color: #94a3b8; font-size: 12.5px;")
+        url_edit = QLineEdit(dock_url)
+        url_edit.setReadOnly(True)
+        url_edit.setStyleSheet("background-color: #0b1120; font-family: monospace; font-size: 12.5px; padding: 7px 10px;")
+
+        btn_copy_url = QPushButton("📋 คัดลอกลิงก์")
+        btn_copy_url.setObjectName("Secondary")
+        btn_copy_url.setCursor(Qt.PointingHandCursor)
+        def _do_copy():
+            from PySide6.QtWidgets import QApplication
+            QApplication.clipboard().setText(dock_url)
+            btn_copy_url.setText("✓ คัดลอกแล้ว!")
+            QTimer.singleShot(1500, lambda: btn_copy_url.setText("📋 คัดลอกลิงก์"))
+        btn_copy_url.clicked.connect(_do_copy)
+
+        url_row.addWidget(lbl_url_title)
+        url_row.addWidget(url_edit, 1)
+        url_row.addWidget(btn_copy_url)
+        c_layout.addLayout(url_row)
+
+        # Action Buttons
+        btn_row = QHBoxLayout()
+        btn_install = QPushButton("⚡ ติดตั้ง Dock ลงใน OBS อัตโนมัติ (1-Click)")
+        btn_install.setObjectName("Success")
+        btn_install.setCursor(Qt.PointingHandCursor)
+        btn_install.setFixedHeight(38)
+        btn_install.setStyleSheet("font-size: 13px; font-weight: 700;")
+
+        def _do_install():
+            from PySide6.QtWidgets import QMessageBox
+            ok, msg, was_running = odi.install_obs_dock(title="Broadcast Playroom", dock_url=dock_url)
+            if ok:
+                self._lbl_dock_icon.setText("🟢")
+                self._lbl_dock_st.setText("ติดตั้งแถบ Dock ใน OBS แล้ว (Broadcast Playroom)")
+                self._lbl_dock_st.setStyleSheet("font-size: 13px; font-weight: 600; color: #34d399;")
+                QMessageBox.information(self, "ติดตั้ง OBS Dock สำเร็จ", msg)
+            else:
+                QMessageBox.warning(self, "ติดตั้งไม่สำเร็จ", msg)
+
+        btn_install.clicked.connect(_do_install)
+        btn_row.addWidget(btn_install, 1)
+
+        btn_browser = QPushButton("🌐 เปิดดู Dock ในเบราว์เซอร์")
+        btn_browser.setObjectName("Primary")
+        btn_browser.setCursor(Qt.PointingHandCursor)
+        btn_browser.setFixedHeight(38)
+        import webbrowser
+        btn_browser.clicked.connect(lambda: webbrowser.open(dock_url))
+        btn_row.addWidget(btn_browser)
+
+        c_layout.addLayout(btn_row)
+
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, card
+        )
+
+        # ── Card 2: คู่มือวิธีใช้งาน ──
+        guide_card = QFrame()
+        guide_card.setObjectName("Card")
+        g_layout = QVBoxLayout(guide_card)
+        g_layout.setContentsMargins(18, 16, 18, 16)
+        g_layout.setSpacing(8)
+
+        lbl_g_head = QLabel("📖 ขั้นตอนการนำ Dock ไปใช้งานใน OBS Studio")
+        lbl_g_head.setStyleSheet("font-size: 13.5px; font-weight: 700; color: #f59e0b;")
+        g_layout.addWidget(lbl_g_head)
+
+        steps = [
+            "1. กดปุ่ม '⚡ ติดตั้ง Dock ลงใน OBS อัตโนมัติ' ด้านบน",
+            "2. หากเปิด OBS Studio ไว้อยู่ ให้ 'ปิดแล้วเปิด OBS ใหม่อีก 1 ครั้ง'",
+            "3. ที่แถบเมนูด้านบนของ OBS คลิกที่ 'Docks' → ติ๊กเลือก 'Broadcast Playroom'",
+            "4. ลากหน้าต่าง Dock ที่ปรากฏ ไปเสียบไว้ข้างจอ OBS (เช่น ข้างกล่อง Scene หรือแชท) ได้ทันที",
+            "5. ในหน้าต่าง Dock คุณสามารถกดปุ่ม ⚙️ เพื่อเลือกเปิด/ปิด หรือลากสลับตำแหน่งหัวข้อบน-ล่างได้อิสระ"
+        ]
+        for s in steps:
+            lbl_step = QLabel(s)
+            lbl_step.setStyleSheet("color: #cbd5e1; font-size: 12.5px; padding: 2px 0;")
+            g_layout.addWidget(lbl_step)
+
+        self._current_section_layout.insertWidget(
+            self._current_section_layout.count() - 1, guide_card
+        )
 
     def _build_notifications_section(self):
         self._add_section("notifications", "🔔 แจ้งเตือน", "เสียง + TTS สำหรับ events แยกตามแพลตฟอร์ม")
@@ -1502,9 +1911,9 @@ class SettingsDialog(QDialog):
         btn_import.setMinimumHeight(32)
         btn_import.setCursor(Qt.PointingHandCursor)
         btn_import.setStyleSheet(
-            "QPushButton { background: #334155; color: #06b6d4; border: none; "
-            "border-radius: 6px; padding: 4px 12px; font-size: 12px; font-weight: 600; }"
-            "QPushButton:hover { background: #475569; }"
+            "QPushButton { background: #0c2135; color: #38bdf8; border: 1px solid #0284c7; "
+            "border-radius: 6px; padding: 4px 14px; font-size: 12.5px; font-weight: 700; }"
+            "QPushButton:hover { background: #0e3052; border-color: #38bdf8; color: #e0f2fe; }"
         )
         btn_import.clicked.connect(self._replace_import)
         top_bar.addWidget(btn_import)
@@ -1513,14 +1922,21 @@ class SettingsDialog(QDialog):
         btn_export.setMinimumHeight(32)
         btn_export.setCursor(Qt.PointingHandCursor)
         btn_export.setStyleSheet(
-            "QPushButton { background: #334155; color: #10b981; border: none; "
-            "border-radius: 6px; padding: 4px 12px; font-size: 12px; font-weight: 600; }"
-            "QPushButton:hover { background: #475569; }"
+            "QPushButton { background: #062319; color: #34d399; border: 1px solid #059669; "
+            "border-radius: 6px; padding: 4px 14px; font-size: 12.5px; font-weight: 700; }"
+            "QPushButton:hover { background: #0a3526; border-color: #10b981; color: #a7f3d0; }"
         )
         btn_export.clicked.connect(self._replace_export)
         top_bar.addWidget(btn_export)
 
         btn_download = QPushButton("⬇️ โหลดจากคลัง")
+        btn_download.setMinimumHeight(32)
+        btn_download.setCursor(Qt.PointingHandCursor)
+        btn_download.setStyleSheet(
+            "QPushButton { background: #162032; color: #cbd5e1; border: 1px solid #283548; "
+            "border-radius: 6px; padding: 4px 14px; font-size: 12.5px; font-weight: 600; }"
+            "QPushButton:hover { background: #1e293b; border-color: #38bdf8; color: #ffffff; }"
+        )
         btn_download.clicked.connect(self._replace_download_from_wiki)
         top_bar.addWidget(btn_download)
 
@@ -2461,12 +2877,7 @@ class SettingsDialog(QDialog):
         code_scroll.setWidget(self._code_list_container)
         code_scroll.setFrameShape(QScrollArea.NoFrame)
         code_scroll.setMinimumHeight(120)
-        code_scroll.setStyleSheet(
-            "QScrollArea { background: transparent; border: 1px solid #1f2937; border-radius: 6px; }"
-            "QScrollBar:vertical { background: #1f2937; width: 6px; border-radius: 3px; }"
-            "QScrollBar::handle:vertical { background: #4b5563; border-radius: 3px; min-height: 20px; }"
-            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
-        )
+        code_scroll.setStyleSheet("QScrollArea { background: transparent; border: 1px solid #1f2937; border-radius: 6px; }")
         layout.insertWidget(ci(), code_scroll)
 
         # ── โหลดค่า ──
@@ -2504,8 +2915,8 @@ class SettingsDialog(QDialog):
 
             row = QFrame()
             row.setStyleSheet(
-                "QFrame { background: #1f2937; border-radius: 6px; }"
-                "QFrame:hover { background: #263244; }"
+                "QFrame { background: #0e1726; border: 1px solid #1e293b; border-radius: 6px; }"
+                "QFrame:hover { background: #111a2e; border-color: #283548; }"
             )
             row_layout = QHBoxLayout(row)
             row_layout.setContentsMargins(10, 6, 10, 6)
@@ -2537,8 +2948,9 @@ class SettingsDialog(QDialog):
             btn_edit.setFixedHeight(30)
             btn_edit.setCursor(Qt.PointingHandCursor)
             btn_edit.setStyleSheet(
-                "QPushButton { background: #334155; color: #06b6d4; border: none; border-radius: 4px; padding: 4px 10px; font-size: 12px; font-weight: 600; }"
-                "QPushButton:hover { background: #475569; }"
+                "QPushButton { background: #0c2135; color: #38bdf8; border: 1px solid #0284c7; "
+                "border-radius: 6px; padding: 4px 12px; font-size: 12px; font-weight: 700; }"
+                "QPushButton:hover { background: #0e3052; border-color: #38bdf8; color: #e0f2fe; }"
             )
             btn_edit.clicked.connect(lambda checked=False, c=code: self._edit_secret_code(c))
             row_layout.addWidget(btn_edit)
@@ -2548,8 +2960,9 @@ class SettingsDialog(QDialog):
             btn_preview.setFixedHeight(30)
             btn_preview.setCursor(Qt.PointingHandCursor)
             btn_preview.setStyleSheet(
-                "QPushButton { background: #334155; color: #10b981; border: none; border-radius: 4px; padding: 4px 10px; font-size: 12px; font-weight: 600; }"
-                "QPushButton:hover { background: #475569; }"
+                "QPushButton { background: #062319; color: #34d399; border: 1px solid #059669; "
+                "border-radius: 6px; padding: 4px 12px; font-size: 12px; font-weight: 700; }"
+                "QPushButton:hover { background: #0a3526; border-color: #10b981; color: #a7f3d0; }"
             )
             _path = sound_path
             _slider = vol_slider
@@ -2561,8 +2974,9 @@ class SettingsDialog(QDialog):
             btn_del.setFixedHeight(30)
             btn_del.setCursor(Qt.PointingHandCursor)
             btn_del.setStyleSheet(
-                "QPushButton { background: #ef4444; color: white; border: none; border-radius: 4px; padding: 4px 10px; font-size: 12px; font-weight: 600; }"
-                "QPushButton:hover { background: #dc2626; }"
+                "QPushButton { background: #271216; color: #f87171; border: 1px solid #7f1d1d; "
+                "border-radius: 6px; padding: 4px 12px; font-size: 12px; font-weight: 700; }"
+                "QPushButton:hover { background: #3b181e; border-color: #ef4444; color: #fecaca; }"
             )
             btn_del.clicked.connect(lambda checked=False, c=code: self._remove_secret_code(c))
             row_layout.addWidget(btn_del)
@@ -2641,13 +3055,17 @@ class SettingsDialog(QDialog):
         dlg = _Dlg(self)
         dlg.setWindowTitle(f"✏️ แก้ไขโค้ดลับ {code}")
         dlg.setMinimumWidth(400)
-        dlg.setStyleSheet("QDialog { background: #0f172a; color: #e2e8f0; }"
-                          "QLabel { color: #94a3b8; font-size: 12px; }"
-                          "QLineEdit { background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px; color: #e2e8f0; }"
-                          "QPushButton { padding: 8px 16px; border: none; border-radius: 6px; font-weight: 600; }")
+        dlg.setStyleSheet("""
+            QDialog { background: #0b1120; color: #f8fafc; }
+            QLabel { color: #94a3b8; font-size: 13px; }
+            QLineEdit { background: #131d31; border: 1.5px solid #283548; border-radius: 6px; padding: 7px 11px; color: #f8fafc; font-size: 13px; }
+            QLineEdit:focus { border-color: #38bdf8; background: #16243d; }
+            QPushButton { background: #162032; border: 1px solid #283548; border-radius: 6px; padding: 7px 16px; color: #cbd5e1; font-weight: 600; font-size: 13px; }
+            QPushButton:hover { background: #1e293b; border-color: #38bdf8; color: #ffffff; }
+        """)
 
         dl = _VBL(dlg)
-        dl.setSpacing(8)
+        dl.setSpacing(10)
         dl.setContentsMargins(20, 16, 20, 16)
 
         lbl_code = QLabel("โค้ด:")
@@ -2659,7 +3077,11 @@ class SettingsDialog(QDialog):
         dl.addWidget(lbl_file)
 
         btn_file = QPushButton("📁 เปลี่ยนไฟล์เสียง")
-        btn_file.setStyleSheet("background: #334155; color: #e2e8f0;")
+        btn_file.setCursor(Qt.PointingHandCursor)
+        btn_file.setStyleSheet(
+            "QPushButton { background: #0c2135; color: #38bdf8; border: 1px solid #0284c7; border-radius: 6px; padding: 7px 14px; font-weight: 700; }"
+            "QPushButton:hover { background: #0e3052; border-color: #38bdf8; color: #e0f2fe; }"
+        )
         new_path = [entry.get("sound_path", "")]
 
         def _pick_file():
@@ -2676,11 +3098,19 @@ class SettingsDialog(QDialog):
         btn_row = _HBL()
         btn_row.addStretch()
         btn_cancel = QPushButton("ยกเลิก")
-        btn_cancel.setStyleSheet("background: #334155; color: #e2e8f0;")
+        btn_cancel.setCursor(Qt.PointingHandCursor)
+        btn_cancel.setStyleSheet(
+            "QPushButton { background: #162032; color: #cbd5e1; border: 1px solid #283548; border-radius: 6px; padding: 7px 16px; font-weight: 600; }"
+            "QPushButton:hover { background: #1e293b; color: #ffffff; }"
+        )
         btn_cancel.clicked.connect(dlg.reject)
         btn_row.addWidget(btn_cancel)
         btn_save = QPushButton("บันทึก")
-        btn_save.setStyleSheet("background: #10b981; color: white;")
+        btn_save.setCursor(Qt.PointingHandCursor)
+        btn_save.setStyleSheet(
+            "QPushButton { background: #062319; color: #34d399; border: 1px solid #059669; border-radius: 6px; padding: 7px 18px; font-weight: 700; }"
+            "QPushButton:hover { background: #0a3526; border-color: #10b981; color: #a7f3d0; }"
+        )
         btn_save.clicked.connect(dlg.accept)
         btn_row.addWidget(btn_save)
         dl.addLayout(btn_row)
@@ -2993,9 +3423,9 @@ class SettingsDialog(QDialog):
         btn_add_cmd = QPushButton("+ เพิ่มคำสั่ง")
         btn_add_cmd.setCursor(Qt.PointingHandCursor)
         btn_add_cmd.setStyleSheet(
-            "QPushButton { background: #1e293b; color: #a78bfa; border: 1px dashed #475569; "
-            "border-radius: 6px; padding: 6px; }"
-            "QPushButton:hover { background: #334155; }"
+            "QPushButton { background: #131d31; color: #38bdf8; border: 1px solid #1e293b; "
+            "border-radius: 6px; padding: 8px 14px; font-weight: 700; font-size: 13px; }"
+            "QPushButton:hover { background: #162238; border-color: #38bdf8; color: #e0f2fe; }"
         )
         btn_add_cmd.clicked.connect(lambda: self._add_bot_cmd_row("", ""))
         layout.insertWidget(ci(), btn_add_cmd)
@@ -3022,9 +3452,9 @@ class SettingsDialog(QDialog):
         btn_add_timer = QPushButton("+ เพิ่ม Timer")
         btn_add_timer.setCursor(Qt.PointingHandCursor)
         btn_add_timer.setStyleSheet(
-            "QPushButton { background: #1e293b; color: #a78bfa; border: 1px dashed #475569; "
-            "border-radius: 6px; padding: 6px; }"
-            "QPushButton:hover { background: #334155; }"
+            "QPushButton { background: #131d31; color: #38bdf8; border: 1px solid #1e293b; "
+            "border-radius: 6px; padding: 8px 14px; font-weight: 700; font-size: 13px; }"
+            "QPushButton:hover { background: #162238; border-color: #38bdf8; color: #e0f2fe; }"
         )
         btn_add_timer.clicked.connect(lambda: self._add_bot_timer_row("", 10))
         layout.insertWidget(ci(), btn_add_timer)
@@ -3042,10 +3472,6 @@ class SettingsDialog(QDialog):
 
         self.bot_name_input = QLineEdit()
         self.bot_name_input.setPlaceholderText("Baitoei-Bot")
-        self.bot_name_input.setStyleSheet(
-            "QLineEdit { background: #0f172a; color: #e2e8f0; border: 1px solid #334155; "
-            "border-radius: 4px; padding: 6px 10px; }"
-        )
         # ★ auto-save (textChanged + debounce)
         from PySide6.QtCore import QTimer
         _bot_name_timer = QTimer(self)
@@ -3071,10 +3497,6 @@ class SettingsDialog(QDialog):
         layout.insertWidget(ci(), ev_desc)
 
         # ★ Event input rows (label + lineedit)
-        _input_style = (
-            "QLineEdit { background: #0f172a; color: #e2e8f0; border: 1px solid #334155; "
-            "border-radius: 4px; padding: 6px 10px; }"
-        )
         _label_style = "color: #cbd5e1; font-size: 13px;"
 
         # ★ auto-save debounce timer (ใช้ร่วมกับทุก event input)
@@ -3086,7 +3508,6 @@ class SettingsDialog(QDialog):
 
         self.bot_ev_sub = QLineEdit()
         self.bot_ev_sub.setPlaceholderText("ขอบคุณ {user} สำหรับการ Sub! 💜")
-        self.bot_ev_sub.setStyleSheet(_input_style)
         self.bot_ev_sub.textChanged.connect(lambda _: _ev_save_timer.start())
         ev_sub_lbl = QLabel("Sub / Re-sub:")
         ev_sub_lbl.setStyleSheet(_label_style)
@@ -3095,7 +3516,6 @@ class SettingsDialog(QDialog):
 
         self.bot_ev_bits = QLineEdit()
         self.bot_ev_bits.setPlaceholderText("ขอบคุณ {user} สำหรับ {amount} bits! 💎")
-        self.bot_ev_bits.setStyleSheet(_input_style)
         self.bot_ev_bits.textChanged.connect(lambda _: _ev_save_timer.start())
         ev_bits_lbl = QLabel("Bits:")
         ev_bits_lbl.setStyleSheet(_label_style)
@@ -3104,7 +3524,6 @@ class SettingsDialog(QDialog):
 
         self.bot_ev_raid = QLineEdit()
         self.bot_ev_raid.setPlaceholderText("ขอบคุณ {user} สำหรับการ Raid พา {raid_count} คนมา! 🎉")
-        self.bot_ev_raid.setStyleSheet(_input_style)
         self.bot_ev_raid.textChanged.connect(lambda _: _ev_save_timer.start())
         ev_raid_lbl = QLabel("Raid:")
         ev_raid_lbl.setStyleSheet(_label_style)
@@ -3113,7 +3532,6 @@ class SettingsDialog(QDialog):
 
         self.bot_ev_follow = QLineEdit()
         self.bot_ev_follow.setPlaceholderText("ขอบคุณ {user} ที่ติดตาม! ❤️")
-        self.bot_ev_follow.setStyleSheet(_input_style)
         self.bot_ev_follow.textChanged.connect(lambda _: _ev_save_timer.start())
         ev_follow_lbl = QLabel("Follow:")
         ev_follow_lbl.setStyleSheet(_label_style)
@@ -3138,35 +3556,27 @@ class SettingsDialog(QDialog):
     def _add_bot_cmd_row(self, command: str, response: str):
         """เพิ่ม row คำสั่ง bot"""
         row = QFrame()
-        row.setStyleSheet("QFrame { background: #1e293b; border-radius: 6px; }")
+        row.setStyleSheet("QFrame { background: #0e1726; border: 1px solid #1e293b; border-radius: 6px; }")
         rlayout = QHBoxLayout(row)
         rlayout.setContentsMargins(8, 6, 8, 6)
         rlayout.setSpacing(6)
 
         cmd_input = QLineEdit(command)
         cmd_input.setPlaceholderText("!command")
-        cmd_input.setFixedWidth(120)
-        cmd_input.setStyleSheet(
-            "QLineEdit { background: #0f172a; color: #e2e8f0; border: 1px solid #334155; "
-            "border-radius: 4px; padding: 4px 8px; }"
-        )
+        cmd_input.setFixedWidth(130)
 
         arrow = QLabel("→")
         arrow.setStyleSheet("color: #64748b;")
 
         resp_input = QLineEdit(response)
         resp_input.setPlaceholderText("ข้อความตอบกลับ")
-        resp_input.setStyleSheet(
-            "QLineEdit { background: #0f172a; color: #e2e8f0; border: 1px solid #334155; "
-            "border-radius: 4px; padding: 4px 8px; }"
-        )
 
         btn_del = QPushButton("✕")
-        btn_del.setFixedSize(20, 20)
+        btn_del.setFixedSize(24, 24)
         btn_del.setCursor(Qt.PointingHandCursor)
         btn_del.setStyleSheet(
-            "QPushButton { background: transparent; color: #ef4444; border: none; font-size: 16px; font-weight: bold; }"
-            "QPushButton:hover { color: #dc2626; }"
+            "QPushButton { background: transparent; color: #ef4444; border: none; font-size: 15px; font-weight: bold; padding: 0; }"
+            "QPushButton:hover { color: #f87171; background: #271216; border-radius: 4px; }"
         )
 
         rlayout.addWidget(cmd_input)
@@ -3198,20 +3608,15 @@ class SettingsDialog(QDialog):
     def _add_bot_timer_row(self, text: str, interval_min: int = 10, min_chat_count: int = 0):
         """เพิ่ม row timer — เลือกโหมดได้: ทุก N นาที หรือ ทุก N ข้อความ"""
         row = QFrame()
-        row.setStyleSheet("QFrame { background: #1e293b; border-radius: 6px; }")
+        row.setStyleSheet("QFrame { background: #0e1726; border: 1px solid #1e293b; border-radius: 6px; }")
         rlayout = QHBoxLayout(row)
         rlayout.setContentsMargins(8, 6, 8, 6)
         rlayout.setSpacing(6)
 
-        _input_style = (
-            "QLineEdit { background: #0f172a; color: #e2e8f0; border: 1px solid #334155; "
-            "border-radius: 4px; padding: 4px 8px; }"
-        )
-        _label_style = "color: #64748b;"
+        _label_style = "color: #94a3b8; font-size: 13px;"
 
         text_input = QLineEdit(text)
         text_input.setPlaceholderText("ข้อความที่จะส่งซ้ำ")
-        text_input.setStyleSheet(_input_style)
 
         # ★ mode dropdown: "ทุก N นาที" หรือ "ทุก N ข้อความ"
         mode_combo = QComboBox()
@@ -3219,15 +3624,10 @@ class SettingsDialog(QDialog):
         mode_combo.addItem("💬 ทุกๆ", "chat_count")
         if min_chat_count > 0:
             mode_combo.setCurrentIndex(1)
-        mode_combo.setMinimumWidth(100)
-        mode_combo.setStyleSheet(
-            "QComboBox { background: #0f172a; color: #e2e8f0; border: 1px solid #334155; "
-            "border-radius: 4px; padding: 4px 8px; }"
-        )
+        mode_combo.setMinimumWidth(110)
 
         value_input = QLineEdit()
-        value_input.setFixedWidth(50)
-        value_input.setStyleSheet(_input_style)
+        value_input.setFixedWidth(60)
         if min_chat_count > 0:
             value_input.setText(str(min_chat_count))
         elif interval_min > 0:
@@ -3245,11 +3645,11 @@ class SettingsDialog(QDialog):
         mode_combo.currentIndexChanged.connect(_on_mode_change)
 
         btn_del = QPushButton("✕")
-        btn_del.setFixedSize(20, 20)
+        btn_del.setFixedSize(24, 24)
         btn_del.setCursor(Qt.PointingHandCursor)
         btn_del.setStyleSheet(
-            "QPushButton { background: transparent; color: #ef4444; border: none; font-size: 16px; font-weight: bold; }"
-            "QPushButton:hover { color: #dc2626; }"
+            "QPushButton { background: transparent; color: #ef4444; border: none; font-size: 15px; font-weight: bold; padding: 0; }"
+            "QPushButton:hover { color: #f87171; background: #271216; border-radius: 4px; }"
         )
 
         rlayout.addWidget(text_input, 1)
@@ -3397,7 +3797,7 @@ class SettingsDialog(QDialog):
         # Card container
         card = QFrame()
         card.setStyleSheet(
-            "QFrame { background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 14px; }"
+            "QFrame { background-color: #0e1726; border: 1px solid #1e293b; border-radius: 8px; padding: 14px; }"
         )
         card_layout = QVBoxLayout(card)
         card_layout.setSpacing(12)
@@ -3422,7 +3822,7 @@ class SettingsDialog(QDialog):
         path_title = QLabel("📁 ตำแหน่งโฟลเดอร์โปรแกรมปัจจุบัน:")
         path_title.setStyleSheet("font-size: 12px; color: #94a3b8;")
         path_val = QLabel(str(app_dir))
-        path_val.setStyleSheet("font-size: 13px; font-family: Consolas, monospace; color: #38bdf8; background: #0f172a; padding: 6px 10px; border-radius: 4px; border: 1px solid #1e293b;")
+        path_val.setStyleSheet("font-size: 13px; font-family: Consolas, monospace; color: #38bdf8; background: #131d31; padding: 6px 10px; border-radius: 6px; border: 1px solid #1e293b;")
         path_val.setTextInteractionFlags(Qt.TextSelectableByMouse)
         path_box.addWidget(path_title)
         path_box.addWidget(path_val)
@@ -3434,7 +3834,7 @@ class SettingsDialog(QDialog):
             "ให้กด <b>'Yes'</b> เพื่ออนุญาตให้ระบบเพิ่มข้อยกเว้นอัตโนมัติครับ"
         )
         notice_lbl.setWordWrap(True)
-        notice_lbl.setStyleSheet("font-size: 12px; color: #cbd5e1; background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; padding: 8px 10px; border-radius: 4px;")
+        notice_lbl.setStyleSheet("font-size: 12px; color: #cbd5e1; background: rgba(56, 189, 248, 0.08); border-left: 3px solid #0284c7; padding: 8px 10px; border-radius: 4px;")
         card_layout.addWidget(notice_lbl)
 
         # Action buttons
@@ -3444,10 +3844,10 @@ class SettingsDialog(QDialog):
         self.btn_apply_defender = QPushButton("⚡ เพิ่มข้อยกเว้นอัตโนมัติ (1-Click Exclusion)")
         self.btn_apply_defender.setCursor(Qt.PointingHandCursor)
         self.btn_apply_defender.setStyleSheet(
-            "QPushButton { background: #2563eb; color: #ffffff; font-weight: 700; font-size: 13px; "
-            "padding: 8px 18px; border-radius: 6px; border: none; }"
-            "QPushButton:hover { background: #1d4ed8; }"
-            "QPushButton:pressed { background: #1e40af; }"
+            "QPushButton { background: #0284c7; color: #ffffff; font-weight: 700; font-size: 13px; "
+            "padding: 8px 18px; border-radius: 6px; border: 1px solid #38bdf8; }"
+            "QPushButton:hover { background: #0369a1; }"
+            "QPushButton:pressed { background: #075985; }"
         )
         self.btn_apply_defender.clicked.connect(self._on_apply_defender_exclusion)
         btn_box.addWidget(self.btn_apply_defender)
@@ -3455,10 +3855,10 @@ class SettingsDialog(QDialog):
         btn_open_sec = QPushButton("🛡️ เปิดหน้า Windows Security")
         btn_open_sec.setCursor(Qt.PointingHandCursor)
         btn_open_sec.setStyleSheet(
-            "QPushButton { background: #334155; color: #e2e8f0; font-weight: 600; font-size: 12px; "
-            "padding: 8px 14px; border-radius: 6px; border: 1px solid #475569; }"
-            "QPushButton:hover { background: #475569; }"
-            "QPushButton:pressed { background: #1e293b; }"
+            "QPushButton { background: #162032; color: #e2e8f0; font-weight: 600; font-size: 12px; "
+            "padding: 8px 14px; border-radius: 6px; border: 1px solid #283548; }"
+            "QPushButton:hover { background: #1e293b; border-color: #38bdf8; }"
+            "QPushButton:pressed { background: #0f172a; }"
         )
         btn_open_sec.clicked.connect(DefenderExclusionManager.open_windows_security)
         btn_box.addWidget(btn_open_sec)
@@ -3614,7 +4014,7 @@ class SettingsDialog(QDialog):
         backup_card = QFrame()
         backup_card.setObjectName("BackupCard")
         backup_card.setStyleSheet(
-            "QFrame#BackupCard { background: #1e293b; border: 1px solid #334155; border-radius: 8px; }"
+            "QFrame#BackupCard { background: #0e1726; border: 1px solid #1e293b; border-radius: 8px; }"
         )
         backup_layout = QVBoxLayout(backup_card)
         backup_layout.setContentsMargins(14, 12, 14, 12)
@@ -3638,17 +4038,17 @@ class SettingsDialog(QDialog):
         btn_settings_export = QPushButton("📤 Export การตั้งค่าทั้งหมด")
         btn_settings_export.setCursor(Qt.PointingHandCursor)
         btn_settings_export.setStyleSheet(
-            "QPushButton { background: #334155; color: #06b6d4; border: none; "
-            "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
-            "QPushButton:hover { background: #475569; }"
+            "QPushButton { background: #0c2135; color: #38bdf8; border: 1px solid #0284c7; "
+            "border-radius: 6px; padding: 7px 16px; font-weight: 700; font-size: 13px; }"
+            "QPushButton:hover { background: #0e3052; border-color: #38bdf8; color: #e0f2fe; }"
         )
         btn_settings_export.clicked.connect(self._full_settings_export)
         btn_settings_import = QPushButton("📥 Import การตั้งค่าทั้งหมด")
         btn_settings_import.setCursor(Qt.PointingHandCursor)
         btn_settings_import.setStyleSheet(
-            "QPushButton { background: #334155; color: #e2e8f0; border: 1px solid #475569; "
-            "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
-            "QPushButton:hover { background: #475569; }"
+            "QPushButton { background: #162032; color: #e2e8f0; border: 1px solid #283548; "
+            "border-radius: 6px; padding: 7px 16px; font-weight: 600; font-size: 13px; }"
+            "QPushButton:hover { background: #1e293b; border-color: #38bdf8; color: #ffffff; }"
         )
         btn_settings_import.clicked.connect(self._full_settings_import)
         backup_btn_row.addWidget(btn_settings_export)

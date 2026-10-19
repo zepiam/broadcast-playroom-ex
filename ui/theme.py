@@ -859,38 +859,79 @@ QScrollArea {
     background-color: transparent;
     border: none;
 }
+/* ═══ ScrollBar ═══ */
 QScrollBar:vertical {
-    background: transparent;
-    width: 10px;
-    margin: 0;
+    background: rgba(0, 0, 0, 0.25);
+    width: 12px;
+    margin: 0px;
+    border-radius: 6px;
 }
 QScrollBar::handle:vertical {
-    background: __BORDER_LIGHT__;
-    min-height: 30px;
+    background: #475569;
+    min-height: 36px;
     border-radius: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    margin: 1px;
 }
 QScrollBar::handle:vertical:hover {
-    background: __TEXT_FAINT__;
+    background: #64748b;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+QScrollBar::handle:vertical:pressed {
+    background: __ACCENT__;
+    border: 1px solid rgba(255, 255, 255, 0.4);
 }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-    height: 0;
+    height: 0px;
+    background: none;
+    border: none;
 }
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: none;
+}
+
 QScrollBar:horizontal {
-    background: transparent;
-    height: 10px;
-    margin: 0;
+    background: rgba(0, 0, 0, 0.25);
+    height: 12px;
+    margin: 0px;
+    border-radius: 6px;
 }
 QScrollBar::handle:horizontal {
-    background: __BORDER_LIGHT__;
-    min-width: 30px;
+    background: #475569;
+    min-width: 36px;
     border-radius: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    margin: 1px;
 }
 QScrollBar::handle:horizontal:hover {
-    background: __TEXT_FAINT__;
+    background: #64748b;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+QScrollBar::handle:horizontal:pressed {
+    background: __ACCENT__;
+    border: 1px solid rgba(255, 255, 255, 0.4);
 }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-    width: 0;
+    width: 0px;
+    background: none;
+    border: none;
 }
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+    background: none;
+}
+
+/* ═══ Size Grip (Indicator for resizable windows) ═══ */
+QSizeGrip {
+    image: url("__SIZEGRIP_IMG__");
+    width: 16px;
+    height: 16px;
+    background: transparent;
+    margin: 0px 2px 2px 0px;
+}
+QSizeGrip:hover {
+    image: url("__SIZEGRIP_HOVER_IMG__");
+}
+
 
 /* ═══ Label ═══ */
 QLabel {
@@ -1044,6 +1085,18 @@ def apply_theme(app: QApplication, theme_name: str = "default") -> None:
     COLOR_CTRL_SEP = palette["CTRL_SEP"]
 
     # ★ replace placeholders with actual colors
+    import os, sys
+    if getattr(sys, 'frozen', False):
+        exe_dir = os.path.dirname(sys.executable)
+        assets_dir = os.path.join(exe_dir, "_internal", "assets")
+        if not os.path.isdir(assets_dir):
+            assets_dir = os.path.join(exe_dir, "assets")
+    else:
+        assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets")
+
+    sizegrip_img = os.path.join(assets_dir, "sizegrip.png").replace("\\", "/")
+    sizegrip_hover_img = os.path.join(assets_dir, "sizegrip_hover.png").replace("\\", "/")
+
     qss = QSS
     replacements = {
         '__BG__': COLOR_BG,
@@ -1074,6 +1127,8 @@ def apply_theme(app: QApplication, theme_name: str = "default") -> None:
         '__DANGER_BTN__': COLOR_DANGER_BTN,
         '__DANGER_EDGE__': palette["DANGER_EDGE"],
         '__DANGER_BTN_HOVER__': COLOR_DANGER_BTN_HOVER,
+        '__SIZEGRIP_IMG__': sizegrip_img,
+        '__SIZEGRIP_HOVER_IMG__': sizegrip_hover_img,
     }
     for placeholder, color in replacements.items():
         qss = qss.replace(placeholder, color)

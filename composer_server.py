@@ -62,6 +62,15 @@ class ComposerServer:
         #    signature: on_save_playroom_triggers(trigger_codes_by_widget: dict[str, list[str]])
         #    key = widget_id, value = list ของ trigger code ที่ติ๊กไว้
         self.on_save_playroom_triggers = None
+        self.giveaway_service = None
+        self.on_dock_action = None
+        self._last_tts_health = {"status": "green", "latency": 0.0, "err_detail": ""}
+        self._last_tts_reading = True
+        self._last_translate_mode = "translate"
+        self._last_voice_gender = "premwadee"
+        self._last_viewers = {"total": 0, "platforms": {}}
+        self._chat_hidden = False
+        self._ask_presets = list(getattr(settings, 'ask_presets', []) or [])
 
     # ── lifecycle ──
     def start(self) -> bool:
@@ -113,6 +122,11 @@ class ComposerServer:
         app = web.Application(middlewares=[make_origin_guard_middleware("composer")])
         app.router.add_get("/", self._handle_index)
         app.router.add_get("/editor", self._handle_editor)
+        app.router.add_get("/dock", self._handle_dock)
+        app.router.add_get("/dock-sw.js", self._handle_dock_sw)
+        app.router.add_get("/dock-offline.html", self._handle_dock_offline)
+        app.router.add_get("/api/dock/status", self._handle_dock_status)
+        app.router.add_post("/api/dock/action", self._handle_dock_action)
         app.router.add_get("/config", self._handle_config)
         app.router.add_post("/save", self._handle_save)
         app.router.add_get("/pages", self._handle_pages_get)
@@ -157,6 +171,9 @@ class ComposerServer:
         app.router.add_get("/mic-devices", self._handle_mic_devices)
         # ★ mic level polling (สำหรับ settings meter — กัน WS หลุด)
         app.router.add_get("/mic-level", self._handle_mic_level)
+        # ★ giveaway banner image & state
+        app.router.add_get("/giveaway/image", self._handle_giveaway_image)
+        app.router.add_get("/giveaway/state", self._handle_giveaway_state)
         app.router.add_get("/ws", self._handle_ws)
         self._runner = web.AppRunner(app)
         await self._runner.setup()
@@ -216,6 +233,153 @@ class ComposerServer:
         # ★ cache-bust: เพิ่ม timestamp ใน URL → browser โหลดใหม่เสมอ (กัน cache ค้าง)
         raise web.HTTPFound(f"/?edit=1&_t={int(__import__('time').time())}")
 
+    async def _handle_dock(self, request):
+        """serve dock.html สำหรับ OBS Custom Browser Dock"""
+        dock_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dock.html")
+        if os.path.exists(dock_path):
+            with open(dock_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            return web.Response(text=content, content_type="text/html", headers=self._no_cache_headers())
+        return web.Response(status=404, text="dock.html not found")
+
+    async def _handle_dock_sw(self, request):
+        """serve dock-sw.js สำหรับ Service Worker offline caching ใน OBS Dock"""
+        sw_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dock-sw.js")
+        if os.path.exists(sw_path):
+            with open(sw_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            return web.Response(
+                text=content,
+                headers={
+                    "Content-Type": "application/javascript; charset=utf-8",
+                    "Service-Worker-Allowed": "/",
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                }
+            )
+        return web.Response(status=404, text="dock-sw.js not found")
+
+    async def _handle_dock_offline(self, request):
+        """serve dock-offline.html สำหรับแสดงหน้าจอเมื่อยังไม่ได้เปิดโปรแกรม"""
+        offline_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dock-offline.html")
+        if os.path.exists(offline_path):
+            with open(offline_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            return web.Response(
+                text=content,
+                headers={
+                    "Content-Type": "text/html; charset=utf-8",
+                    "Cache-Control": "public, max-age=86400",
+                }
+            )
+        return web.Response(status=404, text="dock-offline.html not found")
+
+    async def _handle_dock_status(self, request):
+        """GET /api/dock/status — ดึงสถานะปัจจุบันสำหรับ OBS Dock"""
+        data = self._get_dock_status_data()
+        headers = self._no_cache_headers()
+        headers["Access-Control-Allow-Origin"] = "*"
+        return web.json_response(data, headers=headers)
+
+    async def _handle_dock_action(self, request):
+        """POST /api/dock/action — ส่งคำสั่งจาก OBS Dock ไปยังแอป"""
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        res = self._dispatch_dock_action(body)
+        return web.json_response(res or {"status": "ok"}, headers=self._no_cache_headers())
+
+    def _is_widget_installed(self, widget_type: str) -> bool:
+        """ตรวจสอบว่ามี widget ชนิดนี้อยู่ใน composer_widgets หรือ composer_pages หรือไม่"""
+        try:
+            widgets = list(getattr(self.settings, "composer_widgets", []) or [])
+            if any(isinstance(w, dict) and w.get("type") == widget_type and w.get("enabled", True) for w in widgets):
+                return True
+            pages = getattr(self.settings, "composer_pages", []) or []
+            for p in pages:
+                if isinstance(p, dict):
+                    pw = p.get("widgets", [])
+                    if any(isinstance(w, dict) and w.get("type") == widget_type and w.get("enabled", True) for w in pw):
+                        return True
+        except Exception:
+            pass
+        return False
+
+    def _get_dock_status_data(self) -> dict:
+        """รวบรวมข้อมูลสถานะสำหรับส่งให้ OBS Dock"""
+        gw_state = {}
+        if self.giveaway_service:
+            try:
+                gw_state = self.giveaway_service.get_current_state()
+            except Exception:
+                pass
+        has_ask = self._is_widget_installed("ask")
+        has_gw = self._is_widget_installed("giveaway")
+        has_chat = self._is_widget_installed("chat")
+        return {
+            "type": "dock_status",
+            "status": {
+                "tts_reading": self._last_tts_reading,
+                "translate_mode": self._last_translate_mode,
+                "voice_gender": self._last_voice_gender,
+                "tts_health": self._last_tts_health,
+                "viewers": self._last_viewers,
+                "ask": self._last_ask_state,
+                "ask_presets": self._ask_presets,
+                "giveaway": gw_state,
+                "chat_hidden": self._chat_hidden,
+                "has_ask_widget": has_ask,
+                "has_giveaway_widget": has_gw,
+                "has_chat_widget": has_chat,
+                "widgets_installed": {
+                    "ask": has_ask,
+                    "giveaway": has_gw,
+                    "chat": has_chat,
+                }
+            }
+        }
+
+    def push_ask_presets(self, presets: list) -> None:
+        """push รายการ preset ของ ASK tool ไปยัง OBS Dock"""
+        self._ask_presets = list(presets or [])
+        self._broadcast_threadsafe({
+            "type": "ask_presets",
+            "presets": self._ask_presets
+        })
+        self._broadcast_threadsafe(self._get_dock_status_data())
+
+    def push_chat_visibility(self, hidden: bool) -> None:
+        """push สถานะซ่อน/แสดง Chat ไปยัง composer overlay + standalone overlay"""
+        self._chat_hidden = bool(hidden)
+        self._broadcast_threadsafe({
+            "type": "chat_visibility",
+            "hidden": self._chat_hidden
+        })
+        self._broadcast_threadsafe(self._get_dock_status_data())
+
+    def _dispatch_dock_action(self, action_data: dict) -> dict:
+        """กระจายคำสั่งจาก dock ไปยัง callback handler"""
+        action = action_data.get("action")
+        if action == "open_composer":
+            try:
+                import webbrowser
+                webbrowser.open(f"http://localhost:{self.port}/editor")
+            except Exception:
+                pass
+        elif action == "toggle_hide_chat":
+            if "hidden" in action_data:
+                target_hidden = bool(action_data.get("hidden"))
+            else:
+                target_hidden = not self._chat_hidden
+            self.push_chat_visibility(target_hidden)
+        if self.on_dock_action:
+            try:
+                return self.on_dock_action(action_data) or {"status": "ok"}
+            except Exception as e:
+                logger.error(f"_dispatch_dock_action error: {e}")
+                return {"status": "error", "error": str(e)}
+        return {"status": "ok"}
+
     @staticmethod
     def _no_cache_headers() -> dict:
         """headers สำหรับกัน cache ทุกประเภท (กว่า no-cache เดี่ยว)"""
@@ -240,7 +404,7 @@ class ComposerServer:
 
         # ป้องกันข้อมุลผิดรูปแบบ — validate พื้นฐาน
         clean_widgets = []
-        valid_types = {"chat", "alert", "viewer", "clock", "image", "playroom", "webcam", "text", "video", "now_playing", "emote_party", "avatar", "donate_goal", "ask"}
+        valid_types = {"chat", "alert", "viewer", "clock", "image", "playroom", "webcam", "text", "video", "now_playing", "emote_party", "avatar", "donate_goal", "ask", "giveaway"}
         for i, w in enumerate(widgets if isinstance(widgets, list) else []):
             if not isinstance(w, dict):
                 continue
@@ -434,6 +598,8 @@ class ComposerServer:
                 "ask_min_width": max(220, min(700, int(w.get("ask_min_width", 340) or 340))) if wt == "ask" else 340,
                 "ask_pos_x": max(5, min(95, int(w.get("ask_pos_x", 85) or 85))) if wt == "ask" else 85,
                 "ask_pos_y": max(5, min(95, int(w.get("ask_pos_y", 12) or 12))) if wt == "ask" else 12,
+                "ask_offset_x": max(-1000, min(1000, int(w.get("ask_offset_x", 0) or 0))) if wt == "ask" else 0,
+                "ask_offset_y": max(-1000, min(1000, int(w.get("ask_offset_y", 0) or 0))) if wt == "ask" else 0,
                 "ask_opacity_pct": max(10, min(100, int(w.get("ask_opacity_pct", 100) or 100))) if wt == "ask" else 100,
                 "ask_question_fs": max(12, min(60, int(w.get("ask_question_fs", 24) or 24))) if wt == "ask" else 24,
                 "ask_choice_fs": max(10, min(40, int(w.get("ask_choice_fs", 18) or 18))) if wt == "ask" else 18,
@@ -580,6 +746,7 @@ class ComposerServer:
             except Exception:
                 pass
         await self._broadcast_safe({"type": "config", "config": self._build_config()})
+        await self._broadcast_safe(self._get_dock_status_data())
         # ★ push config update เฉพาะ chat widget ที่เปลี่ยน (overlay.html iframe จะได้ refresh theme/mode)
         #    ★ เดย์ 100ms กัน race condition (broadcast config ทับ push widget config)
         import asyncio as _aio2
@@ -1453,6 +1620,14 @@ class ComposerServer:
                 # ★ ASK state ล่าสุด — client ใหม่ (เช่น OBS refresh) ได้โพลปัจจุบันทันที
                 if self._last_ask_state:
                     await ws.send_json(self._last_ask_state)
+                # ★ Giveaway state ล่าสุด
+                if self.giveaway_service:
+                    await ws.send_json({
+                        "type": "giveaway_state",
+                        "state": self.giveaway_service.get_current_state()
+                    })
+                # ★ สถานะสำหรับ OBS Dock ล่าสุด
+                await ws.send_json(self._get_dock_status_data())
             except Exception:
                 pass
 
@@ -1489,6 +1664,12 @@ class ComposerServer:
                                 pending_widget_id = wid
                                 self._chat_widget_clients.setdefault(wid, set()).add(ws)
                                 await ws.send_json({"type": "config", "config": self._build_chat_widget_config(wid)})
+                        if data.get("type") == "dock_action":
+                            action = data.get("action")
+                            if action == "dock_get_status":
+                                await ws.send_json(self._get_dock_status_data())
+                            else:
+                                self._dispatch_dock_action(data)
                     except Exception:
                         pass
                 elif msg.type == WSMsgType.ERROR:
@@ -1582,6 +1763,7 @@ class ComposerServer:
         """push config ใหม่ (เรียกเมื่อ settings เปลี่ยน)"""
         self.settings = settings
         self._broadcast_threadsafe({"type": "config", "config": self._build_config()})
+        self._broadcast_threadsafe(self._get_dock_status_data())
 
     def push_message(self, msg_payload: dict) -> None:
         """push chat message ไป composer (msg_payload = dict ที่ serialize แล้ว)
@@ -1599,9 +1781,44 @@ class ComposerServer:
         self._broadcast_threadsafe(msg_payload)
 
     def push_viewer_counts(self, total: int, platforms: dict) -> None:
-        """push ยอดคนดูไป composer widget"""
+        """push ยอดคนดูไป composer widget และ OBS Dock"""
+        self._last_viewers = {"total": int(total or 0), "platforms": platforms or {}}
         data = {"type": "viewers", "total": int(total or 0), "platforms": platforms or {}}
         self._broadcast_threadsafe(data)
+
+    def push_tts_health(self, status: str, latency: float = 0.0, err_detail: str = "") -> None:
+        """push สถานะสุขภาพของ TTS ไปยัง OBS Dock (green | yellow | red)"""
+        self._last_tts_health = {"status": status, "latency": latency, "err_detail": err_detail}
+        self._broadcast_threadsafe({
+            "type": "tts_health",
+            "status": status,
+            "latency": latency,
+            "err_detail": err_detail
+        })
+
+    def push_tts_state(self, reading: bool) -> None:
+        """push สถานะเปิด/หยุดอ่านเสียง TTS ไปยัง OBS Dock"""
+        self._last_tts_reading = bool(reading)
+        self._broadcast_threadsafe({
+            "type": "dock_status",
+            "status": {"tts_reading": self._last_tts_reading}
+        })
+
+    def push_translate_state(self, mode: str) -> None:
+        """push โหมดแปลภาษา (translate | multilang) ไปยัง OBS Dock"""
+        self._last_translate_mode = str(mode)
+        self._broadcast_threadsafe({
+            "type": "dock_status",
+            "status": {"translate_mode": self._last_translate_mode}
+        })
+
+    def push_voice_gender(self, voice: str) -> None:
+        """push เสียงผู้บรรยายหลัก (premwadee | niwat) ไปยัง OBS Dock"""
+        self._last_voice_gender = str(voice)
+        self._broadcast_threadsafe({
+            "type": "dock_status",
+            "status": {"voice_gender": self._last_voice_gender}
+        })
 
     def _ask_demo_cancel(self) -> None:
         """ยกเลิกตัวจับเวลา demo ทั้งหมด (เรียกบน event loop ของ server เท่านั้น)"""
@@ -1726,6 +1943,145 @@ class ComposerServer:
         payload = {"type": "now_playing"}
         payload.update(data)
         self._broadcast_threadsafe(payload)
+
+    # ═══ Giveaway (Loyalty Giveaway) integration ═══
+
+    def set_giveaway_service(self, service) -> None:
+        """เชื่อมต่อสัญญาณจาก GiveawayService เข้ากับ ComposerServer เพื่อส่งข้อมูลขึ้น OBS WS เดียวกัน"""
+        self.giveaway_service = service
+        if service is not None:
+            service.config_changed.connect(self._on_giveaway_config_changed)
+            service.checkpoint_started.connect(self._on_giveaway_checkpoint_started)
+            service.checkpoint_tick.connect(self._on_giveaway_checkpoint_tick)
+            service.checkpoint_ended.connect(self._on_giveaway_checkpoint_ended)
+            service.participant_added.connect(self._on_giveaway_participant_added)
+            service.draw_started.connect(self._on_giveaway_draw_started)
+            service.draw_winner_shown.connect(self._on_giveaway_draw_winner)
+            service.draw_reset.connect(self._on_giveaway_draw_reset)
+            service.data_cleared.connect(self._on_giveaway_data_cleared)
+            service.preview_requested.connect(self._on_giveaway_preview_requested)
+
+    def _on_giveaway_config_changed(self):
+        if self.giveaway_service:
+            self._broadcast_threadsafe({
+                "type": "giveaway_config",
+                "state": self.giveaway_service.get_current_state()
+            })
+
+    def _on_giveaway_checkpoint_started(self, cp_index: int, code: str, duration_sec: int):
+        state = self.giveaway_service.get_current_state() if self.giveaway_service else {}
+        cp_name = self.giveaway_service.get_checkpoint_name(cp_index) if self.giveaway_service else f"รอบที่ {cp_index}"
+        self._broadcast_threadsafe({
+            "type": "giveaway_checkpoint_start",
+            "cp_index": cp_index,
+            "cp_name": cp_name,
+            "code": code,
+            "duration": duration_sec,
+            "mode": getattr(self.giveaway_service, "mode", "multi"),
+            "total_checkpoints": getattr(self.giveaway_service, "total_checkpoints", 1),
+            "state": state,
+        })
+
+    def _on_giveaway_checkpoint_tick(self, remaining_sec: float, total_participants: int):
+        self._broadcast_threadsafe({
+            "type": "giveaway_tick",
+            "remaining": remaining_sec,
+            "duration": getattr(self.giveaway_service, "duration_sec", 60),
+            "total": total_participants,
+        })
+
+    def _on_giveaway_checkpoint_ended(self, cp_index: int, total_checked_in: int):
+        self._broadcast_threadsafe({
+            "type": "giveaway_checkpoint_end",
+            "cp_index": cp_index,
+            "total": total_checked_in,
+        })
+
+    def _on_giveaway_participant_added(self, participant, cp_index: int):
+        counts = self.giveaway_service.get_participant_counts() if self.giveaway_service else {}
+        self._broadcast_threadsafe({
+            "type": "giveaway_participant",
+            "author": participant.author,
+            "platform": participant.platform,
+            "cp_index": cp_index,
+            "round_participants": counts.get(f"cp{cp_index}", 0),
+            "total_participants": counts.get("all", 0),
+        })
+
+    def _on_giveaway_draw_started(self, prize: str, tier_label: str, candidates: list, winner_name: str = ""):
+        style = getattr(self.giveaway_service, 'draw_animation_style', 'gachapon') if self.giveaway_service else 'gachapon'
+        self._broadcast_threadsafe({
+            "type": "giveaway_draw_start",
+            "prize": prize,
+            "tier_label": tier_label,
+            "candidates": candidates,
+            "winner": winner_name,
+            "style": style,
+        })
+
+    def _on_giveaway_draw_winner(self, participant, prize: str, tier_label: str):
+        style = getattr(self.giveaway_service, 'draw_animation_style', 'gachapon') if self.giveaway_service else 'gachapon'
+        candidates = getattr(self.giveaway_service, '_last_draw_candidates', [])
+        self._broadcast_threadsafe({
+            "type": "giveaway_draw_winner",
+            "author": participant.author,
+            "platform": participant.platform,
+            "prize": prize,
+            "tier_label": tier_label,
+            "candidates": candidates,
+            "style": style,
+        })
+
+    def _on_giveaway_draw_reset(self):
+        self._broadcast_threadsafe({
+            "type": "giveaway_draw_reset",
+        })
+
+    def _on_giveaway_data_cleared(self):
+        self._broadcast_threadsafe({
+            "type": "giveaway_data_cleared",
+        })
+
+    def _on_giveaway_preview_requested(self, payload=None):
+        msg = {
+            "type": "giveaway_preview",
+            "state": self.giveaway_service.get_current_state() if self.giveaway_service else {},
+        }
+        if isinstance(payload, dict):
+            msg.update(payload)
+        self._broadcast_threadsafe(msg)
+
+    async def _handle_giveaway_image(self, request):
+        """serve custom giveaway image configured by streamer"""
+        if self.giveaway_service is None or not getattr(self.giveaway_service, "overlay_image_path", ""):
+            return web.Response(status=404, text="no giveaway image configured")
+        img_path = self.giveaway_service.overlay_image_path
+        if not os.path.isfile(img_path):
+            return web.Response(status=404, text="image file not found")
+        try:
+            with open(img_path, "rb") as f:
+                content = f.read()
+            ext = os.path.splitext(img_path)[1].lower()
+            mime = "image/png"
+            if ext in (".jpg", ".jpeg"):
+                mime = "image/jpeg"
+            elif ext == ".gif":
+                mime = "image/gif"
+            elif ext == ".webp":
+                mime = "image/webp"
+            return web.Response(
+                body=content,
+                content_type=mime,
+                headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
+            )
+        except Exception as e:
+            return web.Response(status=500, text=str(e))
+
+    async def _handle_giveaway_state(self, request):
+        """serve giveaway current state as JSON"""
+        if self.giveaway_service is None:
+            return web.json_response({})
+        return web.json_response(self.giveaway_service.get_current_state())
 
     # ═══ Avatar widget — TTS speaking state push ═══
 
@@ -2083,6 +2439,7 @@ class ComposerServer:
             # ★ overlay_version = mtime ของ overlay.html → เมื่อแก้ไฟล์, version เปลี่ยน
             #    composer.html จะ reload chat-widget iframe อัตโนมัติ (กัน cache ค้าง)
             "overlay_version": self._overlay_version(),
+            "chat_hidden": self._chat_hidden,
         }
 
     # ── helpers ──

@@ -435,19 +435,19 @@ class Sidebar(QFrame):
 
         vh_row.addStretch()
 
-        # ★ TTS Server Status indicator (status : ●)
+        # ★ TTS Server Status indicator (Server status : ปกติ / ไม่ปกติ / ล้มเหลว)
         self.tts_status_container = QWidget()
         self.tts_status_container.setCursor(Qt.PointingHandCursor)
         tts_st_layout = QHBoxLayout(self.tts_status_container)
         tts_st_layout.setContentsMargins(0, 0, 0, 0)
-        tts_st_layout.setSpacing(3)
+        tts_st_layout.setSpacing(4)
 
-        self.tts_status_lbl = QLabel("status :")
-        theme.styled(self.tts_status_lbl, "font-size: 12px; color: #9ca3af; font-weight: 500;")
+        self.tts_status_lbl = QLabel("Server status :")
+        theme.styled(self.tts_status_lbl, "font-size: 11.5px; color: #9ca3af; font-weight: 500;")
         tts_st_layout.addWidget(self.tts_status_lbl)
 
-        self.tts_status_dot = QLabel("●")
-        theme.styled(self.tts_status_dot, "font-size: 14px; color: #9ca3af; font-weight: bold;")
+        self.tts_status_dot = QLabel("กำลังเช็ค...")
+        theme.styled(self.tts_status_dot, "font-size: 11.5px; color: #9ca3af; font-weight: 700;")
         tts_st_layout.addWidget(self.tts_status_dot)
 
         # คลิกเพื่อสั่งตรวจสอบสถานะซ้ำได้ทันที
@@ -700,12 +700,13 @@ class Sidebar(QFrame):
         theme.styled(self.platform_count, f"color: {color}; font-size: 12px; font-weight: 600;")
 
     def set_tts_status(self, state: str, latency: float = 0.0, err_detail: str = ""):
-        """อัปเดตสีเม็ดสถานะ TTS + tooltip
+        """อัปเดตข้อความและสีสถานะ TTS + tooltip
 
         state: "green" | "yellow" | "red" | "checking"
         """
         if state == "green":
             color = "#10b981"
+            status_text = "ปกติ"
             tooltip = (
                 "<div style='font-size: 12px; line-height: 1.4; color: #f3f4f6;'>"
                 "<b style='color: #e2e8f0;'>ตรวจสอบเซิฟเวอร์ระบบอ่านแชท :</b><br/>"
@@ -715,6 +716,7 @@ class Sidebar(QFrame):
             )
         elif state == "yellow":
             color = "#f59e0b"
+            status_text = "ไม่ปกติ"
             tooltip = (
                 "<div style='font-size: 12px; line-height: 1.4; color: #f3f4f6;'>"
                 "<b style='color: #e2e8f0;'>ตรวจสอบเซิฟเวอร์ระบบอ่านแชท :</b><br/>"
@@ -724,6 +726,7 @@ class Sidebar(QFrame):
             )
         elif state == "red":
             color = "#ef4444"
+            status_text = "ล้มเหลว"
             tooltip = (
                 "<div style='font-size: 12px; line-height: 1.4; color: #f3f4f6;'>"
                 "<b style='color: #e2e8f0;'>ตรวจสอบเซิฟเวอร์ระบบอ่านแชท :</b><br/>"
@@ -733,11 +736,13 @@ class Sidebar(QFrame):
             )
         else:
             color = "#9ca3af"
+            status_text = "กำลังเช็ค..."
             tooltip = (
                 "<div style='font-size: 12px; line-height: 1.4; color: #f3f4f6;'>"
                 "<b style='color: #e2e8f0;'>ตรวจสอบเซิฟเวอร์ระบบอ่านแชท :</b><br/>"
                 "<span style='color: #9ca3af; font-weight: bold;'>● กำลังตรวจสอบสถานะ...</span>"
                 "</div>"
             )
-        theme.styled(self.tts_status_dot, f"font-size: 14px; color: {color}; font-weight: bold;")
+        self.tts_status_dot.setText(status_text)
+        theme.styled(self.tts_status_dot, f"font-size: 11.5px; color: {color}; font-weight: 700;")
         self.tts_status_container.setToolTip(tooltip)

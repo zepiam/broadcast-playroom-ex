@@ -236,6 +236,10 @@ class AppSettings:
     ask_frame_style: str = "classic"    # classic, sharp, floating, glow, etc.
     ask_anim_in: str = "fade"           # fade | slide-up | slide-down | slide-left | slide-right | etc.
     ask_anim_out: str = "fade"
+    # ---- Networking / Custom DNS ----
+    dns_enabled: bool = False
+    dns_service: str = "cloudflare_doh"  # cloudflare_doh | google_doh | quad9_doh | cloudflare_udp | google_udp | custom
+    dns_custom: str = ""
     twitch_bot_name: str = "Baitoei-Bot"  # ★ ชื่อบอท (label ในโปรแกรม — ใช้ดัก TTS ไม่อ่าน)
     twitch_bot_commands: dict = field(default_factory=lambda: {
         "!dc": "Discord: https://discord.gg/xxx",
@@ -807,6 +811,9 @@ class AppSettings:
             "ask_frame_style": str(self.ask_frame_style),
             "ask_anim_in": str(self.ask_anim_in),
             "ask_anim_out": str(self.ask_anim_out),
+            "dns_enabled": bool(self.dns_enabled),
+            "dns_service": str(self.dns_service),
+            "dns_custom": str(self.dns_custom),
             "twitch_bot_name": self.twitch_bot_name,
             "twitch_bot_commands": self.twitch_bot_commands,
             "twitch_bot_timers": self.twitch_bot_timers,
@@ -1214,6 +1221,12 @@ class AppSettings:
             s.ask_anim_in = str(data["ask_anim_in"])
         if "ask_anim_out" in data:
             s.ask_anim_out = str(data["ask_anim_out"])
+        if "dns_enabled" in data:
+            s.dns_enabled = bool(data["dns_enabled"])
+        if "dns_service" in data:
+            s.dns_service = str(data["dns_service"])
+        if "dns_custom" in data:
+            s.dns_custom = str(data["dns_custom"])
         if "twitch_bot_name" in data:
             s.twitch_bot_name = str(data["twitch_bot_name"])
         if "twitch_bot_commands" in data:

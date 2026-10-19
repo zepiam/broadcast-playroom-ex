@@ -55,6 +55,7 @@ class SettingsDialog(QDialog):
     settings_changed = Signal()  # emit เมื่อ settings เปลี่ยน (บันทึกแล้ว)
     _obs_test_sig = Signal(str, object)  # OBS test result from background thread
     _update_result_sig = Signal(object)  # update check result from background thread
+    _dns_test_sig = Signal(bool, float, str, str)  # (success, latency_ms, resolved_ip, message)
 
     def __init__(self, parent_app):
         super().__init__(parent_app if isinstance(parent_app, QWidget) else None)
@@ -66,6 +67,7 @@ class SettingsDialog(QDialog):
         self.setMinimumSize(880, 640)
         self.setModal(True)
         self.setSizeGripEnabled(True)
+        self._dns_test_sig.connect(self._on_dns_test_result)
         # ★ Twitch OAuth handlers (จะถูก setup จาก app.py หลังสร้าง dialog)
         self._twitch_oauth_connect_handler = None
         self._twitch_oauth_disconnect_handler = None
@@ -137,6 +139,7 @@ class SettingsDialog(QDialog):
         # ★ Left sidebar (category list) — ขยายจาก 200 → 220 กัน sidescroll
         self.sidebar = QListWidget()
         self.sidebar.setFixedWidth(220)
+        self.sidebar.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.sidebar.setObjectName("SettingsSidebar")
         self._apply_sidebar_theme_qss()
         categories = [
@@ -156,6 +159,7 @@ class SettingsDialog(QDialog):
             ("🪟 Overlay+", "overlay_plus"),
             ("🤖 Chat Bot", "twitch_bot"),
             ("💡 คำสั่งคนดู (Hint)", "hint"),
+            ("🌐 Network", "networking"),
             ("🛡️ Windows Defender", "defender"),
             ("💚 สนับสนุน", "supporters"),
             ("ℹ️ เกี่ยวกับ", "about"),
@@ -208,6 +212,7 @@ class SettingsDialog(QDialog):
         self._build_overlay_plus_section()
         self._build_twitch_bot_section()
         self._build_hint_section()
+        self._build_networking_section()
         self._build_defender_section()
         # ★ _build_announce_section() ถอดออกจาก UI แล้ว — เครื่องมือ dev เท่านั้น
         #   (ยังใช้งานได้ผ่าน announce_sender.py แยกต่างหาก ไม่ควรให้ end user เห็นในนี้)
@@ -3785,6 +3790,226 @@ class SettingsDialog(QDialog):
         )
 
     # ════════════════════════════════════════════════════════════
+    # 🌐 Network Section (Custom DNS & DoH Bypass)
+    # ════════════════════════════════════════════════════════════
+    def _build_networking_section(self):
+        """🌐 Network — ระบบ Custom DNS และ DoH (DNS-over-HTTPS)"""
+        self._add_section("networking", "🌐 Network",
+                          "ตั้งค่า DNS สำหรับการเชื่อมต่อหาเซิฟเวอร์ TTS")
+        layout = self._current_section_layout
+        ci = lambda: layout.count() - 1
+
+        # ── 1. เปิดใช้งาน DNS ──
+        self.dns_enabled_cb = QCheckBox("เปิดใช้งาน DNS")
+        self.dns_enabled_cb.setCursor(Qt.PointingHandCursor)
+        self.dns_enabled_cb.setStyleSheet(
+            "QCheckBox { font-size: 13.5px; font-weight: 700; color: #f8fafc; spacing: 8px; }"
+            "QCheckBox::indicator { width: 18px; height: 18px; border-radius: 4px; border: 1.5px solid #334155; background: #131d31; }"
+            "QCheckBox::indicator:hover { border-color: #38bdf8; background: #162238; }"
+            "QCheckBox::indicator:checked { background: #0284c7; border-color: #38bdf8; }"
+        )
+        self.dns_enabled_cb.toggled.connect(self._on_dns_enabled_toggled)
+        layout.insertWidget(ci(), self.dns_enabled_cb)
+
+        # ── 1.1 กล่อง Dropdown เลือก Service (บรรทัดถัดไป) ──
+        self.dns_service_combo = QComboBox()
+        self.dns_service_combo.setFixedHeight(34)
+        self.dns_service_combo.setStyleSheet("""
+            QComboBox {
+                background: #162032;
+                border: 1px solid #283548;
+                border-radius: 6px;
+                padding: 6px 12px;
+                color: #f1f5f9;
+                font-size: 13px;
+                font-weight: 600;
+            }
+            QComboBox:hover {
+                border-color: #38bdf8;
+                background: #1a273e;
+            }
+            QComboBox:focus {
+                border-color: #38bdf8;
+            }
+            QComboBox:disabled {
+                background: #0f172a;
+                border-color: #1e293b;
+                color: #475569;
+            }
+            QComboBox::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 28px;
+                border: none;
+                background: transparent;
+            }
+            QComboBox::down-arrow {
+                image: url("assets/arrow_down.png");
+                width: 12px;
+                height: 8px;
+                margin-right: 8px;
+                border: none;
+                background: transparent;
+            }
+            QComboBox::down-arrow:disabled {
+                image: url("assets/arrow_down_disabled.png");
+                border: none;
+                background: transparent;
+            }
+            QComboBox QAbstractItemView {
+                background: #0f172a;
+                border: 1px solid #334155;
+                border-radius: 6px;
+                color: #f1f5f9;
+                selection-background-color: #0284c7;
+                selection-color: #ffffff;
+                padding: 4px;
+                outline: none;
+            }
+        """)
+        from network_dns import DOH_PRESETS
+        for key, pinfo in DOH_PRESETS.items():
+            self.dns_service_combo.addItem(pinfo["label"], key)
+        self.dns_service_combo.currentIndexChanged.connect(self._on_dns_service_changed)
+        layout.insertWidget(ci(), self.dns_service_combo)
+
+        # ── 1.1 Custom DNS Input (แสดงเมื่อเลือก Custom) ──
+        self.dns_custom_container = QWidget()
+        custom_layout = QVBoxLayout(self.dns_custom_container)
+        custom_layout.setContentsMargins(0, 4, 0, 4)
+        custom_layout.setSpacing(4)
+        lbl_custom = QLabel("ระบุ IP หรือ DoH URL (เช่น 1.1.1.1 หรือ https://...):")
+        lbl_custom.setStyleSheet("font-size: 12px; font-weight: 600; color: #94a3b8;")
+        custom_layout.addWidget(lbl_custom)
+
+        self.dns_custom_input = QLineEdit()
+        self.dns_custom_input.setPlaceholderText("https://1.1.1.1/dns-query หรือ 1.1.1.1")
+        self.dns_custom_input.setFixedHeight(34)
+        self.dns_custom_input.setStyleSheet(
+            "QLineEdit { background: #162032; border: 1px solid #283548; border-radius: 6px; padding: 6px 12px; color: #f1f5f9; font-size: 13px; }"
+            "QLineEdit:focus { border-color: #38bdf8; background: #1a273e; }"
+            "QLineEdit:disabled { background: #0f172a; border-color: #1e293b; color: #475569; }"
+        )
+        self.dns_custom_input.textChanged.connect(lambda: self._auto_save())
+        custom_layout.addWidget(self.dns_custom_input)
+        self.dns_custom_container.setVisible(False)
+        layout.insertWidget(ci(), self.dns_custom_container)
+
+        # เส้นคั่นบางๆ สไตล์ ASK Tool
+        div1 = QFrame()
+        div1.setFixedHeight(1)
+        div1.setStyleSheet("background: #1e293b; border: none; margin: 6px 0;")
+        layout.insertWidget(ci(), div1)
+
+        # ── 2. ทดสอบการเชื่อมต่อไปยังเซิฟเวอร์ ──
+        lbl_test_title = QLabel("ทดสอบการเชื่อมต่อไปยังเซิฟเวอร์")
+        lbl_test_title.setStyleSheet("font-size: 13.5px; font-weight: 700; color: #f1f5f9;")
+        layout.insertWidget(ci(), lbl_test_title)
+
+        test_row = QHBoxLayout()
+        test_row.setSpacing(12)
+
+        self.btn_test_dns = QPushButton("ทดสอบการเชื่อมต่อ")
+        self.btn_test_dns.setCursor(Qt.PointingHandCursor)
+        self.btn_test_dns.setFixedHeight(36)
+        self.btn_test_dns.setStyleSheet(
+            "QPushButton { background: #0284c7; color: #ffffff; font-weight: 700; font-size: 13px; padding: 6px 20px; border-radius: 6px; border: 1px solid #38bdf8; }"
+            "QPushButton:hover { background: #0369a1; }"
+            "QPushButton:pressed { background: #075985; }"
+            "QPushButton:disabled { background: #1e293b; border-color: #334155; color: #64748b; }"
+        )
+        self.btn_test_dns.clicked.connect(self._on_start_dns_test)
+        test_row.addWidget(self.btn_test_dns)
+        test_row.addStretch()
+        layout.insertLayout(ci(), test_row)
+
+        # กล่องสถานะ: เหลือแค่ text สถานะ ย้ายลงมาไว้ด้านใต้กล่องทดสอบการเชื่อมต่อ
+        self.dns_status_badge = QLabel("⚪ ยังไม่ได้ทดสอบ")
+        self.dns_status_badge.setWordWrap(True)
+        self.dns_status_badge.setStyleSheet("QLabel { font-size: 12.5px; font-weight: 600; color: #94a3b8; background: transparent; border: none; padding: 2px 0; }")
+        layout.insertWidget(ci(), self.dns_status_badge)
+
+        # เส้นคั่นบางๆ
+        div2 = QFrame()
+        div2.setFixedHeight(1)
+        div2.setStyleSheet("background: #1e293b; border: none; margin: 6px 0;")
+        layout.insertWidget(ci(), div2)
+
+        # ── 3. คำแนะนำ ──
+        tip_header = QLabel("คำแนะนำ")
+        tip_header.setStyleSheet("font-size: 13.5px; font-weight: 700; color: #38bdf8;")
+        layout.insertWidget(ci(), tip_header)
+
+        tip_text = QLabel(
+            "การตั้งค่า DNS นี้ เหมาะสมสำหรับผู้ที่ใช้อินเตอร์เน็ตที่มีการบล็อกการส่งข้อมูลไปหาเซิฟเวอร์ "
+            "อาการ TTS ไม่อ่าน มักจะเกิดจากผู้ที่ใช้อินเตอร์เน็ตมหาลัย หอพัก หรือเครือข่ายที่มีการป้องกันด้าน security เยอะเกินไป "
+            "ซึ่งอาการของผู้ที่เหมาะสมที่จะใช้ DNS คือกลุ่มผู้ใช้งานที่พบสถานะการเชื่อมต่อไปหาเซิฟเวอร์เป็นสีแดง (เชื่อมต่อไม่ได้) "
+            "หรือ สีเหลืองอยู่บ่อยๆ (TTS อ่านบ้างไม่อ่านบ้าง) หากผู้ใช้งานไม่ได้ใช้ TTS เป็นหลัก ก็ไม่จำเป็นต้องตั้ง DNS นี้"
+        )
+        tip_text.setStyleSheet("font-size: 12.5px; color: #94a3b8; line-height: 1.6; background: transparent; border: none;")
+        tip_text.setWordWrap(True)
+        layout.insertWidget(ci(), tip_text)
+
+    def _on_dns_enabled_toggled(self, checked):
+        self._update_dns_controls_state()
+        self._auto_save()
+        if hasattr(self.parent_app, '_check_tts_health'):
+            self.parent_app._check_tts_health()
+
+    def _on_dns_service_changed(self, idx):
+        service = self.dns_service_combo.currentData() or "cloudflare_doh"
+        if hasattr(self, 'dns_custom_container'):
+            self.dns_custom_container.setVisible(service == "custom")
+        self._auto_save()
+        if hasattr(self.parent_app, '_check_tts_health'):
+            self.parent_app._check_tts_health()
+
+    def _update_dns_controls_state(self):
+        checked = self.dns_enabled_cb.isChecked() if hasattr(self, 'dns_enabled_cb') else False
+        if hasattr(self, 'dns_service_combo'):
+            self.dns_service_combo.setEnabled(checked)
+        if hasattr(self, 'dns_custom_input'):
+            self.dns_custom_input.setEnabled(checked)
+
+    def _on_start_dns_test(self):
+        """เริ่มทดสอบการเชื่อมต่อ DNS กับเซิฟเวอร์ใน Background Thread"""
+        service = self.dns_service_combo.currentData() or "cloudflare_doh"
+        custom_val = self.dns_custom_input.text().strip()
+
+        self.btn_test_dns.setEnabled(False)
+        self.btn_test_dns.setText("⏳ กำลังทดสอบ...")
+        self.dns_status_badge.setText("🟡 กำลังเชื่อมต่อไปยังเซิฟเวอร์...")
+        self.dns_status_badge.setStyleSheet("QLabel { font-size: 12.5px; font-weight: 600; color: #fbbf24; background: transparent; border: none; padding: 2px 0; }")
+
+        import threading
+        from network_dns import test_dns_connection
+
+        def _worker():
+            try:
+                success, latency, ip, msg = test_dns_connection(service, custom_val, timeout=6.0)
+                self._dns_test_sig.emit(success, latency, ip, msg)
+            except Exception as e:
+                self._dns_test_sig.emit(False, 0.0, "", str(e))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _on_dns_test_result(self, success: bool, latency: float, ip: str, msg: str):
+        """รับผลการทดสอบ DNS บน UI Thread"""
+        self.btn_test_dns.setEnabled(True)
+        self.btn_test_dns.setText("ทดสอบการเชื่อมต่อ")
+
+        if success:
+            self.dns_status_badge.setText(f"🟢 เชื่อมต่อสำเร็จ (Latency: {latency:.0f} ms | IP: {ip})")
+            self.dns_status_badge.setStyleSheet("QLabel { font-size: 12.5px; font-weight: 700; color: #34d399; background: transparent; border: none; padding: 2px 0; }")
+            if self.dns_enabled_cb.isChecked():
+                self._auto_save()
+                if hasattr(self.parent_app, '_check_tts_health'):
+                    self.parent_app._check_tts_health()
+        else:
+            self.dns_status_badge.setText(f"🔴 เชื่อมต่อไม่สำเร็จ: {msg}")
+            self.dns_status_badge.setStyleSheet("QLabel { font-size: 12.5px; font-weight: 700; color: #f87171; background: transparent; border: none; padding: 2px 0; }")
+
+    # ════════════════════════════════════════════════════════════
     # 🛡️ Windows Defender Section (1-Click Exclusion)
     # ════════════════════════════════════════════════════════════
     def _build_defender_section(self):
@@ -4551,6 +4776,15 @@ class SettingsDialog(QDialog):
         # ★ secret code daily limit
         if hasattr(self, 'code_limit_spin'):
             self.code_limit_spin.setValue(int(getattr(s, 'secret_code_daily_limit', 0)))
+        # ★ Networking / Custom DNS
+        if hasattr(self, 'dns_enabled_cb'):
+            self.dns_enabled_cb.setChecked(getattr(s, 'dns_enabled', False))
+            idx = self.dns_service_combo.findData(getattr(s, 'dns_service', 'cloudflare_doh'))
+            if idx >= 0:
+                self.dns_service_combo.setCurrentIndex(idx)
+            self.dns_custom_input.setText(getattr(s, 'dns_custom', ''))
+            self._on_dns_service_changed(self.dns_service_combo.currentIndex())
+            self._update_dns_controls_state()
         # ★ ปลด flag — auto-save ทำงานปกติหลัง load เสร็จ
         self._loading = False
 
@@ -4795,6 +5029,11 @@ class SettingsDialog(QDialog):
             # ★ overlay hide bots
             if hasattr(self, 'overlay_hide_bots_cb'):
                 s.overlay_hide_bots = self.overlay_hide_bots_cb.isChecked()
+            # ★ Networking / Custom DNS
+            if hasattr(self, 'dns_enabled_cb'):
+                s.dns_enabled = self.dns_enabled_cb.isChecked()
+                s.dns_service = self.dns_service_combo.currentData() or "cloudflare_doh"
+                s.dns_custom = self.dns_custom_input.text().strip()
 
     def _auto_save(self):
         """auto-save: collect + save + emit signal (ไม่ปิด dialog)"""

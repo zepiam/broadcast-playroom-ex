@@ -149,7 +149,8 @@ class TTSParams:
 class TTSEngine:
     """เรียก edge-tts แบบ async ใน worker thread"""
 
-    def __init__(self) -> None:
+    def __init__(self, settings=None) -> None:
+        self.settings = settings
         self._loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
         self._ready = threading.Event()
         self._worker = threading.Thread(target=self._run_loop, daemon=True)
@@ -168,6 +169,22 @@ class TTSEngine:
         except Exception:
             pass
 
+    def _create_connector(self) -> aiohttp.TCPConnector:
+        """สร้าง aiohttp.TCPConnector (รองรับ Custom DNS / DoH ถ้าเปิดใช้งาน)"""
+        s = getattr(self, "settings", None)
+        if s is None:
+            try:
+                from settings import load_settings
+                s = load_settings()
+            except Exception:
+                s = None
+
+        if s and getattr(s, "dns_enabled", False):
+            from network_dns import AppDnsResolver
+            resolver = AppDnsResolver(s, loop=self._loop)
+            return aiohttp.TCPConnector(resolver=resolver, family=socket.AF_INET)
+        return aiohttp.TCPConnector(family=socket.AF_INET)
+
     # ------------------------------------------------------------------ #
     # Synthesis (core)
     # ------------------------------------------------------------------ #
@@ -178,8 +195,8 @@ class TTSEngine:
         last_exc: Exception | None = None
         for attempt in range(retries):
             try:
-                # บังคับใช้ IPv4 (AF_INET) เพื่อเลี่ยงปัญหาเน็ตบ้านไทยค้าง IPv6 กับ Microsoft CDN
-                conn = aiohttp.TCPConnector(family=socket.AF_INET)
+                # บังคับใช้ IPv4 (AF_INET) หรือ Custom DNS Resolver
+                conn = self._create_connector()
                 communicate = edge_tts.Communicate(
                     text,
                     voice=voice,
@@ -289,7 +306,7 @@ class TTSEngine:
         on_error: Callable[[str], None],
     ) -> None:
         async def _fetch() -> list[dict]:
-            conn = aiohttp.TCPConnector(family=socket.AF_INET)
+            conn = self._create_connector()
             voices = await edge_tts.list_voices(connector=conn)
             return list(voices)
 
@@ -317,7 +334,7 @@ class TTSEngine:
         async def _probe() -> tuple[str, float, str]:
             t0 = time.monotonic()
             try:
-                conn = aiohttp.TCPConnector(family=socket.AF_INET)
+                conn = self._create_connector()
                 communicate = edge_tts.Communicate(
                     "ok",
                     voice="th-TH-PremwadeeNeural",

@@ -1012,7 +1012,7 @@ class TTSForLivestreamApp(QMainWindow):
         """โหลด TTS engine + pipeline (settings โหลดแล้วใน __init__ ก่อน fallback)"""
         try:
             from tts_engine import TTSEngine
-            self.tts_engine = TTSEngine()
+            self.tts_engine = TTSEngine(self.settings)
         except Exception as e:
             logger.error(f"Failed to init TTS engine: {e}")
             self.tts_engine = None
@@ -5281,6 +5281,8 @@ class TTSForLivestreamApp(QMainWindow):
         self._update_twitch_bot_config()
         # ★ sync chat send state (OAuth token/username เปลี่ยน → chip ต้องอัปเดต)
         self._update_chat_send_state()
+        # ★ re-probe TTS health (เผื่อเปลี่ยน DNS / voice / network)
+        self._check_tts_health()
         self.status_bar.set_status("✅ บันทึกการตั้งค่าแล้ว")
 
     def _open_user_manager(self):

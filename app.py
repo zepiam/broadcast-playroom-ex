@@ -153,90 +153,9 @@ class TTSForLivestreamApp(QMainWindow):
         except Exception:
             self.settings = None
 
-        # ★ ตรวจ Twitch OAuth token ตอนเปิดโปรแกรม — หมดอายุ → ลอง refresh, refresh ไม่ได้ → ลบ + เตือน
-        #   ปู้ม _oauth_expired_flags ไว้แจ้งเตือนใน Live Chat หลัง UI พร้อม
-        self._oauth_expired_flags = []  # ["twitch", "kick", ...]
-        if self.settings and getattr(self.settings, 'twitch_oauth_token', ''):
-            def _twitch_clear(msg):
-                logger.warning(msg)
-                self.settings.twitch_oauth_token = ''
-                self.settings.twitch_oauth_refresh = ''
-                self.settings.twitch_bot_username = ''
-                self._oauth_expired_flags.append("twitch")
-            try:
-                import urllib.request, json
-                req = urllib.request.Request('https://id.twitch.tv/oauth2/validate')
-                req.add_header('Authorization', f'OAuth {self.settings.twitch_oauth_token}')
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    result = json.loads(resp.read().decode())
-                if result.get('expires_in', 0) < 300:  # เหลือ < 5 นาที → refresh เลย
-                    logger.info("Twitch token expiring soon — refreshing on startup")
-                    from twitch_oauth import refresh_access_token
-                    refresh_result = refresh_access_token(self.settings.twitch_oauth_refresh)
-                    if refresh_result and refresh_result.get('access_token'):
-                        self.settings.twitch_oauth_token = refresh_result['access_token']
-                        # ★ เก็บ refresh_token ใหม่ด้วย (Twitch หมุนเวียน — ตัวเก่าถูก invalidate)
-                        if refresh_result.get('refresh_token'):
-                            self.settings.twitch_oauth_refresh = refresh_result['refresh_token']
-                        try:
-                            import time as _t2
-                            self.settings.twitch_token_expiry_ts = _t2.time() + int(refresh_result.get('expires_in', 0) or 0)
-                        except Exception:
-                            pass
-                        logger.info("Twitch token refreshed on startup")
-                    else:
-                        _twitch_clear("Twitch token refresh failed — clearing token")
-            except Exception as e:
-                # ★ token invalid/หมดอายุ → ลอง refresh ก่อน (refresh token อาจยังใช้ได้)
-                refreshed = False
-                try:
-                    from twitch_oauth import refresh_access_token as _tr
-                    rr = _tr(self.settings.twitch_oauth_refresh)
-                    if rr and rr.get('access_token'):
-                        self.settings.twitch_oauth_token = rr['access_token']
-                        self.settings.twitch_oauth_refresh = rr.get('refresh_token', '') or self.settings.twitch_oauth_refresh
-                        refreshed = True
-                        logger.info("Twitch token refreshed on startup (after validate fail)")
-                except Exception:
-                    pass
-                if not refreshed:
-                    _twitch_clear(f"Twitch token invalid/expired — clearing: {e}")
-            try:
-                self.settings.save_settings()
-            except Exception:
-                pass
-
-        # ★ ตรวจ KICK OAuth token ตอนเปิดโปรแกรม — invalid → ลอง refresh, refresh ไม่ได้ → ลบ
-        if self.settings and getattr(self.settings, 'kick_oauth_token', ''):
-            try:
-                from kick_oauth import get_user_info
-                info = get_user_info(self.settings.kick_oauth_token)
-                if not info:
-                    raise RuntimeError("invalid token")
-            except Exception as e:
-                # ★ token invalid/หมดอายุ → ลอง refresh ก่อน (refresh token ยังใช้ได้)
-                refreshed = False
-                try:
-                    from kick_oauth import refresh_access_token as _kr
-                    rr = _kr(self.settings.kick_oauth_refresh)
-                    if rr and rr.get('access_token'):
-                        self.settings.kick_oauth_token = rr['access_token']
-                        self.settings.kick_oauth_refresh = rr.get('refresh_token', '')
-                        refreshed = True
-                        logger.info("KICK token refreshed on startup")
-                except Exception:
-                    pass
-                if not refreshed:
-                    logger.warning(f"KICK token invalid/expired — clearing: {e}")
-                    self.settings.kick_oauth_token = ''
-                    self.settings.kick_oauth_refresh = ''
-                    self.settings.kick_bot_username = ''
-                    self.settings.kick_user_id = 0
-                    self._oauth_expired_flags.append("kick")
-                try:
-                    self.settings.save_settings()
-                except Exception:
-                    pass
+        # ★ ตรวจ OAuth tokens (Twitch / KICK) ใน background thread เพื่อไม่ให้ Splash screen ค้าง
+        self._oauth_expired_flags = []
+        threading.Thread(target=self._validate_oauth_tokens_bg, daemon=True).start()
 
         # ★ Lite build fallback: ล้าง voice_id ที่เป็น RVC model (Lite ไม่มี RVC → status แสดงผิด + ค้าง)
         #   ★★ ต้องทำก่อน _init_engines เพื่อให้ pipeline config ถูกต้อง
@@ -251,6 +170,7 @@ class TTSForLivestreamApp(QMainWindow):
 
         # ═══ Init engines (pipeline + RVC) ═══
         self._init_engines()
+        QApplication.processEvents()
 
         # ═══ State — reconnect + events + history ═══
         self._reconnect_state = {}  # platform → {attempts, last_attempt, manual_disconnect, target}
@@ -5174,6 +5094,98 @@ class TTSForLivestreamApp(QMainWindow):
     # ════════════════════════════════════════════════════════════
     # TopBar actions (#6 Translate + #10 OBS + #11 Secret code + #12 Viewer profile + #13 Playroom + #14 Overlay+ + #15 Menu)
     # ════════════════════════════════════════════════════════════
+    def _validate_oauth_tokens_bg(self):
+        """ตรวจสอบ Twitch / KICK OAuth token ใน background thread ไม่บล็อก UI"""
+        if not self.settings:
+            return
+        # Twitch
+        if getattr(self.settings, 'twitch_oauth_token', ''):
+            def _twitch_clear(msg):
+                logger.warning(msg)
+                self.settings.twitch_oauth_token = ''
+                self.settings.twitch_oauth_refresh = ''
+                self.settings.twitch_bot_username = ''
+                self._oauth_expired_flags.append("twitch")
+            try:
+                import urllib.request, json
+                req = urllib.request.Request('https://id.twitch.tv/oauth2/validate')
+                req.add_header('Authorization', f'OAuth {self.settings.twitch_oauth_token}')
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    result = json.loads(resp.read().decode())
+                if result.get('expires_in', 0) < 300:
+                    from twitch_oauth import refresh_access_token
+                    refresh_result = refresh_access_token(self.settings.twitch_oauth_refresh)
+                    if refresh_result and refresh_result.get('access_token'):
+                        self.settings.twitch_oauth_token = refresh_result['access_token']
+                        if refresh_result.get('refresh_token'):
+                            self.settings.twitch_oauth_refresh = refresh_result['refresh_token']
+                        try:
+                            import time as _t2
+                            self.settings.twitch_token_expiry_ts = _t2.time() + int(refresh_result.get('expires_in', 0) or 0)
+                        except Exception:
+                            pass
+                        logger.info("Twitch token refreshed on startup")
+                    else:
+                        _twitch_clear("Twitch token refresh failed — clearing token")
+            except Exception as e:
+                refreshed = False
+                try:
+                    from twitch_oauth import refresh_access_token as _tr
+                    rr = _tr(self.settings.twitch_oauth_refresh)
+                    if rr and rr.get('access_token'):
+                        self.settings.twitch_oauth_token = rr['access_token']
+                        self.settings.twitch_oauth_refresh = rr.get('refresh_token', '') or self.settings.twitch_oauth_refresh
+                        refreshed = True
+                        logger.info("Twitch token refreshed on startup (after validate fail)")
+                except Exception:
+                    pass
+                if not refreshed:
+                    _twitch_clear(f"Twitch token invalid/expired — clearing: {e}")
+            try:
+                self.settings.save_settings()
+            except Exception:
+                pass
+
+        # KICK
+        if getattr(self.settings, 'kick_oauth_token', ''):
+            try:
+                from kick_oauth import get_user_info
+                info = get_user_info(self.settings.kick_oauth_token)
+                if not info:
+                    raise RuntimeError("invalid token")
+            except Exception as e:
+                refreshed = False
+                try:
+                    from kick_oauth import refresh_access_token as _kr
+                    rr = _kr(self.settings.kick_oauth_refresh)
+                    if rr and rr.get('access_token'):
+                        self.settings.kick_oauth_token = rr['access_token']
+                        self.settings.kick_oauth_refresh = rr.get('refresh_token', '')
+                        refreshed = True
+                        logger.info("KICK token refreshed on startup")
+                except Exception:
+                    pass
+                if not refreshed:
+                    logger.warning(f"KICK token invalid/expired — clearing: {e}")
+                    self.settings.kick_oauth_token = ''
+                    self.settings.kick_oauth_refresh = ''
+                    self.settings.kick_bot_username = ''
+                    self.settings.kick_user_id = 0
+                    self._oauth_expired_flags.append("kick")
+                try:
+                    self.settings.save_settings()
+                except Exception:
+                    pass
+
+    def _show_first_run_wizard(self):
+        """★ แสดงหน้าต่าง First-Run Setup Wizard สำหรับการเปิดใช้งานครั้งแรก"""
+        try:
+            from ui.dialogs.setup_wizard import FirstRunWizardDialog
+            dlg = FirstRunWizardDialog(self)
+            dlg.exec()
+        except Exception as e:
+            logger.error(f"Failed to show first-run wizard: {e}")
+
     def _open_settings(self):
         """เปิด Settings dialog"""
         from ui.dialogs.settings import SettingsDialog

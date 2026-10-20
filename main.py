@@ -8,6 +8,12 @@
 """
 import sys
 import os
+
+# ═══ Dispatch to Splash Subprocess (ก่อน setup_logging เพื่อให้เปิดทันทีและไม่แย่ง app_v2.log) ═══
+if "--splash-subprocess" in sys.argv:
+    from splash import run_splash_subprocess
+    sys.exit(run_splash_subprocess())
+
 import logging
 
 # ═══ Logging setup (before anything else) ═══
@@ -73,31 +79,10 @@ def _stub_importlib_metadata():
         logger.debug(f"metadata stub (skipped): {_e}")
 
 
-# ═══ PyInstaller warm-up: patch transformers _LazyModule ═══
-# transformers LazyModule พังใน PyInstaller → override เป็น absolute import
-# (ระบบ OmniVoice ถูกถอดออกแล้ว — เหลือ patch นี้ไว้กันพังถ้ามีไลบรารีอื่นใช้ transformers)
-# ★ ย้ายออกจาก module-level → เรียกหลัง splash.show() (ประหยัดเวลา startup 5-6 วิ)
+# ═══ PyInstaller warm-up: (deprecated — OmniVoice ถูกถอดออกแล้ว ไม่ต้อง warmup) ═══
 def _warmup_transformers():
-    """patch transformers _LazyModule ให้ใช้ได้ใน PyInstaller
-
-    ★ ย้ายมาเรียกหลัง splash.show() เพื่อให้ splash ขึ้นเร็ว (ไม่รอ import transformers/torch)
-    """
-    # ═══ PyInstaller patch: monkey-patch _LazyModule._get_module ═══
-    # ปัญหา: _LazyModule._get_module ใช้ relative import ที่ fail ใน PyInstaller
-    # แก้: override เป็น absolute import (full path) เป็น fallback
-    try:
-        import importlib
-        from transformers.utils.import_utils import _LazyModule
-        def _patched_get_module(self, module_name):
-            try:
-                return importlib.import_module("." + module_name, self.__name__)
-            except Exception:
-                full_name = f"{self.__name__}.{module_name}"
-                return importlib.import_module(full_name)
-        _LazyModule._get_module = _patched_get_module
-        _boot_log("_LazyModule._get_module patched for PyInstaller")
-    except Exception as _e:
-        logger.debug(f"_LazyModule patch (skipped): {_e}")
+    """(deprecated) ไม่จำเป็นต้องโหลด transformers อีกต่อไปเนื่องจากระบบ OmniVoice ถูกถอดออกแล้ว"""
+    pass
 
 
 def main():
@@ -278,16 +263,26 @@ def main():
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
 
+    # ★ ตรวจสอบการเปิดครั้งแรก (First run detection)
+    is_first_run = False
+    _first_run_marker = None
+    try:
+        from data_dir import get_data_dir
+        _data_dir = get_data_dir()
+        _first_run_marker = os.path.join(_data_dir, ".first_run_done")
+        _settings_path = os.path.join(_data_dir, "settings.json")
+        is_first_run = (not os.path.exists(_first_run_marker)) and (not os.path.exists(_settings_path))
+    except Exception:
+        pass
+
     # ★ Splash screen — random ระหว่าง splash_1.png / splash_2.png (ทั้ง Full + Lite)
-    #   ★ แสดง splash ทันที (ก่อน warmup_transformers + สร้าง window) → user เห็นทันที
-    splash_pix = None
+    #   ★ แสดง splash ทันที พร้อมหลอดโหลด (Progress bar) และข้อความสถานะ
     splash = None
     import random
     splash_candidates = [
         os.path.join(base_dir, "assets", "splash_1.png"),
         os.path.join(base_dir, "assets", "splash_2.png"),
     ]
-    # ★ PyInstaller bundled: assets/ อยู่ใน _internal/assets/ (sys._MEIPASS หรือ exe dir)
     try:
         if getattr(sys, 'frozen', False):
             _internal = os.path.join(os.path.dirname(sys.executable), "_internal")
@@ -298,24 +293,17 @@ def main():
                 ]
     except Exception:
         pass
-    # ★ random เฉพาะภาพที่มีอยู่จริง
     available = [p for p in splash_candidates if os.path.exists(p)]
     if available:
         splash_path = random.choice(available)
-        from PySide6.QtWidgets import QSplashScreen
-        splash_pix = QPixmap(splash_path)
-        if not splash_pix.isNull():
-            splash = QSplashScreen(splash_pix)
-            splash.show()
-            # ★ บังคับ Qt วาด splash ทันที (ไม่รอ event loop) → user เห็นเลย
-            app.processEvents()
-            _boot_log("splash visible ✓")
-
-    # ★ warmup transformers หลัง splash ขึ้นแล้ว (หนัก — import torch/transformers)
-    #   ★ ย้ายมาจาก module-level → user เห็น splash ระหว่างรอ (ไม่ใช่จอดำ 5-6 วิ)
-    _warmup_transformers()
+        from splash import create_splash
+        splash = create_splash(splash_path, is_first_run=is_first_run)
+        splash.set_progress(15)
+        _boot_log("splash visible ✓")
 
     # ★ Import + apply theme (อ่านค่าธีมจาก settings ก่อนสร้าง widget ใดๆ)
+    if splash:
+        splash.set_progress(40, "กำลังโหลดธีมและการตั้งค่า...")
     from ui.theme import apply_theme
     try:
         from settings import load_settings
@@ -325,9 +313,14 @@ def main():
     apply_theme(app, _theme_name)
 
     # ★ Import + create main window
+    if splash:
+        splash.set_progress(70, "กำลังเตรียมหน้าต่างโปรแกรม...")
     from app import TTSForLivestreamApp
     window = TTSForLivestreamApp()
     _boot_log("main window constructed")
+
+    if splash:
+        splash.set_progress(95, "กำลังเปิดหน้าต่างหลัก...")
 
     window.show()
     # ★ บังคับ Qt วาด window ทันที → splash จะได้หายไปเมื่อ window พร้อมจริง (render แล้ว)
@@ -335,8 +328,14 @@ def main():
 
     # ★ ซ่อน splash เมื่อ window พร้อม (render เสร็จแล้ว)
     if splash:
+        splash.set_progress(100, "✨ พร้อมใช้งาน!")
         splash.finish(window)
         _boot_log("splash finished — window visible")
+
+    # ★ หากเป็นการเปิดใช้งานครั้งแรก ให้เปิด First-Run Setup Wizard แนะนำการตั้งค่า
+    if is_first_run:
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(400, window._show_first_run_wizard)
 
     if "--supporters" in sys.argv:
         from PySide6.QtCore import QTimer

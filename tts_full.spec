@@ -101,7 +101,7 @@ a = Analysis(
         # other
         'deep_translator', 'translator', 'flag_utils',
         'game_overlay_themes', 'third_party_emotes', 'twemoji_icon',
-        'updater', 'splash',
+        'updater', 'splash', 'ui', 'ui.theme', 'ui.widgets', 'ui.dialogs',
         'now_playing', 'winsdk',
         'obsws_python', 'obs_refresh',
         'rvc_engine', 'engine_plugin_loader',

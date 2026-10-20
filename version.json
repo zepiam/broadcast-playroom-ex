@@ -1,16 +1,16 @@
 {
-  "version": "2.9.1",
-  "changelog": "- เพิ่มระบบเชื่อมต่อ DNS สำหรับผู้ที่มีปัญหาการเชื่อมต่อ TTS Server เปิดใช้งานได้ใน Setting > Network",
+  "version": "2.9.2",
+  "changelog": "- ปรับแต่งให้โปรแกรมเปิดไวขึ้น\n- เพิ่ม Wizard ช่วยตั้งค่าเบื้องต้น สำหรับผู้ใช้งานครั้งแรก",
   "lite": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.9.1/patch_lite.zip",
-    "size": 19394121,
-    "sha256": "4c84365328193eb703a61cbbd9fb41a2bec6fedf136ea13691b54410baf8367f"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.9.2/patch_lite.zip",
+    "size": 19423412,
+    "sha256": "5b94b12465f05965a994b41ee36f7033cf3da0b81f11b8323654903396c72f20"
   },
   "full": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.9.1/patch_full.zip",
-    "size": 74159231,
-    "sha256": "5395c2a0e365a783df2ce832c42b927b4dd5c9692d88f20b5d52024a523ac2b7"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.9.2/patch_full.zip",
+    "size": 74186496,
+    "sha256": "5fbd8e9b0306bbc399f3950ea78978d0fee8cf8435d336a9c7a5adb8a3654f11"
   }
 }

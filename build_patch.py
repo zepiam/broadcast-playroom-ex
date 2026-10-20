@@ -278,9 +278,9 @@ def make_remote_version() -> str:
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(remote, f, ensure_ascii=False, indent=2)
     # ★ สร้าง version.json ด้วย (updater อ่านไฟล์นี้ — ต้องมี lite/full blocks ครบ)
-    version_path = Path("version.json")
-    with open(version_path, "w", encoding="utf-8") as f:
-        json.dump(remote, f, ensure_ascii=False, indent=2)
+    for vp in [Path("version.json"), Path("release/version.json")]:
+        with open(vp, "w", encoding="utf-8") as f:
+            json.dump(remote, f, ensure_ascii=False, indent=2)
     print(f"✅ สร้าง remote_version.json + version.json (เหมือนกัน)")
     print(f"   version: {version}")
     print(f"   lite: {remote['lite']['type']} ({remote['lite']['size']/1024/1024:.1f} MB)")

@@ -2817,7 +2817,8 @@ class TTSForLivestreamApp(QMainWindow):
         if self.composer_server is not None:
             if getattr(self.composer_server, 'replie_service', None) is None:
                 self.composer_server.set_replie_service(self._replie_service)
-            self.composer_server.on_open_replie_tool = lambda: self._toggle_replie_panel(force_show=True)
+            from PySide6.QtCore import QTimer
+            self.composer_server.on_open_replie_tool = lambda: QTimer.singleShot(0, lambda: self._toggle_replie_panel(force_show=True))
         return self._replie_service
 
     def _toggle_giveaway_panel(self):
@@ -4225,7 +4226,12 @@ class TTSForLivestreamApp(QMainWindow):
         self._sync_voice_status_label()
         # ★ auto-load RVC ถ้ามี (กัน double-load)
         voice_id = getattr(s, 'voice_id', '') if s else ''
-        if voice_id and voice_id not in ('premwadee', 'niwat') and not getattr(self, '_rvc_loading', False):
+        already_loaded = (
+            self.pipeline is not None
+            and getattr(self.pipeline, '_rvc', None) is not None
+            and getattr(self.pipeline, '_rvc_current_id', None) == voice_id
+        )
+        if voice_id and voice_id not in ('premwadee', 'niwat') and not already_loaded and not getattr(self, '_rvc_loading', False):
             # ★ เช็คว่า model มีจริงไหม
             if self._find_rvc_path(voice_id):
                 self._rvc_loading = True
@@ -4250,6 +4256,13 @@ class TTSForLivestreamApp(QMainWindow):
 
     def _auto_load_rvc(self, voice_id):
         """auto-load RVC model ตอนเปิดโปรแกรม — เรียก _load_rvc_model helper"""
+        if (self.pipeline is not None
+                and getattr(self.pipeline, '_rvc', None) is not None
+                and getattr(self.pipeline, '_rvc_current_id', None) == voice_id):
+            self._rvc_loading = False
+            self.sidebar.rvc_combo.setEnabled(True)
+            self._sync_voice_status_label()
+            return
         pth_path = self._find_rvc_path(voice_id)
         if not pth_path:
             # ★ ไม่พบ model → revert combo และ sync status
@@ -4325,6 +4338,13 @@ class TTSForLivestreamApp(QMainWindow):
 
         ถูกเรียกจาก: _on_rvc_change (user เลือก) + _auto_load_rvc (เปิดโปรแกรม)
         """
+        if (self.pipeline is not None
+                and getattr(self.pipeline, '_rvc', None) is not None
+                and getattr(self.pipeline, '_rvc_current_id', None) == voice_id):
+            self._rvc_loading = False
+            self.sidebar.rvc_combo.setEnabled(True)
+            self._sync_voice_status_label()
+            return
         pth_path = self._find_rvc_path(voice_id)
         if not pth_path:
             self.status_bar.set_status(f"❌ ไม่พบ {voice_id}.pth")
@@ -5997,18 +6017,11 @@ class TTSForLivestreamApp(QMainWindow):
             if getattr(self, "_giveaway_panel", None):
                 self._giveaway_panel._on_confirm_winner()
         elif action == "open_giveaway_tool":
-            self._ensure_giveaway_service()
-            if self._giveaway_panel is None:
-                from ui.widgets.giveaway_panel import GiveawayPanel
-                self._giveaway_panel = GiveawayPanel(self._giveaway_service)
-            self._giveaway_panel._check_widget_status()
-            self._giveaway_panel.show()
-            self._giveaway_panel.raise_()
-            self._giveaway_panel.activateWindow()
+            QTimer.singleShot(0, self._toggle_giveaway_panel)
         elif action == "open_ask_tool":
-            self._toggle_ask_panel()
+            QTimer.singleShot(0, self._toggle_ask_panel)
         elif action == "open_replie_tool":
-            self._toggle_replie_panel(force_show=True)
+            QTimer.singleShot(0, lambda: self._toggle_replie_panel(force_show=True))
         elif action == "open_composer":
             target_page = data.get("page_id") or data.get("page")
             self._open_composer(target_page)

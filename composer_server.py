@@ -277,10 +277,8 @@ class ComposerServer:
                 content = f.read()
             return web.Response(
                 text=content,
-                headers={
-                    "Content-Type": "text/html; charset=utf-8",
-                    "Cache-Control": "public, max-age=86400",
-                }
+                content_type="text/html; charset=utf-8",
+                headers=self._no_cache_headers()
             )
         return web.Response(status=404, text="dock-offline.html not found")
 

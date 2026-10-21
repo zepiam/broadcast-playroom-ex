@@ -591,6 +591,17 @@ body.overlay-hidden .char-slot {
 <!-- theme + custom CSS placeholders (re-created ใน applyConfig เพื่อบังคับ re-evaluate) -->
 <style id="theme-css"></style>
 <style id="user-css"></style>
+<script>
+  // Ensure overlay in OBS Browser Source is always 100% transparent and never hijacked by offline service workers
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(regs => {
+      regs.forEach(r => r.unregister());
+    }).catch(() => {});
+  }
+  if ('caches' in window) {
+    caches.keys().then(keys => keys.forEach(k => caches.delete(k))).catch(() => {});
+  }
+</script>
 </head>
 <body>
 <div id="chat"></div>

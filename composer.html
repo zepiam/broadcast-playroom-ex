@@ -4086,6 +4086,17 @@
   @keyframes replieZoomOut { from { opacity:1; transform: scale(1); } to { opacity:0; transform: scale(0.35); } }
 
 </style>
+<script>
+  // Ensure overlay in OBS Browser Source is always 100% transparent and never hijacked by offline service workers
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(regs => {
+      regs.forEach(r => r.unregister());
+    }).catch(() => {});
+  }
+  if ('caches' in window) {
+    caches.keys().then(keys => keys.forEach(k => caches.delete(k))).catch(() => {});
+  }
+</script>
 </head>
 <body>
 

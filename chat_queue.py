@@ -806,11 +806,13 @@ class ChatPipeline:
             if self._filter.is_user_blocked(msg.author):
                 self._emit_tts_status(msg, "skipped", reason="ผู้ใช้ถูกบล็อก")
                 return
-            filtered = self._filter.filter_text(msg.text)
-            if filtered is None:
-                self._emit_tts_status(msg, "skipped", reason="มีคำต้องห้าม (NG word)")
-                return
-            msg.text = filtered
+            # ★ ถ้าเป็น preview คำเดิม (_skip_replace) → ข้าม filter_text
+            if not (msg.extra or {}).get("_skip_replace", False):
+                filtered = self._filter.filter_text(msg.text)
+                if filtered is None:
+                    self._emit_tts_status(msg, "skipped", reason="มีคำต้องห้าม (NG word)")
+                    return
+                msg.text = filtered
 
         # 2.5) Auto Translate (ถ้าเปิด) — แปลเป็นไทยก่อน TTS + ผ่าน replace หลังแปล
         # ★ ข้ามถ้าเป็น Preview (จากหน้า Replace/Settings — ห้ามแปล)
@@ -1703,7 +1705,12 @@ class ChatPipeline:
                     f"ไม่ใช่ภาษาที่ตั้งค่าให้อ่าน ({lang}) — ไม่มี voice รองรับ"
                 )
                 return None
-            voice = VOICE_BY_LANG.get(lang, self.config.voice)
+            # ★ ไทยและอังกฤษ ใช้เสียงโมเดลไทยหลัก (Premwadee / Niwat) อ่านสำเนียงไทย
+            if lang in ("th", "en"):
+                _ev = getattr(self.config, "edge_voice", "premwadee")
+                voice = {"premwadee": "th-TH-PremwadeeNeural", "niwat": "th-TH-NiwatNeural"}.get(_ev, "th-TH-PremwadeeNeural")
+            else:
+                voice = VOICE_BY_LANG.get(lang, self.config.voice)
         else:
             # default — base voice เท่านั้น (ไม่มี RVC + ไม่มี multilang)
             # ★ ใช้ edge_voice (premwadee/niwat) — ไม่ใช่ config.voice (อาจเป็น RVC model id ที่ยังไม่ได้โหลด)
@@ -1924,6 +1931,9 @@ class ChatPipeline:
 
         def _pron(t: str) -> str:
             # ★ apply pronunciation (แก้การออกเสียง) — ส่ง TTS เท่านั้น ไม่กระทบแชท
+            # ถ้าเป็น preview คำเดิม (_skip_replace) → ข้าม ไม่แก้การออกเสียง
+            if (msg.extra or {}).get("_skip_replace", False):
+                return t
             if self._filter is not None and t:
                 try:
                     return self._filter.apply_pronunciation(t)
@@ -1963,7 +1973,8 @@ class ChatPipeline:
         voice = self._resolve_edge_voice_name(thai)   # multilang → ตาม thai ที่ส่งไป / ปกติ → edge_voice ที่ผู้ใช้เลือก
         if kind == "name" and getattr(self.config, "multilang_enabled", False):
             lang = detect_language(text)
-            if lang in VOICE_BY_LANG and lang != "th":
+            # ★ ภาษาอังกฤษและไทย ใช้เสียงไทยเสมอ (ไม่ออกเสียงฝรั่ง)
+            if lang in VOICE_BY_LANG and lang not in ("th", "en"):
                 voice = VOICE_BY_LANG[lang]
         return voice
 
@@ -2137,6 +2148,9 @@ class ChatPipeline:
         current_lang = None
         for ch in text:
             lang = _char_lang(ch)
+            # ★ ภาษาอังกฤษให้รวมเป็นกลุ่ม "th" (อ่านด้วยโมเดลไทยสำเนียงไทยไปพร้อมกัน ไม่หั่นคำ)
+            if lang == "en":
+                lang = "th"
             # อักขระที่ไม่ใช่ภาษา (เลข, วรรคตอน, emoji, space) → ต่อเข้า segment ปัจจุบัน
             if lang is None:
                 current_text += ch
@@ -2160,10 +2174,10 @@ class ChatPipeline:
         # แต่ถ้าเป็นภาษาต่างประเทศ (ไม่ใช่ไทย) → ต้องใช้ voice ของภาษานั้น
         # ไม่งั้น fallback ไป Premwadee → อ่านต่างภาษาไม่ได้ → error "No audio"
         if len(segments) <= 1:
-            if segments and segments[0][1] != "th":
-                # ภาษาเดียวที่ไม่ใช่ไทย → synth ด้วย voice ของภาษานั้น
+            if segments and segments[0][1] not in ("th", "en"):
+                # ภาษาเดียวที่ไม่ใช่ไทย/อังกฤษ (เช่น ญี่ปุ่น/เกาหลี/จีน) → synth ด้วย voice ของภาษานั้น
                 seg_text, seg_lang = segments[0]
-                voice = VOICE_BY_LANG.get(seg_lang, "th-TH-PremwadeeNeural")
+                voice = self._resolve_edge_voice_name(VOICE_BY_LANG.get(seg_lang, "th-TH-PremwadeeNeural"))
                 tts_params = TTSParams(
                     text=seg_text,
                     voice=voice,
@@ -2197,7 +2211,11 @@ class ChatPipeline:
         # ── 2. TTS แต่ละ segment ──
         audios = []
         for seg_text, seg_lang in segments:
-            voice = self._resolve_edge_voice_name(VOICE_BY_LANG.get(seg_lang, "th-TH-PremwadeeNeural"))
+            if seg_lang in ("th", "en"):
+                _ev = getattr(self.config, "edge_voice", "premwadee")
+                voice = {"premwadee": "th-TH-PremwadeeNeural", "niwat": "th-TH-NiwatNeural"}.get(_ev, "th-TH-PremwadeeNeural")
+            else:
+                voice = self._resolve_edge_voice_name(VOICE_BY_LANG.get(seg_lang, "th-TH-PremwadeeNeural"))
             tts_params = TTSParams(
                 text=seg_text,
                 voice=voice,

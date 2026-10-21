@@ -58,7 +58,9 @@ html, body {
   height: 100%;
 }
 body.chat-layer-hidden #chat,
-body.chat-layer-hidden .char-slot {
+body.chat-layer-hidden .char-slot,
+body.overlay-hidden #chat,
+body.overlay-hidden .char-slot {
   display: none !important;
 }
 #chat {
@@ -1072,6 +1074,9 @@ function connectWs() {
       }
       else if (data.type === 'chat_visibility') {
         document.body.classList.toggle('chat-layer-hidden', Boolean(data.hidden));
+      }
+      else if (data.type === 'overlay_visibility') {
+        document.body.classList.toggle('overlay-hidden', Boolean(data.hidden));
       }
       else if (data.type === 'eval_js') { try { eval(data.js); } catch(e){} }
       else if (data.type === 'reload_emotes') reloadEmoteImages();

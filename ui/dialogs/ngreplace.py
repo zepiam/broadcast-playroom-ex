@@ -307,6 +307,16 @@ class NGReplaceDialog(QDialog):
                 font-weight: 600;
             }
         """)
+
+        # ★ Context menu คลิกขวาที่หัวตาราง หรือในตาราง เพื่อเปิด/ปิด คอลัมน์ "คำที่แสดง"
+        self.table.horizontalHeader().setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.horizontalHeader().customContextMenuRequested.connect(self._on_header_context_menu)
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._on_table_context_menu)
+
+        show_disp = getattr(self.settings, 'replace_show_display_col', False) if self.settings else False
+        self.table.setColumnHidden(1, not show_disp)
+
         layout.addWidget(self.table, 1)
 
         # ★ Bottom bar
@@ -355,6 +365,14 @@ class NGReplaceDialog(QDialog):
         edit0 = QLineEdit(src)
         edit0.setStyleSheet("border: none; background: transparent; color: #e5e7eb; padding: 0px;")
         l0.addWidget(edit0)
+        btn0 = QPushButton("🔊")
+        btn0.setFixedSize(32, 28)
+        btn0.setToolTip("ฟังเสียงคำเดิม (ก่อนแก้)")
+        btn0.setStyleSheet("border: 1px solid #2a2f45; border-radius: 4px; background: #1a1f33; padding: 0px; font-size: 15px;")
+        btn0.setCursor(Qt.PointingHandCursor)
+        btn0.setFocusPolicy(Qt.NoFocus)
+        btn0.clicked.connect(lambda _, e=edit0, b=btn0: self._preview_tts_with_loading(b, e.text(), is_original=True))
+        l0.addWidget(btn0)
         self.table.setCellWidget(row, 0, w0)
         w0._edit = edit0
 
@@ -381,6 +399,7 @@ class NGReplaceDialog(QDialog):
         btn2.setToolTip("ฟังคำที่อ่าน")
         btn2.setStyleSheet("border: 1px solid #2a2f45; border-radius: 4px; background: #1a1f33; padding: 0px; font-size: 15px;")
         btn2.setCursor(Qt.PointingHandCursor)
+        btn2.setFocusPolicy(Qt.NoFocus)
         # ★ อ่าน text จาก QLineEdit ตอนกด (แก้ไขได้ทันที ไม่ต้อง save + reopen)
         btn2.clicked.connect(lambda _, e=edit2, b=btn2: self._preview_tts_with_loading(b, e.text()))
         l2.addWidget(btn2)
@@ -461,6 +480,31 @@ class NGReplaceDialog(QDialog):
     def _delete_selected(self):
         """ลบแถวที่เลือก (legacy — ใช้ _delete_row_with_confirm แทน)"""
         pass
+
+    def _on_header_context_menu(self, pos):
+        self._show_column_menu(self.table.horizontalHeader().mapToGlobal(pos))
+
+    def _on_table_context_menu(self, pos):
+        self._show_column_menu(self.table.mapToGlobal(pos))
+
+    def _show_column_menu(self, global_pos):
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self)
+        is_hidden = self.table.isColumnHidden(1)
+        if is_hidden:
+            act = menu.addAction("👁️ เพิ่ม/แสดงคอลัมน์ 'คำที่แสดง'")
+        else:
+            act = menu.addAction("🙈 ซ่อนคอลัมน์ 'คำที่แสดง'")
+        chosen = menu.exec(global_pos)
+        if chosen == act:
+            self._toggle_display_col()
+
+    def _toggle_display_col(self):
+        is_hidden = self.table.isColumnHidden(1)
+        new_hidden = not is_hidden
+        self.table.setColumnHidden(1, new_hidden)
+        if self.settings:
+            self.settings.replace_show_display_col = not new_hidden
 
     def _preview_tts_with_loading(self, btn, text, is_original=False):
         """preview TTS with loading indicator (กันกดรัว)"""

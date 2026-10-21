@@ -195,6 +195,9 @@ class AskPanel(QFrame):
         self.setStyleSheet("""
             QFrame#AskPanel { background: #0b1120; border: 1px solid #1e293b; }
             QLabel { color: #e2e8f0; font-size: 13px; background: transparent; border: none; }
+            QMessageBox { background-color: #0b1120; }
+            QMessageBox QLabel { color: #f8fafc; font-size: 13.5px; min-height: 0px; background: transparent; }
+            QMessageBox QPushButton { min-width: 75px; padding: 6px 16px; font-size: 13px; border-radius: 6px; }
             QLabel[hdr="true"] { color: #f59e0b; font-weight: 800; font-size: 14.5px; }
             QLabel[dim="true"] { color: #64748b; font-size: 12px; }
             QLineEdit, QComboBox {

@@ -1,9 +1,9 @@
 """sidebar.py — Left sidebar (platforms + voice panel)"""
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QPixmap, QCursor
 from PySide6.QtWidgets import (
     QFrame, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QScrollArea,
-    QWidget, QComboBox, QSlider, QSizePolicy,
+    QWidget, QComboBox, QSlider, QSizePolicy, QMenu,
 )
 import ui.theme as theme  # ★ อ้าง theme.COLOR_X สดตอนสร้าง widget (ตามธีมที่เลือกไว้จริง)
 from ui.widgets.loading_bar import LoadingBar
@@ -28,6 +28,33 @@ class _ConstrainedScrollArea(QScrollArea):
             pass
 
 
+class ElidedTitleLabel(QLabel):
+    """QLabel ที่ตัดข้อความด้วย '...' (Ellipsis) ตามพื้นที่ที่มีจริงจนถึงก่อนปุ่ม refresh อัตโนมัติ"""
+
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self._full_text = text
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+
+    def set_full_text(self, text: str):
+        self._full_text = text
+        self.setToolTip(text)
+        self._update_elide()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_elide()
+
+    def _update_elide(self):
+        if not self._full_text:
+            self.setText("")
+            return
+        fm = self.fontMetrics()
+        avail_w = max(10, self.width())
+        elided = fm.elidedText(self._full_text, Qt.ElideRight, avail_w)
+        self.setText(elided)
+
+
 class PlatformCard(QFrame):
     """Card สำหรับแพลตฟอร์มเดียว (logo + name + connect/disconnect + mute + volume)"""
 
@@ -38,6 +65,7 @@ class PlatformCard(QFrame):
     edit_stream_requested = Signal(str)  # ★ platform key — เปิดหน้า edit stream info
     refresh_stream_requested = Signal(str)  # ★ platform key — ดึง title ใหม่ตามคำสั่ง (ไม่ auto)
     go_requested = Signal(str)  # ★ platform key — เปิดหน้าช่อง/ห้อง live ในเบราว์เซอร์
+    hide_requested = Signal(str)  # ★ platform key — ซ่อนแพลตฟอร์มจากการคลิกขวาที่การ์ด
 
     def __init__(self, platform_key, label, icon="📺", parent=None):
         super().__init__(parent)
@@ -55,15 +83,60 @@ class PlatformCard(QFrame):
         self._uptime_timer.setInterval(60000)  # ทุก 1 นาที
         self._uptime_timer.timeout.connect(self._update_uptime)
 
+    def _on_name_clicked(self, event):
+        """★ คลิกที่ชื่อแพลตฟอร์มเพื่อเปิดหน้าดู LIVE ในเบราว์เซอร์เมื่อเชื่อมต่ออยู่"""
+        if event.button() == Qt.LeftButton and getattr(self, '_connected', False):
+            self.go_requested.emit(self.platform_key)
+        else:
+            QLabel.mousePressEvent(self.name_label, event)
+
+    def _show_card_context_menu(self, pos=None):
+        """แสดงเมนูคลิกขวาเพื่อซ่อนการ์ดแพลตฟอร์มนี้ (ต้อง disconnect ก่อน)"""
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #0f172a;
+                color: #e2e8f0;
+                border: 1px solid #334155;
+                border-radius: 8px;
+                padding: 4px;
+                font-size: 13px;
+            }
+            QMenu::item {
+                padding: 6px 14px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #1e293b;
+                color: #f43f5e;
+            }
+            QMenu::item:disabled {
+                color: #64748b;
+            }
+        """)
+        label = self.name_label.text() if hasattr(self, "name_label") else self.platform_key
+        is_connected = getattr(self, '_connected', False)
+        if is_connected:
+            act_hide = menu.addAction(f"ซ่อน {label} (ต้องหยุดเชื่อมต่อก่อน)")
+            act_hide.setEnabled(False)
+        else:
+            act_hide = menu.addAction(f"ซ่อน {label}")
+            act_hide.triggered.connect(lambda: self.hide_requested.emit(self.platform_key))
+        menu.exec_(QCursor.pos())
+
+    def contextMenuEvent(self, event):
+        self._show_card_context_menu()
+
     def _build_ui(self, label, icon):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 5, 8, 5)
+        layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(4)
 
-        # ★ Row 1: icon + name/status (เท่านั้น — ไม่มีปุ่ม เพื่อกินพื้นที่แนวนอนน้อยสุด)
-        row1 = QHBoxLayout()
-        row1.setSpacing(6)
-        # ★ ไอคอนแพลตฟอร์มจริง (assets/*.png) — fallback emoji ถ้าไม่มีไฟล์
+        # ── Row 1: Header (icon + name_label ------- go_btn ชิดขวาสุด) ──
+        header_row = QHBoxLayout()
+        header_row.setContentsMargins(0, 0, 0, 0)
+        header_row.setSpacing(6)
+
         try:
             from ui.platform_icons import get_platform_pixmap
             pix = get_platform_pixmap(self.platform_key, 20)
@@ -76,46 +149,69 @@ class PlatformCard(QFrame):
         else:
             icon_label.setText(icon)
             icon_label.setStyleSheet("font-size: 16px;")
-        row1.addWidget(icon_label)
+        header_row.addWidget(icon_label)
 
-        info = QVBoxLayout()
-        info.setSpacing(0)
         self.name_label = QLabel(label)
-        theme.styled(self.name_label, "font-weight: 600; color: #e5e7eb; font-size: 14px;")
-        self.name_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        # ★ ปุ่ม GO (🚀 เปิดหน้าช่อง/ห้อง live ในเบราว์เซอร์ — แสดงเมื่อเชื่อมต่อแล้ว)
-        from PySide6.QtWidgets import QToolButton
+        theme.styled(self.name_label, "font-weight: 600; color: #e5e7eb; font-size: 13.5px;")
+        self.name_label.mousePressEvent = self._on_name_clicked
+        header_row.addWidget(self.name_label)
+
+        header_row.addStretch(1)
+
+        # ★ ปุ่มไปหน้าดู LIVE (แทนที่ 🚀 เดิม) — อยู่ชิดขวาสุดของกล่อง
+        from PySide6.QtWidgets import QPushButton, QToolButton
         self.go_btn = QToolButton()
-        self.go_btn.setText("🚀")
-        self.go_btn.setToolTip("เปิดหน้าช่อง/ห้อง live ของแพลตฟอร์มนี้ในเบราว์เซอร์")
-        self.go_btn.setStyleSheet(
-            "QToolButton { background: transparent; border: none; font-size: 12px; padding: 0 2px; }"
-            "QToolButton:hover { background: rgba(34,197,94,0.2); border-radius: 3px; }"
-        )
+        self.go_btn.setText("📺 ดู LIVE")
+        self.go_btn.setToolTip("เปิดหน้าดู LIVE ของแพลตฟอร์มนี้ในเบราว์เซอร์")
+        self.go_btn.setStyleSheet("""
+            QToolButton {
+                background: rgba(34, 197, 94, 0.12);
+                color: #4ade80;
+                border: 1px solid rgba(34, 197, 94, 0.35);
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: 600;
+                padding: 1px 6px;
+            }
+            QToolButton:hover {
+                background: rgba(34, 197, 94, 0.28);
+                border-color: #4ade80;
+                color: #ffffff;
+            }
+        """)
         self.go_btn.setCursor(Qt.PointingHandCursor)
         self.go_btn.setVisible(False)
         self.go_btn.clicked.connect(lambda: self.go_requested.emit(self.platform_key))
-        name_row = QHBoxLayout()
-        name_row.setContentsMargins(0, 0, 0, 0)
-        name_row.setSpacing(4)
-        name_row.addWidget(self.name_label)
-        name_row.addWidget(self.go_btn)
+        header_row.addWidget(self.go_btn, 0, Qt.AlignRight)
+        layout.addLayout(header_row)
+
+        # ── Row 2: Status & Viewer count (ชิดขวาสุด) ──
+        status_row = QHBoxLayout()
+        status_row.setContentsMargins(0, 0, 0, 0)
+        status_row.setSpacing(4)
+
         self.status_label = QLabel("ยังไม่เชื่อมต่อ")
         theme.styled(self.status_label, "font-size: 12px; color: #6b7280;")
-        # ★ stream title (แสดงเมื่อเชื่อมต่อสำเร็จ — ดึงจาก live stream จริง)
-        self.stream_title_label = QLabel("")
-        theme.styled(self.stream_title_label, "font-size: 11px; color: #9ca3af; font-style: italic;")
-        self.stream_title_label.setWordWrap(False)
-        self.stream_title_label.setVisible(False)
-        info.addLayout(name_row)
-        info.addWidget(self.status_label)
-        # ★ title + refresh + Edit อยู่ในแถวเดียวกัน — title ชิดซ้าย, refresh + Edit ชิดขวาของการ์ด
+        status_row.addWidget(self.status_label)
+
+        status_row.addStretch(1)
+
+        self.viewer_label = QLabel("")
+        theme.styled(self.viewer_label, "font-size: 12px; color: #9ca3af; font-weight: 600; background: transparent; border: none;")
+        self.viewer_label.setVisible(False)
+        status_row.addWidget(self.viewer_label, 0, Qt.AlignRight)
+        layout.addLayout(status_row)
+
+        # ── Row 3: Stream Title & Refresh/Edit (ชิดขวาสุด) ──
         title_row = QHBoxLayout()
         title_row.setContentsMargins(0, 0, 0, 0)
         title_row.setSpacing(4)
+
+        self.stream_title_label = ElidedTitleLabel("")
+        theme.styled(self.stream_title_label, "font-size: 11px; color: #9ca3af; font-style: italic;")
+        self.stream_title_label.setVisible(False)
         title_row.addWidget(self.stream_title_label, 1)
-        # ★ ปุ่ม refresh title (กดเพื่อดึง title ใหม่ — ไม่ auto refresh)
-        from PySide6.QtWidgets import QPushButton, QToolButton
+
         self.refresh_btn = QToolButton()
         self.refresh_btn.setText("🔄")
         self.refresh_btn.setToolTip("ดึง Title ใหม่จากแพลตฟอร์ม")
@@ -126,7 +222,8 @@ class PlatformCard(QFrame):
         self.refresh_btn.setCursor(Qt.PointingHandCursor)
         self.refresh_btn.setVisible(False)
         self.refresh_btn.clicked.connect(lambda: self.refresh_stream_requested.emit(self.platform_key))
-        title_row.addWidget(self.refresh_btn)
+        title_row.addWidget(self.refresh_btn, 0, Qt.AlignRight)
+
         self.edit_link_label = QLabel(theme.T('<span style="color:#7c3aed; text-decoration: underline;">Edit</span>'))
         theme.register_theme_listener(self._refresh_edit_link)
         self.edit_link_label.setTextFormat(Qt.RichText)
@@ -134,16 +231,8 @@ class PlatformCard(QFrame):
         self.edit_link_label.setCursor(Qt.PointingHandCursor)
         self.edit_link_label.setVisible(False)
         self.edit_link_label.mousePressEvent = lambda e: self.edit_stream_requested.emit(self.platform_key)
-        title_row.addWidget(self.edit_link_label)
-        info.addLayout(title_row)
-        row1.addLayout(info, 1)
-        # ★ viewer count (ฝั่งขวา — แสดงเมื่อเชื่อมต่อแล้วได้รับยอดจริง)
-        self.viewer_label = QLabel("")
-        theme.styled(self.viewer_label, "font-size: 12px; color: #9ca3af; font-weight: 600; background: transparent; border: none;")
-        self.viewer_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.viewer_label.setVisible(False)  # ★ ซ่อนตอนเริ่ม (ยังไม่มียอด)
-        row1.addWidget(self.viewer_label)
-        layout.addLayout(row1)
+        title_row.addWidget(self.edit_link_label, 0, Qt.AlignRight)
+        layout.addLayout(title_row)
 
         # ★ Row 2: [connect/disconnect (stretch)] [mute button]
         # ปุ่มเชื่อมต่อขยายเต็มความกว้างที่เหลือ → mute มีที่พอแสดงเต็ม
@@ -176,6 +265,10 @@ class PlatformCard(QFrame):
         self.vol_slider.setFixedHeight(16)
         self.vol_slider.valueChanged.connect(lambda v: self.volume_changed.emit(self.platform_key, v))
         layout.addWidget(self.vol_slider)
+
+        for w in (self.btn, self.mute_btn, self.vol_slider):
+            w.setContextMenuPolicy(Qt.CustomContextMenu)
+            w.customContextMenuRequested.connect(self._show_card_context_menu)
 
 
     def _refresh_edit_link(self):
@@ -246,6 +339,8 @@ class PlatformCard(QFrame):
             self.viewer_label.setText("👥 0")
             self.viewer_label.setVisible(True)
             self.go_btn.setVisible(True)
+            self.name_label.setCursor(Qt.PointingHandCursor)
+            self.name_label.setToolTip("คลิกเพื่อเปิดหน้าดู LIVE ในเบราว์เซอร์")
         else:
             self.btn.setText("เชื่อมต่อ")
             self.btn.setObjectName("")
@@ -261,6 +356,8 @@ class PlatformCard(QFrame):
             self.edit_link_label.setVisible(False)
             self._uptime_timer.stop()
             self._stream_start_time = None
+            self.name_label.setCursor(Qt.ArrowCursor)
+            self.name_label.setToolTip("")
         # ★ setObjectName เปลี่ยนตัว selector ของ QSS (#Danger) แต่ Qt ไม่ re-evaluate
         #   สไตล์ให้อัตโนมัติ — ต้อง unpolish/polish บังคับ ไม่งั้นขอบปุ่มค้างสีเดิม
         #   (บางทีถึงหลุดเอง เพราะ event อื่น เช่น hover/resize ไปกระตุ้น repolish ให้บังเอิญ)
@@ -270,23 +367,20 @@ class PlatformCard(QFrame):
     def set_stream_title(self, title: str):
         """★ แสดง title ของ live stream ในการ์ด + refresh/Edit ปุ่ม (ชิดขวา)
 
-        title ชิดซ้าย, 🔄 refresh (ทุกแพลตฟอร์ม) + Edit (Twitch only) ชิดขวาของการ์ด
+        title ขยายพื้นที่เต็มที่จนถึงก่อนปุ่ม 🔄 refresh, หากข้อความยาวเกินจะตัดด้วย '...' (Ellipsis)
         """
         if title:
-            short = title[:50] + "…" if len(title) > 50 else title
-            self.stream_title_label.setTextFormat(Qt.PlainText)
-            self.stream_title_label.setText(f"📺 {short}")
+            full_display = f"📺 {title.strip()}"
+            self.stream_title_label.set_full_text(full_display)
             self.stream_title_label.setVisible(True)
-            # ★ refresh ปุ่ม — แสดงทุกแพลตฟอร์ม (กดดึง title ใหม่)
             self.refresh_btn.setVisible(True)
-            # ★ Edit — Twitch (เว็บ) + KICK (API ในโปรแกรม) + YouTube (Live Dashboard)
             if self.platform_key in ("twitch", "kick", "youtube"):
                 self.edit_link_label.setVisible(True)
             else:
                 self.edit_link_label.setVisible(False)
         else:
+            self.stream_title_label.set_full_text("")
             self.stream_title_label.setVisible(False)
-            self.stream_title_label.setText("")
             self.refresh_btn.setVisible(False)
             self.edit_link_label.setVisible(False)
 
@@ -547,6 +641,7 @@ class Sidebar(QFrame):
         voice_btn_row.addStretch()
         self.voice_test_btn = self._make_text_toggle("ทดสอบฟัง")
         self.voice_test_btn.setToolTip("ทดสอบเสียง TTS")
+        self.voice_test_btn.setFocusPolicy(Qt.NoFocus)
         voice_btn_row.addWidget(self.voice_test_btn)
         self.voice_btn_sep = QLabel("|")
         theme.styled(self.voice_btn_sep, "color: #4b5563; font-size: 13px; padding: 0 6px;")

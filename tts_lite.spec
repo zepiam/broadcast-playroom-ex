@@ -81,7 +81,7 @@ a = Analysis(
         'engine_plugin_loader',
         # ★ v2.5.0 — Chat Bot + OAuth + OBS + Single Instance
         'twitch_oauth', 'twitch_bot', 'youtube_oauth', 'kick_oauth', 'announcement', 'server_guard',
-        'single_instance', 'obs_launcher',
+        'single_instance', 'obs_launcher', 'replie_service',
     ] + _requests_subs + _urllib3_subs,
     hookspath=[],
     hooksconfig={},

@@ -25,6 +25,7 @@ class ChatPanel(QFrame):
     send_requested = Signal(str, str, bool)  # ★ emit (text, platforms_json, read_tts) — JSON string กัน Qt signal issue
     ask_toggled = Signal()                    # ★ ปุ่ม ASK — toggle แผงโพล
     giveaway_toggled = Signal()               # ★ ปุ่ม Giveaway — toggle แผงสุ่มแจกรางวัล
+    replie_toggled = Signal()                 # ★ ปุ่ม Replie — toggle แผงตอบกลับภาพบนจอ
     connect_bot_requested = Signal()  # ★ emit เมื่อกดปุ่ม "เชื่อมต่อแชทบอท"
     bot_toggle_requested = Signal(bool)  # ★ emit เมื่อ toggle Enable/Disable Chat Bot
     bot_platforms_changed = Signal(dict)  # ★ emit {platform: bool} เมื่อติ๊กเมนูเร็ว
@@ -104,6 +105,16 @@ class ChatPanel(QFrame):
         self.btn_giveaway.setStyleSheet("font-size: 15px; padding: 0px;")
         self.btn_giveaway.clicked.connect(self.giveaway_toggled.emit)
         hlayout.addWidget(self.btn_giveaway)
+        # ★ Replie — เปิด/ปิดแผงคำสั่งภาพบนจอ Overlay (Replie Tools)
+        self.btn_replie = QPushButton("🖼️ Replie")
+        self.btn_replie.setObjectName("IconButton")
+        self.btn_replie.setFixedHeight(30)
+        self.btn_replie.setCursor(Qt.PointingHandCursor)
+        self.btn_replie.setToolTip("เปิดแผงควบคุมระบบ Replie Tools (ตอบกลับภาพ/ข้อความบนจอ)")
+        self.btn_replie.setStyleSheet(self._replie_btn_qss(False))
+        self._replie_active = False
+        self.btn_replie.clicked.connect(self._on_replie_btn)
+        hlayout.addWidget(self.btn_replie)
         # ★ System message toggle
         self.btn_system = QPushButton("🔔")
         self.btn_system.setObjectName("IconButton")
@@ -170,13 +181,13 @@ class ChatPanel(QFrame):
         btn_clear.setStyleSheet("font-size: 15px; padding: 0px;")
         btn_clear.clicked.connect(self.clear_requested.emit)
         hlayout.addWidget(btn_clear)
-        # ★ Settings gear
-        self.btn_settings = QPushButton("⚙")
+        # ★ Live Chat Display Settings — เปลี่ยนจาก ⚙️ เป็น 🎛️ เพื่อไม่ให้สับสนกับ Setting ของโปรแกรม
+        self.btn_settings = QPushButton("🛠")
         self.btn_settings.setObjectName("IconButton")
         self.btn_settings.setFixedSize(34, 30)
-        self.btn_settings.setToolTip("ตั้งค่าแชทสด")
+        self.btn_settings.setToolTip("ตั้งค่าการแสดงผลแชทสด (ฟอนต์, สี, อิโมจิ)")
         self.btn_settings.setCursor(Qt.PointingHandCursor)
-        self.btn_settings.setStyleSheet("font-size: 17px; padding: 0px;")
+        self.btn_settings.setStyleSheet("font-size: 16px; padding: 0px;")
         self.btn_settings.clicked.connect(self.settings_clicked.emit)
         hlayout.addWidget(self.btn_settings)
         # ★ Popout button (ขวาสุด)
@@ -489,6 +500,25 @@ class ChatPanel(QFrame):
         """sync สีปุ่ม — เทาจาง = ยังไม่ใช้ / เขียว = กำลังใช้งาน"""
         self._ask_active = bool(active)
         self.btn_ask.setStyleSheet(self._ask_btn_qss(active))
+
+    @staticmethod
+    def _replie_btn_qss(active: bool) -> str:
+        body = (
+            "font-size: 11px; font-weight: 800; letter-spacing: 0.5px; padding: 0px 8px; border-radius: 6px; "
+            + ("color: #38bdf8; background: rgba(56, 189, 248, 0.18); border: 1px solid rgba(56, 189, 248, 0.45);" if active
+               else "color: #94a3b8; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);")
+        )
+        tip = (f"QToolTip {{ background-color: {theme.COLOR_CARD_HI}; color: {theme.COLOR_TEXT}; "
+               f"border: 1px solid {theme.COLOR_BORDER}; border-radius: 4px; "
+               "padding: 4px 8px; font-size: 14px; }")
+        return body + " " + tip
+
+    def _on_replie_btn(self):
+        self.replie_toggled.emit()
+
+    def set_replie_active(self, active: bool):
+        self._replie_active = bool(active)
+        self.btn_replie.setStyleSheet(self._replie_btn_qss(active))
 
     def _on_send_clicked(self):
         """★ กดส่ง / Enter → ส่งข้อความผ่าน signal send_requested"""

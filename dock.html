@@ -196,20 +196,22 @@
 
   /* WIDGET MISSING LOCK COVER (Zero GPU Lockup compliant: semi-solid background, no backdrop-blur) */
   .dock-module-cover {
-    position: absolute;
-    inset: 0;
     background: rgba(11, 17, 32, 0.96);
-    border-radius: 10px;
-    z-index: 50;
+    border-radius: 8px;
+    z-index: 10;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 14px 16px;
+    padding: 16px 14px;
     text-align: center;
     border: 1.5px dashed rgba(245, 158, 11, 0.5);
     contain: layout style;
     isolation: isolate;
+    margin-top: 2px;
+  }
+  .section-card.is-locked .section-body > *:not(.dock-module-cover) {
+    display: none !important;
   }
   .cover-icon {
     font-size: 24px;
@@ -257,6 +259,40 @@
     align-items: center;
     justify-content: space-between;
     margin-bottom: 9px;
+    cursor: pointer;
+    user-select: none;
+    border-radius: 6px;
+    padding: 3px 6px;
+    margin: -3px -6px 8px -6px;
+    transition: background 0.15s ease;
+  }
+  .section-head:hover {
+    background: rgba(255, 255, 255, 0.05);
+  }
+  .section-card.collapsed {
+    padding-bottom: 8px;
+  }
+  .section-card.collapsed .section-head {
+    margin-bottom: -3px;
+  }
+  .collapse-icon {
+    display: inline-block;
+    font-size: 11px;
+    color: #64748b;
+    margin-left: 5px;
+    transition: transform 0.2s ease, color 0.15s ease;
+  }
+  .section-head:hover .collapse-icon {
+    color: #cbd5e1;
+  }
+  .section-card.collapsed .collapse-icon {
+    transform: rotate(-90deg);
+  }
+  .section-card.collapsed .section-body {
+    display: none !important;
+  }
+  .section-card.collapsed .dock-module-cover {
+    display: none !important;
   }
   .section-title {
     font-size: 12px;
@@ -282,6 +318,342 @@
     background: rgba(148, 163, 184, 0.1);
     padding: 2px 7px;
     border-radius: 6px;
+  }
+
+  /* MODULE: OVERLAY & SCENE CONTROLS */
+  .dock-link-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(167, 139, 250, 0.12);
+    border: 1px solid rgba(167, 139, 250, 0.35);
+    color: #c4b5fd;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+  .dock-link-btn:hover {
+    background: rgba(167, 139, 250, 0.25);
+    border-color: #a78bfa;
+    color: #ffffff;
+  }
+  /* MULTI-SOURCE TABS */
+  .overlay-source-tabs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px;
+    background: #0b1120;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    overflow-x: auto;
+  }
+  .overlay-source-tab {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #94a3b8;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    outline: none;
+    user-select: none;
+  }
+  .overlay-source-tab:hover {
+    color: #f1f5f9;
+    background: rgba(255, 255, 255, 0.05);
+  }
+  .overlay-source-tab.active {
+    background: #1e293b;
+    color: #f8fafc;
+    border-color: #3b82f6;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+  .overlay-source-tab.active.pinned-tab {
+    border-color: #8b5cf6;
+  }
+  .overlay-source-tab .tab-badge {
+    font-size: 9px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-weight: 700;
+  }
+  .overlay-source-tab .tab-badge.dynamic {
+    background: rgba(56, 189, 248, 0.2);
+    color: #38bdf8;
+  }
+  .overlay-source-tab .tab-badge.pinned {
+    background: rgba(168, 85, 247, 0.2);
+    color: #c084fc;
+  }
+  .overlay-source-tab .tab-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
+  }
+
+  .overlay-pinned-box {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    background: rgba(147, 51, 234, 0.12);
+    border: 1px solid rgba(168, 85, 247, 0.35);
+    border-radius: 8px;
+    padding: 6px 10px;
+    margin-bottom: 8px;
+    font-size: 11px;
+  }
+  .overlay-pinned-box .pinned-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow: hidden;
+    min-width: 0;
+  }
+  .overlay-pinned-box .pinned-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .overlay-pinned-box .pinned-tag {
+    background: #7c3aed;
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  .overlay-pinned-box .pinned-name {
+    color: #f1f5f9;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .overlay-pinned-box .pinned-sub {
+    color: #94a3b8;
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .overlay-dynamic-badge {
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+    margin-left: auto;
+  }
+  .overlay-page-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .overlay-page-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #94a3b8;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .overlay-page-select {
+    flex: 1;
+    background: #0b1120;
+    color: #f8fafc;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+  }
+  .overlay-page-select:focus {
+    border-color: #a78bfa;
+  }
+  .overlay-master-ctrl {
+    margin-bottom: 10px;
+  }
+  .btn-hide-all-overlay {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 7px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: #f1f5f9;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .btn-hide-all-overlay:hover {
+    background: #25334c;
+    border-color: #475569;
+  }
+  .btn-hide-all-overlay.active-hidden {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1.5px solid #ef4444;
+    color: #fca5a5;
+  }
+  .btn-hide-all-overlay.active-hidden:hover {
+    background: rgba(239, 68, 68, 0.25);
+  }
+  .hide-all-icon {
+    font-size: 15px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .hide-all-title {
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .btn-hide-all-overlay.active-hidden .hide-all-title {
+    color: #ef4444;
+  }
+
+  .overlay-layer-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 2px 6px;
+    border-bottom: 1px solid #1e293b;
+    margin-bottom: 6px;
+    font-size: 11.5px;
+  }
+  .layer-head-title {
+    font-weight: 700;
+    color: #94a3b8;
+  }
+  .layer-head-count {
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .overlay-widget-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .overlay-widget-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 9px;
+    background: #0e1726;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    transition: opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  }
+  .overlay-widget-item:hover {
+    background: #131f33;
+    border-color: #2b3952;
+  }
+  .overlay-widget-item.is-hidden {
+    opacity: 0.58;
+    background: #090e18;
+    border-style: dashed;
+  }
+  .widget-item-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1;
+  }
+  .widget-item-icon {
+    font-size: 16px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .widget-item-info {
+    min-width: 0;
+    flex: 1;
+  }
+  .widget-item-name {
+    font-size: 12px;
+    font-weight: 700;
+    color: #f1f5f9;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .overlay-widget-item.is-hidden .widget-item-name {
+    color: #94a3b8;
+    text-decoration: line-through;
+  }
+  .widget-item-z {
+    font-size: 10px;
+    color: #64748b;
+    margin-top: 1px;
+  }
+  .btn-widget-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .btn-widget-toggle.visible {
+    background: rgba(56, 189, 248, 0.1);
+    border-color: rgba(56, 189, 248, 0.3);
+    color: #38bdf8;
+  }
+  .btn-widget-toggle.visible:hover {
+    background: rgba(56, 189, 248, 0.2);
+    border-color: #38bdf8;
+  }
+  .btn-widget-toggle.hidden {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+  }
+  .btn-widget-toggle.hidden:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: #ef4444;
+  }
+  .overlay-widget-empty {
+    text-align: center;
+    padding: 18px 12px;
+    background: #090e18;
+    border: 1px dashed #233148;
+    border-radius: 6px;
+    color: #94a3b8;
+    font-size: 11.5px;
+    line-height: 1.5;
   }
 
   /* MODULE 1: TTS & CHAT TOOLS */
@@ -374,6 +746,227 @@
   .tts-mini-btn.btn-disabled:hover {
     background: #0d1524;
     color: #64748b;
+  }
+
+  /* REPLIE Flush Action Buttons (No inner border-radius, zero gap, flush to bottom) */
+  .replie-card {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-inner);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    padding: 0;
+    transition: border-color 0.15s ease;
+  }
+  .replie-card:hover {
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+  .replie-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+  .replie-btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    gap: 0;
+    border-top: 1px solid var(--border-color);
+    background: #0c1424;
+  }
+  .replie-card-btn {
+    border: none;
+    border-right: 1px solid var(--border-color);
+    border-radius: 0;
+    background: #111a2c;
+    color: #94a3b8;
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 7px 0;
+    cursor: pointer;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    transition: background 0.15s ease, color 0.15s ease;
+    white-space: nowrap;
+    outline: none;
+  }
+  .replie-card-btn:last-child {
+    border-right: none;
+  }
+  .replie-card-btn:hover {
+    background: #1c2b44;
+    color: #f1f5f9;
+  }
+  .replie-card-btn:active {
+    background: #0f172a;
+  }
+  .replie-card-btn.is-looping {
+    background: #7e22ce;
+    color: #ffffff;
+    font-weight: 700;
+  }
+  .replie-card-btn.is-looping:hover {
+    background: #6b21a8;
+  }
+  .replie-card-btn.is-active-launch {
+    background: #dc2626 !important;
+    color: #ffffff !important;
+    font-weight: 800 !important;
+  }
+  .replie-card-btn.is-active-launch:hover {
+    background: #ef4444 !important;
+  }
+  .replie-card-btn.is-scheduled {
+    background: #c2410c !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    border-color: #ea580c !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px !important;
+    position: relative !important;
+    overflow: hidden !important;
+  }
+  .sched-progress-bar-track {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: rgba(0, 0, 0, 0.4);
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .sched-progress-bar-fill {
+    height: 100%;
+    width: 100%;
+    background: #ffffff;
+    opacity: 0.95;
+    box-shadow: 0 0 4px rgba(255, 255, 255, 0.9);
+    transition: width 0.12s linear;
+  }
+  .replie-card-btn.is-scheduled:hover {
+    background: #ea580c !important;
+  }
+  .loading-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: 3px;
+  }
+  .loading-dots .dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background-color: #ffffff;
+    display: inline-block;
+    animation: loadingDotsWave 1.4s infinite ease-in-out both;
+  }
+  .loading-dots .dot:nth-child(1) { animation-delay: -0.32s; }
+  .loading-dots .dot:nth-child(2) { animation-delay: -0.16s; }
+  .loading-dots .dot:nth-child(3) { animation-delay: 0s; }
+
+  @keyframes loadingDotsWave {
+    0%, 80%, 100% {
+      transform: scale(0.6);
+      opacity: 0.35;
+    }
+    40% {
+      transform: scale(1.15);
+      opacity: 1;
+    }
+  }
+  .replie-status-pill {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .replie-status-pill.is-ready {
+    color: #34d399;
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(52, 211, 153, 0.3);
+  }
+  .replie-status-pill.is-ready:hover {
+    background: rgba(16, 185, 129, 0.25);
+    border-color: #34d399;
+    color: #6ee7b7;
+  }
+  .replie-status-pill.is-disabled {
+    color: #fbbf24;
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(251, 191, 36, 0.3);
+  }
+  .replie-status-pill.is-disabled:hover {
+    background: rgba(245, 158, 11, 0.25);
+    border-color: #fbbf24;
+    color: #fde047;
+  }
+  .replie-status-pill.is-muted {
+    color: #f87171;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+  }
+  .replie-status-pill.is-muted:hover {
+    background: rgba(239, 68, 68, 0.25);
+  }
+  .replie-card-btn.is-muted {
+    color: #fbbf24;
+  }
+  .replie-card-btn.is-muted:hover {
+    color: #fef08a;
+  }
+
+  /* Segmented Demo Buttons */
+  .replie-demo-group {
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .replie-demo-btn {
+    border: none;
+    border-right: 1px solid var(--border-color);
+    border-radius: 0;
+    background: #131d2e;
+    color: #94a3b8;
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 5px 6px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+    white-space: nowrap;
+    outline: none;
+  }
+  .replie-demo-btn:last-child {
+    border-right: none;
+  }
+  .replie-demo-btn:hover {
+    background: #1c2b44;
+    color: #f1f5f9;
+  }
+  .replie-demo-btn.is-loop-all {
+    background: #7e22ce;
+    color: #fff;
+    font-weight: 700;
   }
 
   /* MODULE 2: STATUS & TTS HEALTH (EXPLICIT TEXT, NO HOVER) */
@@ -1223,33 +1816,95 @@
   <!-- MAIN MODULE CONTAINER -->
   <div class="dock-container" id="dockContainer" style="margin-top: 10px;">
 
+    <!-- MODULE: OVERLAY & SCENE CONTROLS -->
+    <div class="section-card" id="mod_overlay_widgets" data-module="overlay_widgets">
+      <div class="section-head">
+        <span class="section-title" style="color: #a78bfa;">
+          <span class="drag-handle" title="ลากเพื่อย้ายตำแหน่ง">⠿</span>
+          <span>🎨 ควบคุม Overlay & ซีน</span>
+          <span class="collapse-icon" title="คลิกเพื่อพับเก็บ/ขยาย">▾</span>
+        </span>
+        <button type="button" class="dock-link-btn" onclick="openOverlayComposer()" title="เปิดหน้าต่างปรับแต่ง Overlay (Composer) บนเบราว์เซอร์สำหรับหน้านี้">
+          <span>🎨 ปรับแต่ง Overlay</span>
+          <span style="font-size:10px;">↗</span>
+        </button>
+      </div>
+
+      <div class="section-body">
+        <!-- MULTI-SOURCE TABS (แสดงเมื่อใน Scene มี Browser Source หลายตัว) -->
+        <div class="overlay-source-tabs" id="boxOverlaySourceTabs" style="display:none;"></div>
+
+        <!-- PINNED PAGE NOTICE (แสดงเมื่อ Scene OBS ใช้ URL ล็อกเฉพาะหน้า ?p=...) -->
+        <div class="overlay-pinned-box" id="boxOverlayPinned">
+          <div class="pinned-info">
+            <div class="pinned-header">
+              <span class="pinned-tag">📌 ปักหมุดตาม Scene</span>
+              <span class="pinned-name" id="txtPinnedPageName">หน้า 1</span>
+            </div>
+            <div class="pinned-sub" id="txtPinnedSceneDesc">OBS Scene: Play 16:9</div>
+          </div>
+        </div>
+
+        <!-- DYNAMIC PAGE SWITCHER (แสดงเมื่อ Scene ใช้ Dynamic Link หรือทั่วไป) -->
+        <div class="overlay-page-bar" id="barOverlayPage">
+          <label class="overlay-page-label" for="selOverlayPage">
+            <span>📄 หน้า:</span>
+          </label>
+          <select id="selOverlayPage" class="overlay-page-select" onchange="onOverlayPageChange(this.value)">
+            <option value="">(กำลังโหลดหน้า...)</option>
+          </select>
+          <span class="overlay-dynamic-badge" id="badgeDynamicMode" title="ลิงก์ Dynamic บน OBS จะเปลี่ยนตามหน้านี้ทันที">⚡ Dynamic</span>
+        </div>
+
+        <!-- MASTER HIDE ALL OVERLAY BUTTON -->
+        <div class="overlay-master-ctrl">
+          <button type="button" id="btnHideAllOverlay" class="btn-hide-all-overlay" onclick="toggleHideAllOverlay()">
+            <span id="iconHideAllOverlay" class="hide-all-icon">👁️</span>
+            <span id="txtHideAllTitle" class="hide-all-title">คลิกเพื่อซ่อน Overlay ทั้งหมด</span>
+          </button>
+        </div>
+
+        <!-- LAYER-ORDERED WIDGETS LIST -->
+        <div class="overlay-layer-head">
+          <span class="layer-head-title">ลำดับ Layer บนจอ (บนลงล่าง):</span>
+          <span id="txtWidgetCount" class="layer-head-count">0 ชิ้น</span>
+        </div>
+        <div id="overlayWidgetList" class="overlay-widget-list">
+          <!-- Rendered dynamically -->
+        </div>
+      </div>
+    </div>
+
     <!-- MODULE: TTS & CHAT TOOLS -->
     <div class="section-card" id="mod_tts_chat" data-module="tts_chat">
       <div class="section-head">
         <span class="section-title">
           <span class="drag-handle" title="ลากเพื่อย้ายตำแหน่ง">⠿</span>
           <span>🔊 TTS & Chat Tools</span>
+          <span class="collapse-icon" title="คลิกเพื่อพับเก็บ/ขยาย">▾</span>
         </span>
         <span class="section-badge">Live Controls</span>
       </div>
-      <div class="tts-btn-grid">
-        <button class="tts-action-btn active-green" id="btnTtsToggle" onclick="toggleTtsRead()">
-          <span style="font-size:15px;">🔊</span>
-          <span id="txtTtsState">อ่านแชท: กำลังอ่าน</span>
-        </button>
-        <button class="tts-action-btn active-purple" id="btnTranslateToggle" onclick="toggleTranslateMode()">
-          <span style="font-size:15px;">🌐</span>
-          <span id="txtTranslateMode">โหมด: แปลภาษา</span>
-        </button>
-      </div>
-      <div class="tts-mini-tools">
-        <button class="tts-mini-btn active-pink" id="btnVoiceGender" onclick="toggleVoiceGender()" style="font-weight:700; color:#f472b6; border-color:rgba(244,114,182,0.3); background:rgba(244,114,182,0.08);">
-          <span id="iconVoiceGender">👧</span> <span id="txtVoiceGender">เสียงอ่านแชท : หญิง</span>
-        </button>
-      </div>
-      <div class="tts-mini-tools">
-        <button class="tts-mini-btn" onclick="clearTtsQueue()">⏹️ เคลียร์คิว TTS ทันที</button>
-        <button class="tts-mini-btn" id="btnHideChat" onclick="toggleHideChat()">👁️ ซ่อน Chat บนจอ</button>
+      <div class="section-body">
+        <div class="tts-btn-grid">
+          <button class="tts-action-btn active-green" id="btnTtsToggle" onclick="toggleTtsRead()">
+            <span style="font-size:15px;">🔊</span>
+            <span id="txtTtsState">อ่านแชท: กำลังอ่าน</span>
+          </button>
+          <button class="tts-action-btn active-purple" id="btnTranslateToggle" onclick="toggleTranslateMode()">
+            <span style="font-size:15px;">🌐</span>
+            <span id="txtTranslateMode">โหมด: แปลภาษา</span>
+          </button>
+        </div>
+        <div class="tts-mini-tools">
+          <button class="tts-mini-btn active-pink" id="btnVoiceGender" onclick="toggleVoiceGender()" style="font-weight:700; color:#f472b6; border-color:rgba(244,114,182,0.3); background:rgba(244,114,182,0.08);">
+            <span id="iconVoiceGender">👧</span> <span id="txtVoiceGender">เสียงอ่านแชท : หญิง</span>
+          </button>
+        </div>
+        <div class="tts-mini-tools">
+          <button class="tts-mini-btn" onclick="clearTtsQueue()">⏹️ เคลียร์คิว TTS ทันที</button>
+          <button class="tts-mini-btn" id="btnHideChat" onclick="toggleHideChat()">👁️ ซ่อน Chat บนจอ</button>
+        </div>
       </div>
     </div>
 
@@ -1259,50 +1914,124 @@
         <span class="section-title" style="color: #38bdf8;">
           <span class="drag-handle" title="ลากเพื่อย้ายตำแหน่ง">⠿</span>
           <span>📊 Status (สถานะระบบ & คนดู)</span>
+          <span class="collapse-icon" title="คลิกเพื่อพับเก็บ/ขยาย">▾</span>
         </span>
         <span class="section-badge" id="liveTag">LIVE</span>
       </div>
 
-      <!-- TTS HEALTH STATUS BANNER (EXPLICIT TEXT, NO HOVER) -->
-      <div class="status-banner-box">
-        <div class="tts-health-badge green" id="ttsHealthBadge">
-          <span class="status-dot green" id="ttsHealthDot"></span>
-          <span id="ttsHealthTitle">เซิฟเวอร์ระบบอ่านแชท : ปกติ</span>
+      <div class="section-body">
+        <!-- TTS HEALTH STATUS BANNER (EXPLICIT TEXT, NO HOVER) -->
+        <div class="status-banner-box">
+          <div class="tts-health-badge green" id="ttsHealthBadge">
+            <span class="status-dot green" id="ttsHealthDot"></span>
+            <span id="ttsHealthTitle">เซิฟเวอร์ระบบอ่านแชท : ปกติ</span>
+          </div>
+          <div class="tts-health-sub" id="ttsHealthSub">สถานะพร้อมใช้งาน ไม่พบข้อผิดพลาด</div>
         </div>
-        <div class="tts-health-sub" id="ttsHealthSub">สถานะพร้อมใช้งาน ไม่พบข้อผิดพลาด</div>
-      </div>
 
-      <!-- AUDIENCE RADAR -->
-      <div class="audience-row">
-        <div class="audience-total" id="totalAudience">
-          👥 <span id="valTotalViewers">0</span> คน
+        <!-- AUDIENCE RADAR -->
+        <div class="audience-row">
+          <div class="audience-total" id="totalAudience">
+            👥 <span id="valTotalViewers">0</span> คน
+          </div>
+          <div class="audience-platforms" id="platformViewerList"></div>
         </div>
-        <div class="audience-platforms" id="platformViewerList"></div>
       </div>
     </div>
 
     <!-- MODULE: ASK / POLL LIVE HUB -->
-    <div class="section-card" id="mod_ask" data-module="ask">
-      <!-- COVER WHEN ASK WIDGET IS NOT INSTALLED IN OVERLAY COMPOSER -->
-      <div class="dock-module-cover" id="askLockCover" style="display:none;">
-        <div class="cover-icon">⚠️</div>
-        <div class="cover-title">ยังไม่ได้วาง Widget ASK บน Overlay</div>
-        <div class="cover-desc">กรุณาเพิ่ม Widget ASK ใน Overlay Composer ก่อนใช้งานคำถามสดครับ</div>
-        <button type="button" class="cover-btn-composer" onclick="openComposer()">
-          <span>🌐</span> เปิด Overlay Composer เพื่อเพิ่ม Widget
+    <!-- MODULE: REPLIE (ตอบกลับภาพ & ข้อความบนจอ) -->
+    <div class="section-card" id="mod_replie" data-module="replie">
+      <div class="section-head">
+        <span class="section-title" style="color: #38bdf8;">
+          <span class="drag-handle" title="ลากเพื่อย้ายตำแหน่ง">⠿</span>
+          <span>💬 Replie (ตอบกลับภาพบนจอ)</span>
+          <span class="collapse-icon" title="คลิกเพื่อพับเก็บ/ขยาย">▾</span>
+        </span>
+        <span class="section-badge" id="badgeReplieStatus" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.3);">พร้อมรับคำสั่ง</span>
+      </div>
+      <div class="section-body">
+        <!-- COVER WHEN REPLIE WIDGET IS NOT INSTALLED IN OVERLAY COMPOSER -->
+        <div class="dock-module-cover" id="replieLockCover" style="display:none;">
+          <div class="cover-icon">⚠️</div>
+          <div class="cover-title">ยังไม่ได้วาง Widget Replie บน Overlay</div>
+          <div class="cover-desc">กรุณาเพิ่ม Widget Replie ใน Overlay Composer เพื่อเปิดใช้งานเครื่องมือนี้ครับ</div>
+          <button type="button" class="cover-btn-composer" onclick="openComposer()">
+            <span>🌐</span> เปิด Overlay Composer เพื่อเพิ่ม Widget
+          </button>
+        </div>
+        <!-- Live Status Bar with Countdown Progress Bar -->
+        <div id="replieLiveStatus" style="display:none; flex-direction:column; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; gap: 7px; overflow: hidden;">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+              <span style="display:inline-block; width:8px; height:8px; min-width:8px; border-radius:50%; background:#ef4444; box-shadow:0 0 8px #ef4444;"></span>
+              <span style="color:#f87171; font-weight:700; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" id="txtReplieLive">กำลังแสดง: !donate</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+              <span style="color:#fca5a5; font-size:11.5px; font-weight:800; font-family:monospace; background:rgba(0,0,0,0.3); padding:2px 6px; border-radius:4px;" id="txtReplieCountdown">0.0s</span>
+              <button type="button" onclick="sendAction('replie_dismiss')" style="background:#ef4444; color:#fff; border:none; border-radius:5px; padding:4px 10px; font-weight:700; font-size:11.5px; cursor:pointer;" title="สั่งซ่อนออกจากจอ OBS ทันทีโดยไม่ต้องรอหมดเวลา">✕ ซ่อนทันที</button>
+            </div>
+          </div>
+          <!-- Live Countdown Progress Bar -->
+          <div style="width:100%; height:4px; background:rgba(255,255,255,0.12); border-radius:2px; overflow:hidden;">
+            <div id="barReplieLiveProgress" style="height:100%; width:100%; background:linear-gradient(90deg, #ef4444, #f59e0b); border-radius:2px; transition: width 0.08s linear;"></div>
+          </div>
+        </div>
+
+        <!-- Loop Status Bar (สตรีมเมอร์เปิดรันวนลูปทิ้งไว้) -->
+        <div id="replieLoopStatus" style="display:none; background: rgba(168, 85, 247, 0.12); border: 1px solid rgba(168, 85, 247, 0.4); border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; align-items: center; justify-content: space-between;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#c084fc; box-shadow:0 0 6px #c084fc;"></span>
+            <span style="color:#d8b4fe; font-weight:700; font-size:12.5px;" id="txtReplieLoop">🔁 กำลังวนลูป: !donate</span>
+          </div>
+          <button type="button" onclick="sendAction('replie_stop_loop')" style="background:#7e22ce; color:#fff; border:none; border-radius:5px; padding:4px 10px; font-weight:700; font-size:11.5px; cursor:pointer;">⏹️ หยุดวนลูป</button>
+        </div>
+
+        <!-- Command List Container -->
+        <div id="replieCommandList" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;">
+          <!-- Dynamically populated from status.replie.commands -->
+        </div>
+
+        <!-- Demo Preview Row (Segmented group without individual rounded corners) -->
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:6px; padding-top:6px; border-top:1px solid var(--border-color);">
+          <span style="font-size:11.5px; color:var(--text-muted); font-weight:600;">ทดสอบแสดงผล:</span>
+          <div class="replie-demo-group">
+            <button type="button" class="replie-demo-btn" id="btnReplieLoopAll" onclick="sendAction('replie_toggle_loop', { name: '__all__' })" title="วนลูปสลับทุกคำสั่งที่เปิดใช้งานไปเรื่อยๆ (เช่น สตรีมเมอร์ไม่อยู่ที่โต๊ะ)">🔁 วนลูปทั้งหมด</button>
+            <button type="button" class="replie-demo-btn" onclick="sendAction('replie_demo', {mode:'ticker'})" title="ทดสอบแถบวิ่งด้านล่าง">▶ Ticker</button>
+            <button type="button" class="replie-demo-btn" onclick="sendAction('replie_demo', {mode:'image'})" title="ทดสอบภาพ QR Code">▶ QR Code</button>
+            <button type="button" class="replie-demo-btn" onclick="sendAction('replie_demo', {mode:'combo'})" title="ทดสอบภาพ+ข้อความ">▶ Combo</button>
+          </div>
+        </div>
+
+        <!-- OPEN MAIN REPLIE TOOL BUTTON -->
+        <button type="button" class="gw-btn-open-tool" style="margin-top:8px; border-color:rgba(56,189,248,0.4); color:#38bdf8;" onclick="openReplieTool()">
+          <span>🖼️</span> เปิดหน้าต่าง Replie Tools ในโปรแกรม
         </button>
       </div>
+    </div>
 
+    <div class="section-card" id="mod_ask" data-module="ask">
       <div class="section-head">
         <span class="section-title" style="color: #c084fc;">
           <span class="drag-handle" title="ลากเพื่อย้ายตำแหน่ง">⠿</span>
           <span>💬 ASK โพล & คำถามสด</span>
+          <span class="collapse-icon" title="คลิกเพื่อพับเก็บ/ขยาย">▾</span>
         </span>
         <span class="section-badge" style="color: #c084fc; background: rgba(192,132,252,0.15);" id="askBadge">พร้อมตั้งคำถาม</span>
       </div>
 
-      <!-- ACTIVE ASK BOX -->
-      <div class="ask-live-box" id="askLiveBox" style="display:none;">
+      <div class="section-body">
+        <!-- COVER WHEN ASK WIDGET IS NOT INSTALLED IN OVERLAY COMPOSER -->
+        <div class="dock-module-cover" id="askLockCover" style="display:none;">
+          <div class="cover-icon">⚠️</div>
+          <div class="cover-title">ยังไม่ได้วาง Widget ASK บน Overlay</div>
+          <div class="cover-desc">กรุณาเพิ่ม Widget ASK ใน Overlay Composer ก่อนใช้งานคำถามสดครับ</div>
+          <button type="button" class="cover-btn-composer" onclick="openComposer()">
+            <span>🌐</span> เปิด Overlay Composer เพื่อเพิ่ม Widget
+          </button>
+        </div>
+        <!-- ACTIVE ASK BOX -->
+        <div class="ask-live-box" id="askLiveBox" style="display:none;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
           <div class="poll-title" id="pollTitle" style="margin-bottom:0;">กำลังรอตั้งคำถาม...</div>
           <span style="font-size:11px; font-weight:700; color:#38bdf8;" id="pollVotersCount">👥 0 โหวต</span>
@@ -1416,30 +2145,32 @@
           <button type="button" class="btn-add-choice" style="flex:1; margin-bottom:0; justify-content:center; background:#1e293b; border-color:#7c3aed; color:#c084fc;" onclick="saveAskPresetFromDock()">💾 บันทึก Preset</button>
         </div>
       </div>
+      </div>
     </div>
 
     <!-- MODULE: GIVEAWAY TOOLS LAUNCHER & LIVE RADAR -->
     <div class="section-card" id="mod_giveaway" data-module="giveaway">
-      <!-- COVER WHEN GIVEAWAY WIDGET IS NOT INSTALLED IN OVERLAY COMPOSER -->
-      <div class="dock-module-cover" id="gwLockCover" style="display:none;">
-        <div class="cover-icon">⚠️</div>
-        <div class="cover-title">ยังไม่ได้วาง Widget Giveaway บน Overlay</div>
-        <div class="cover-desc">กรุณาเพิ่ม Widget Giveaway ใน Overlay Composer ก่อนเริ่มกิจกรรมครับ</div>
-        <button type="button" class="cover-btn-composer" onclick="openComposer()">
-          <span>🌐</span> เปิด Overlay Composer เพื่อเพิ่ม Widget
-        </button>
-      </div>
-
       <div class="section-head">
         <span class="section-title" style="color: #fbbf24;">
           <span class="drag-handle" title="ลากเพื่อย้ายตำแหน่ง">⠿</span>
           <span>🎰 Giveaway สุ่มรางวัล</span>
+          <span class="collapse-icon" title="คลิกเพื่อพับเก็บ/ขยาย">▾</span>
         </span>
         <span class="section-badge" style="color: #fbbf24; background: rgba(251,191,36,0.15);" id="gwStatusBadge">ปิดรับ</span>
       </div>
 
-      <!-- ACTIVE RUNNING BANNER (SHOWS ONLY WHEN CHECKPOINT IS LIVE) -->
-      <div class="gw-active-banner" id="gwActiveBanner" style="display:none;">
+      <div class="section-body">
+        <!-- COVER WHEN GIVEAWAY WIDGET IS NOT INSTALLED IN OVERLAY COMPOSER -->
+        <div class="dock-module-cover" id="gwLockCover" style="display:none;">
+          <div class="cover-icon">⚠️</div>
+          <div class="cover-title">ยังไม่ได้วาง Widget Giveaway บน Overlay</div>
+          <div class="cover-desc">กรุณาเพิ่ม Widget Giveaway ใน Overlay Composer ก่อนเริ่มกิจกรรมครับ</div>
+          <button type="button" class="cover-btn-composer" onclick="openComposer()">
+            <span>🌐</span> เปิด Overlay Composer เพื่อเพิ่ม Widget
+          </button>
+        </div>
+        <!-- ACTIVE RUNNING BANNER (SHOWS ONLY WHEN CHECKPOINT IS LIVE) -->
+        <div class="gw-active-banner" id="gwActiveBanner" style="display:none;">
         <div class="gw-active-title">
           <span id="gwActiveTitleText">🟢 กำลังเปิดรับกิจกรรม</span>
           <span style="font-size:11px; color:#fde047;" id="gwActiveTimeText">⏱️ 00:00</span>
@@ -1454,6 +2185,7 @@
       <button class="gw-btn-open-tool" onclick="openGiveawayTool()">
         <span>🎰</span> เปิดหน้าต่าง Giveaway Tools ในโปรแกรม
       </button>
+      </div>
     </div>
 
   </div>
@@ -1488,15 +2220,19 @@
   const PLATFORM_LOGOS = {"youtube": "data:image/png;base64,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", "twitch": "data:image/png;base64,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", "tiktok": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAANVUlEQVR4nOWbiVMbSZbGf5VVpVsCSSBOc/ka4wO3Cbt7e7wxERsxsbH/8MbEbOzsRuxu99gzxvjoNjY2NggECAkJHUgl1bGRqRKWvV6bxshutx9RSOiozHz5ju99L9EAl45ofIUi+MpF8JWL4CsXwVcuxueeANr/E3u9o1+/YQVoGpomOkro1YPnqUs+dH71cQp85WnQ4Fci2lvPu397aHjq5zeoAM00EaEwnmkemaF0B89uQ7MJ7Ra4/XUBg08t0t89D01oGKk0obPnEJlRXF2AkJeOfVDC2ljH3d6CSqWjBBULpF14vw0FgIaeTBK7dp305SukI2GiwQCabmDv7mIt3ae4dI/txirlZh27m7SPTOVLU4DWWbjQNLUG6dtaLE707BwXb97ku6E0U7EIuqHj7RZw4ilWLfivvQMeWq8oAI7Q8KT1eJ248OUHQcPAjMUZHR5mcXKcKwEdXeoqMQAtmMrmqSw/Znc3yz42th8eBRrOKSlA8LnE9wTN9Qh6LoO6YBhIAUlTJzlzhtlLF7l0ZobpcIoIAqEJhJDYQTu1nC34nOK6eK0Wnoz48rJtPHnJ1+Mh4uemuLBwlQszc8Q1A7dt4zq+AykQJQGU9gW7gPAXIHTQdZUFehcVmTnDhT/8A9fKBf5a2mZ7Z10FQ2HoKhl40oqkslyJGt0vFAhpnQWrffWfOz4UNgaipBYuMV8rc6u0Q/FHh9VinlardWrDG/xKRIW3rjmrSO8pq9DHM5y9/R3/rDnY6UHaP/w3z1efQY8SZOBUXztBljT4lYoMTjLleYbOwOQ4129/jx2L0h6IE50YJ7e5Se2gQqNWxbEssJonwkgG/ZLubvY+uu7xrUEItR7p40IIhsZG+TYSITYxzsXf3+bvL9ZYWVsju/qM8toLrOzGa6uQFaYKEt4nVoD22oSPBu+ZRLfIORag9e8luo+6TjqV5OZgkrHzF5i4lOPCizVe3FtiQw+xUapS2N+jiovrD3CccYyTr/YdE9ZkFOe1H/s73puoJIiRKPC9ovTXSXU9L6lvhYGZWITBmSkWEwl2MXm6V+fHpxv8ff+AJzQ51DxVP3TQwvsxo8FHi69ntetv4jP1XBY4XdLDtXF8IPxe83QcqDZxrZb6voiE0KLho+BgAsPBAMNjGWb3KoxkxmlEkuQweSEV4N9GOoLzgdkbH7f2bs4W4L4eSg6shUJ4sRieX+4qbdSrUKtAw5LO3aOszo4d3bZlo+X3sTZ2aFarGMMpovNn0VIDb47vh5SY0EkIgzCGj+yOHw2Nj1p8j68rc5WLlTg+mcQcGiaYThGKJwiGw+iOg5PdwFp5Qi27ieUDl3dNVaXAWgPr+TrbT55RDRsEdi6TunKR4cQg4UgETAMabThoEGq2CaFhSqj8CzOBcWIFSNOWPi59FQik0+jTsxgXLxGYnSUxNkE6nSaTiDEUjRBrtXHuLVOqO6xuFXnpNqjLTXzL15UC5L3RaO2XyS494OHuFqX7d5lYuMy3M+e5NDNLOJ1EcwVsFTBKNXTbUdkCp1tuHy/aGifeeemnUg+hEGI4gzF/mdiVa2SuXGVkZoapzAgTAwnGwkGGw2FiVgv30GHnzk9EzceUWm2qyorfERLlQnRdpcCD4j5PV1d4nF1hcGON/Jk5crPnSA8PkdFDhMqHFF+skTusUhUejiNULDquGCdWgFp8kPDZc5jXbxD/9jvGLs1zdXycq4MJLsViTASDDOoaIV3H0AROOMpOaID9QIKldo0NPF8B78gKnocuawOh08RhvVnh57VDnuU2uPP4AZlIjAkjQgqdVqPJy0qRnNam3bPrykNPXQG+CMnnjU8QWLxJ8vYfmP3mOlfGx7gVi3HZ0JgNBkjIAqcrQQNME88IktIDBPxFv2+CQjcwQyF0I0zLrVJpWerKVUrIcDiEwSBBhGFQ1Vz2aNPqueNxYJdxjM+85u19bk4zDIJj4xgLN4h//4/MLS5ye2Kc7yMhLkfCpGQ8lJXeG/eQoF3QxsP2XLXzH5JOW8DFcxyFC7rSBCyghI0paRJbw9U0VSm2ez53HNbI4NjiZ1U5QDSGcf4i8cWbTF6+zLWxUb6PhrkhIK37O+u6OM0Wot5E2A7UmpDN49UbavGq8vugBjoKlyObmoZuaAi3Q4q0PI8WLq0uYXrCBopxbBZXPnRzfCaDefUao9cWuD42xnfREFdCwaPFS0txCyW0jV3EyxzsV6FSo/1qi1a+iC0V4PN70jQ+NHdV5XmeMkDXddAlJ9it/z+SGTOO/1EJrjUV+PSxMRX8JqamWIjHWNA1hqWCZC1vtfB29hEPn2E/XKX4/CUHhX2KtQq1apW9/RLP2jXls1KZftlyvBn4UU15k3r6OnwqdzkBVWocO+pL9esCLTVMaHyS1NgYM0Mp5mNRpkMGhqzebBu2C4i//Uz7335k9/5PPNrb4pFV4UWzSsluUfUcdqwyec1FR8OQjZBfWMW/rvvfXLDXdwswDLR0msjICCMDA5wJBhkzdYJ+6erUG2jPs7TuPmLnzjIPnq3w7808S8Ji3W1Qkz4rBLasCXSd4EeSkqfBCxvvfdcnHo96MoYBiQSRZIrReJyJYIgB2dHpBvmDBtqzLAcrz3mQ3+TPVoG/UCLrOjS6kz5yeO81J9j/Lvgp4QBdh1CIUCTCUFDmc6Fu4HaDY72Bl9ujuLPLQ+uAvwVaPLc9HLVIDVOymNICHLsTuCWU7nPv73QVoIEnBIauEzcM4oZQPnxkxraN3WqxbzV42aqz2W7gyGjtxxFVLMsIrpjgTi9Q9gj/D7WtYo7r1xo9g/fBVMQv+rRMb20bzbExNQ9TNil63zcNvFCAuq5RtC1qrqUIEFMYqlBRbJDrdi7pXrrZKZV7EaOUbq3Rto9No/VNAV5PYYXj4jYOceuHuO22/17PrkTDiKEkWnJAkZnqHbk401DoURU4SmkaRjxBIJkiEE9gBoPoXeQob6qAUwOnfki71cLuQKeeSX1CBbwhsmtTLtMql2hYlmzfvYnoEjHEhWkS8+dIZ4ZVO8u1bdqNhmJuHVt2dhxcyRtMz2DMnSWaThMzTULde3TJ04MaTqmCZVkK9rqfJQZ4HXhxtMR2G/aLHO7uUi6VqTSbtI1IJwjKicdCiKvnGTrY4+z2C87U9ynmt44mLw1dGCbu9DTBxZsMfHODidFRxg2duHLxDtjyDpuwU6SxU6DcPKSC22mM+ubofdog6L1JgFQq1HNb7ORy7FUqtOPRjhlJDl8CpdE0wzeusFgukA+ZHD59zGaxiGU7iibTU0MY8/Okbn7L2Yu/YyGd4nzQJKG4Q7/9Xa7BZp7mdp69wxoF4dA6fol/ygrwOoWL11WA1aS+lSW78oRXF85RTg2QCYVxXVnhSTfXiU9Psvgvf0ScnyP4dIWlzRzbjSaHoRDmUIbE1BRnpqe4MZLh94kY86EgETmGLKAOqhjr27TXNinu5sk2a+wIm5bjNwN9DsH71GnQ6+HrWoUCW8vLrE6dITs1yczUFAFdV9Fdlq56IMDI1BkWRzKYc7NM5gtkD5tUJIeQSDAYjzMVDqqFz4eDDAUkzwtes4X+IgcPVznY2CRbLbPePqQkZBjsywERjqcAaQUydfm+7lSrFB8s8ySd5MHcHJMDSc4NxDunP6QlOI7CChIs3Zqc4FwmQ8l2OJSbqOtEhCApNFJCI+ojyba893YB/c5jqneWeZbL8qhdZd1t0vTUARlFeHai0qdWgJRuk0Ny/K6Dnd8he/8+P0yeIRUMEru+wEQ6hSHTnb9TUmEdwGQw7XP08nX5iTfORTZbmDtFuPsz7p1H5J6ucre8zT2vxp4snvt4WNL45VXY68mUXr3kxz/9K2a9RrLZJHTrpiIru+K8NYDMAm9BHuymhf50A/76CPeHB+SWf2Ipv8V/1vdY8qrUcBRu8E7Z90/MCbp+qtJV7W+RW1nhbtsmKdHrQYUbV6+SyWQUdy+5OsXfH6FYH+TIUx7NFlTrGK+2Yfkptf9ZYvOnFZbym/ylUeCBU6PgdZqdeo/1/GqOygrkoYbOfphmgMnRMb45f4F/Wljk1vxlLs6eI5EZhkQcTL0DcCRfUG9AqQq5PLzcxn76ktLaOquvXnJ3f5v/ONxj2amScyzFHHXG6h8Q0k6qAFUFCK0TFP0ewVAgzOLMWW6d/x3X5y4yNTZOOpkkGA4S1HRE28Gt1XGKB1ibOxy+2qSwvslGucij5gH33BpLdpWC21Sz0nsm530ph6UTRoCRaIKZeFJdU9EOThgUJgFZ3Fltmo0G5VqVfPWAjfoB661DFe3ztKn0tDP7U//1QQFCdnCFht1hLdVrASADjBFmWAQZEAYBhDrQZHmOWugejgI5MtJbMtX5MzF89+pvHXiaFqD5nfi30pV8LeQrw+wZQA4oM7sMce8qdD7FzvfFBTRJjvg0mmxUdIJkl7N/a0nqzw4dJnpATj9S3SeNAZpfHh/VbcdcTS+9/SlF69d/jHTOAklrePfNj44Q+Tv+uZhBrd//MvOhm35eSpT+nxP83Av8kAi+chF85WJ8QdbaFxGfewKfW/4XfRL1lgcnqawAAAAASUVORK5CYII=", "kick": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAADNElEQVR4nO2bS0hUYRTH//fM3Dv4HPNRaJGPTCfB1B60KrBFtIqKKKIgamVEhG3KkqigtLRCKALbGNQiDNsE1a5V7czIirFmTMUwlAy1prmPuTEjQqXfKDnPe/rBbOZxzzn/7/J95/4PIzmdThOMITCHwBwCcwjMITCHwBwCcwjMITCHwBwCcwjMITCHwBwCc+yRvFhNp4KcrbZZ7490GuitUxd8HUeBhA2PHUgplITfGWrX4W7QYLk7QMmTsP5R+OI/3zPgPrP44hNOAHmJhHVdClJLxcV/6TLwvl4FIuRjERIEewZQ81BBeoU4pdGnBnqPqjADkYtLSABsqUD1Awcyq8XpfH0ewJsjKkw9srEpspf7hwQcQNV9B7I2iVP59jKA1wf9CPijEB9xRJKBtR0KsreI05joCaBnvx+GLzo5EOKEZAMq2xXkbpt9bM4w9S6AV3tU6JPRy4MQByQCKm4qWLpDXPwPj4nu3Sq08eiOLQhxwNUqI3+vuHjfoInuXX6oo9Gf2RBiTNklGcsPiRtQ/0hw5f34ORybgRUhhqxqlLGyTly8Oja98r7+2E3rKFaBiuvtoVc4Pl7Q8L0vtqNKikWQ7FoKrf58FB6XQQqsJ4CSK+7tfyetTELRyfmFslQn+DdFJ+xIK1+YYJYUgBSgok0J9QoxiYc4MXhbhz4x94bn3EhYcTiiXk1iCeC9oqGvUYO3RfxoV3pODjlDlhPA26zBe3W68KE7uvDYs6UDrhbZWgJ4mv5cdVMD3A1irzBvuw3Ldopb5qQSwNOkob9Vn9PoGH1iCH9X3ixDzpKSW4CxZ8acxc/Qd1YTmh1Bk3T1RTm5BdAnwn/uGzAxcEssUMEBG7I3k7X7gE/XtbBPgK4bSsg+s6wAhg/4cF7s9acWSyg5JVtXgBnPf/yF2PMuPGZHRiVZV4Ag7tMaTMGhINmBNW1yyE+0rABTbwMYviveEDOrKKypkvQCBPFc1sOaoSUNctjZYdILoI2b8DSJ7wJbCuC6plhXgCDDHTome8UbYk4tIX/f4jcD6f//BZhDYA6BOQTmEJhDYA6BOQTmEJhDYA6BOQTmEJhDYA7FO4F48wvOIuBp+CZSdAAAAABJRU5ErkJggg==", "facebook": "data:image/png;base64,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"};
   // ── MODULE CONFIGURATION & REORDERING STATE ──
   const MODULES_META = {
+    overlay_widgets: { id: 'mod_overlay_widgets', name: '🎨 ควบคุม Overlay & ซีน' },
     tts_chat: { id: 'mod_tts_chat', name: '🔊 TTS & Chat Tools' },
     status:   { id: 'mod_status',   name: '📊 Status & คนดู' },
+    replie:   { id: 'mod_replie',   name: '💬 Replie ตอบกลับภาพบนจอ' },
     ask:      { id: 'mod_ask',      name: '💬 ASK โพล & คำถาม' },
     giveaway: { id: 'mod_giveaway', name: '🎰 Giveaway สุ่มรางวัล' }
   };
 
   let _moduleState = [
+    { key: 'overlay_widgets', enabled: true },
     { key: 'tts_chat', enabled: true },
     { key: 'status',   enabled: true },
+    { key: 'replie',   enabled: true },
     { key: 'ask',      enabled: true },
     { key: 'giveaway', enabled: true }
   ];
@@ -1672,8 +2408,36 @@
       updateViewersUI(msg);
     } else if (msg.type === 'tts_health') {
       updateTtsHealthUI(msg);
+    } else if (msg.type === 'overlay_visibility') {
+      updateOverlayHideAllUI(Boolean(msg.hidden));
     } else if (msg.type === 'dock_status') {
       updateAllDockStatus(msg.status);
+    } else if (msg.type === 'replie_status') {
+      updateReplieUI(msg.data);
+    } else if (msg.type === 'replie_dismiss') {
+      if (_replieCountdownTimer) {
+        clearInterval(_replieCountdownTimer);
+        _replieCountdownTimer = null;
+      }
+      const liveBox = document.getElementById('replieLiveStatus');
+      if (liveBox) liveBox.style.display = 'none';
+      const badge = document.getElementById('badgeReplieStatus');
+      if (badge) {
+        badge.textContent = '🟢 พร้อมใช้งาน';
+        badge.style.background = 'rgba(16, 185, 129, 0.15)';
+        badge.style.color = '#34d399';
+        badge.style.borderColor = 'rgba(52, 211, 153, 0.3)';
+      }
+      document.querySelectorAll('.replie-card-btn.is-active-launch').forEach(btn => {
+        btn.classList.remove('is-active-launch');
+        btn.textContent = '▶ ยิงสด';
+        btn.style.background = '';
+        btn.style.color = '';
+        btn.style.fontWeight = '';
+        btn.title = 'ยิงคำสั่งนี้ขึ้นจอทันที';
+        const cname = btn.getAttribute('data-cmd');
+        btn.onclick = () => sendAction('replie_trigger', { name: cname });
+      });
     }
   }
 
@@ -1698,18 +2462,29 @@
       btn.className = 'tts-action-btn active-red';
       txt.textContent = 'อ่านแชท: หยุดอ่านชั่วคราว';
     }
+    updateTranslateBtnUI(_translateMode);
   }
 
   function toggleTranslateMode() {
     _translateMode = (_translateMode === 'translate') ? 'multilang' : 'translate';
     updateTranslateBtnUI(_translateMode);
     sendAction('toggle_translate', { mode: _translateMode });
-    showToast(_translateMode === 'translate' ? '🌐 สลับเป็นโหมด: แปลภาษา' : '🌍 สลับเป็นโหมด: อ่านทุกภาษา');
+    const isMuted = !_ttsReading;
+    if (_translateMode === 'translate') {
+      showToast(isMuted ? '🌐 สลับเป็นโหมด: แปลภาษาในแชท' : '🌐 สลับเป็นโหมด: แปลภาษา');
+    } else {
+      showToast(isMuted ? '🌍 สลับเป็นโหมด: แสดงทุกภาษาในแชท' : '🌍 สลับเป็นโหมด: อ่านทุกภาษา');
+    }
   }
 
   function updateTranslateBtnUI(mode) {
     const txt = document.getElementById('txtTranslateMode');
-    txt.textContent = mode === 'translate' ? 'โหมด: แปลภาษา' : 'โหมด: อ่านทุกภาษา';
+    if (!txt) return;
+    if (_ttsReading) {
+      txt.textContent = mode === 'translate' ? 'โหมด: แปลภาษา' : 'โหมด: อ่านทุกภาษา';
+    } else {
+      txt.textContent = mode === 'translate' ? 'โหมด: แปลภาษาในแชท' : 'โหมด: แสดงทุกภาษาในแชท';
+    }
   }
 
   let _hasChatWidget = true;
@@ -2519,14 +3294,18 @@
     showToast(`⏹️ ปิดรับกิจกรรมเช็คชื่อแล้ว (ผู้มีสิทธิ์ ${msg.total_checked_in || 0} คน)`);
   }
 
+  function openReplieTool() {
+    sendAction('open_replie_tool');
+    showToast('🖼️ กำลังเปิดหน้าต่าง Replie Tools ในโปรแกรม...');
+  }
+
   function openGiveawayTool() {
     sendAction('open_giveaway_tool');
     showToast('🎰 กำลังเปิดหน้าต่าง Giveaway Tools ในโปรแกรม...');
   }
 
   function openComposer() {
-    sendAction('open_composer');
-    try { window.open('/editor', '_blank'); } catch(e) {}
+    sendAction('open_composer', { page_id: _activePageId });
     showToast('🌐 กำลังเปิดหน้า Overlay Composer...');
   }
 
@@ -2535,7 +3314,24 @@
     if (!cover) return;
     cover.style.display = isLocked ? 'flex' : 'none';
     const card = document.getElementById('mod_ask');
-    if (card) card.style.minHeight = isLocked ? '145px' : '';
+    if (card) {
+      card.classList.toggle('is-locked', Boolean(isLocked));
+      card.style.minHeight = '';
+    }
+    const badge = document.getElementById('askBadge');
+    if (badge) {
+      if (isLocked) {
+        badge.textContent = '⚠️ ยังไม่มี Widget บนจอ';
+        badge.style.background = 'rgba(239, 68, 68, 0.15)';
+        badge.style.color = '#f87171';
+        badge.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+      } else if (badge.textContent.includes('ยังไม่มี Widget')) {
+        badge.textContent = 'พร้อมตั้งคำถาม';
+        badge.style.background = 'rgba(192,132,252,0.15)';
+        badge.style.color = '#c084fc';
+        badge.style.borderColor = '';
+      }
+    }
   }
 
   function updateGiveawayCover(isLocked) {
@@ -2543,7 +3339,51 @@
     if (!cover) return;
     cover.style.display = isLocked ? 'flex' : 'none';
     const card = document.getElementById('mod_giveaway');
-    if (card) card.style.minHeight = isLocked ? '135px' : '';
+    if (card) {
+      card.classList.toggle('is-locked', Boolean(isLocked));
+      card.style.minHeight = '';
+    }
+    const badge = document.getElementById('gwStatusBadge');
+    if (badge) {
+      if (isLocked) {
+        badge.textContent = '⚠️ ยังไม่มี Widget บนจอ';
+        badge.style.background = 'rgba(239, 68, 68, 0.15)';
+        badge.style.color = '#f87171';
+        badge.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+      } else if (badge.textContent.includes('ยังไม่มี Widget')) {
+        badge.textContent = 'ปิดรับ';
+        badge.style.background = 'rgba(251,191,36,0.15)';
+        badge.style.color = '#fbbf24';
+        badge.style.borderColor = '';
+      }
+    }
+  }
+
+  let _hasReplieWidget = true;
+  function updateReplieCover(isLocked) {
+    _hasReplieWidget = !isLocked;
+    const cover = document.getElementById('replieLockCover');
+    if (!cover) return;
+    cover.style.display = isLocked ? 'flex' : 'none';
+    const card = document.getElementById('mod_replie');
+    if (card) {
+      card.classList.toggle('is-locked', Boolean(isLocked));
+      card.style.minHeight = '';
+    }
+    const badge = document.getElementById('badgeReplieStatus');
+    if (badge) {
+      if (isLocked) {
+        badge.textContent = '⚠️ ยังไม่มี Widget บนจอ';
+        badge.style.background = 'rgba(239, 68, 68, 0.15)';
+        badge.style.color = '#f87171';
+        badge.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+      } else if (badge.textContent.includes('ยังไม่มี Widget')) {
+        badge.textContent = 'พร้อมรับคำสั่ง';
+        badge.style.background = 'rgba(16, 185, 129, 0.15)';
+        badge.style.color = '#34d399';
+        badge.style.borderColor = 'rgba(52, 211, 153, 0.3)';
+      }
+    }
   }
 
   function confirmWinner() {
@@ -2552,8 +3392,291 @@
     showToast('✅ มอบรางวัลและบันทึกประวัติผู้ชนะแล้ว!');
   }
 
+  // ── OVERLAY & SCENE CONTROLS LOGIC ──
+  let _overlayHidden = false;
+  let _overlayPages = [];
+  let _activePageId = '';
+  let _activeWidgets = [];
+
+  const DOCK_WIDGET_ICONS = {
+    chat: '💬', alert: '🔔', viewer: '👥', clock: '🕐',
+    image: '🖼️', playroom: '🎮', webcam: '📷', text: '📝',
+    video: '🎬', now_playing: '🎵', emote_party: '🎉',
+    avatar: '😊', donate_goal: '🎯', ask: '🗳️', giveaway: '🎁', replie: '💬'
+  };
+  const DOCK_WIDGET_LABELS = {
+    chat: 'Chat', alert: 'Custom URL', viewer: 'Viewer Count', clock: 'Clock',
+    image: 'Image', playroom: 'Playroom', webcam: 'Webcam', text: 'Text',
+    video: 'Video', now_playing: 'Now Playing', emote_party: 'Emote Party',
+    avatar: 'Avatar', donate_goal: 'Donate Goal', ask: 'ASK (โพล)', giveaway: 'Giveaway (แจกรางวัล)', replie: 'Replie (ตอบกลับภาพ)'
+  };
+
+  function openOverlayComposer() {
+    sendAction('open_composer', { page_id: _activePageId });
+    showToast('🎨 กำลังเปิดหน้าต่างปรับแต่ง Overlay...');
+  }
+
+  function toggleHideAllOverlay() {
+    _overlayHidden = !_overlayHidden;
+    updateOverlayHideAllUI(_overlayHidden);
+    sendAction('toggle_hide_all_overlay', { hidden: _overlayHidden });
+    showToast(_overlayHidden ? '🚫 Overlay กำลังถูกซ่อนอยู่' : '👁️ แสดง Overlay ตามปกติแล้ว');
+  }
+
+  function updateOverlayHideAllUI(hidden) {
+    _overlayHidden = Boolean(hidden);
+    const btn = document.getElementById('btnHideAllOverlay');
+    const icon = document.getElementById('iconHideAllOverlay');
+    const title = document.getElementById('txtHideAllTitle');
+    if (!btn || !icon || !title) return;
+    if (_overlayHidden) {
+      btn.className = 'btn-hide-all-overlay active-hidden';
+      icon.textContent = '🚫';
+      title.textContent = 'Overlay กำลังถูกซ่อนอยู่';
+    } else {
+      btn.className = 'btn-hide-all-overlay';
+      icon.textContent = '👁️';
+      title.textContent = 'คลิกเพื่อซ่อน Overlay ทั้งหมด';
+    }
+  }
+
+  // ── CARD COLLAPSE / EXPAND LOGIC ──
+  document.addEventListener('click', (e) => {
+    const head = e.target.closest('.section-head');
+    if (!head) return;
+    // Don't toggle collapse if clicking buttons, links, inputs, selects, or drag handles
+    if (e.target.closest('button') || e.target.closest('a') || e.target.closest('input') || e.target.closest('select') || e.target.closest('.drag-handle')) {
+      return;
+    }
+    const card = head.closest('.section-card');
+    if (!card) return;
+    toggleCardCollapse(card);
+  });
+
+  function toggleCardCollapse(card) {
+    card.classList.toggle('collapsed');
+    saveCollapsedCards();
+  }
+
+  function saveCollapsedCards() {
+    try {
+      const collapsedIds = [];
+      document.querySelectorAll('.section-card.collapsed').forEach(c => {
+        if (c.id) collapsedIds.push(c.id);
+      });
+      localStorage.setItem('bp_dock_collapsed_cards', JSON.stringify(collapsedIds));
+    } catch (e) {}
+  }
+
+  function loadCollapsedCards() {
+    try {
+      const saved = localStorage.getItem('bp_dock_collapsed_cards');
+      if (saved) {
+        const collapsedIds = JSON.parse(saved);
+        if (Array.isArray(collapsedIds)) {
+          collapsedIds.forEach(id => {
+            const card = document.getElementById(id);
+            if (card) card.classList.add('collapsed');
+          });
+        }
+      }
+    } catch (e) {}
+  }
+
+  function onOverlayPageChange(pageId) {
+    if (!pageId || pageId === _activePageId) return;
+    _activePageId = pageId;
+    sendAction('switch_overlay_page', { page_id: pageId });
+    const targetPage = _overlayPages.find(p => p.id === pageId);
+    const pName = targetPage ? targetPage.name : pageId;
+    showToast(`📄 สลับไปหน้า "${pName}" แล้ว`);
+  }
+
+  let _sceneOverlay = null;
+  let _selectedSourceIndex = 0;
+
+  function toggleWidgetVisibility(widgetId, targetVisible) {
+    sendAction('toggle_widget_visibility', { widget_id: widgetId, enabled: targetVisible, page_id: _activePageId });
+    // Optimistic UI update
+    const w = _activeWidgets.find(x => x.id === widgetId);
+    if (w) {
+      w.enabled = targetVisible;
+      renderOverlayWidgetList();
+      const wName = w.name || DOCK_WIDGET_LABELS[w.type] || w.type;
+      showToast(targetVisible ? `👁️ แสดง Widget "${wName}" แล้ว` : `🚫 ซ่อน Widget "${wName}" แล้ว`);
+    }
+  }
+
+  function updateOverlayWidgetsUI(status) {
+    if (Array.isArray(status.pages)) {
+      _overlayPages = status.pages;
+    }
+    if (status.scene_overlay) {
+      _sceneOverlay = status.scene_overlay;
+    }
+
+    const sources = (_sceneOverlay && Array.isArray(_sceneOverlay.sources)) ? _sceneOverlay.sources : [];
+    if (sources.length > 1) {
+      if (_selectedSourceIndex >= sources.length) {
+        _selectedSourceIndex = 0;
+      }
+      renderOverlaySourceTabs(sources);
+      applySelectedSource(sources[_selectedSourceIndex]);
+    } else {
+      const tabsBox = document.getElementById('boxOverlaySourceTabs');
+      if (tabsBox) {
+        tabsBox.style.display = 'none';
+        tabsBox.innerHTML = '';
+      }
+      _selectedSourceIndex = 0;
+      if (sources.length === 1) {
+        applySelectedSource(sources[0]);
+      } else {
+        if (status.active_page_id) {
+          _activePageId = status.active_page_id;
+        }
+        if (Array.isArray(status.active_widgets)) {
+          _activeWidgets = status.active_widgets;
+        }
+        renderOverlaySceneBar(null);
+        renderOverlayPagesSelect();
+        renderOverlayWidgetList();
+      }
+    }
+  }
+
+  function renderOverlaySourceTabs(sources) {
+    const tabsBox = document.getElementById('boxOverlaySourceTabs');
+    if (!tabsBox) return;
+    tabsBox.style.display = 'flex';
+    let html = '';
+    sources.forEach((s, idx) => {
+      const isActive = (idx === _selectedSourceIndex);
+      const isPinned = Boolean(s.is_pinned);
+      const badgeClass = isPinned ? 'pinned' : 'dynamic';
+      const badgeText = isPinned ? `📌 ${s.pinned_page || ''}` : '⚡ Dynamic';
+      const activeClass = isActive ? (isPinned ? 'active pinned-tab' : 'active') : '';
+      const name = s.source_name || `Source ${idx + 1}`;
+      html += `
+        <button type="button" class="overlay-source-tab ${activeClass}" onclick="onSelectOverlaySourceTab(${idx})" title="คลิกเพื่อสลับไปควบคุม ${escapeHtml(name)}">
+          <span class="tab-badge ${badgeClass}">${badgeText}</span>
+          <span class="tab-name">${escapeHtml(name)}</span>
+        </button>
+      `;
+    });
+    tabsBox.innerHTML = html;
+  }
+
+  function onSelectOverlaySourceTab(idx) {
+    _selectedSourceIndex = idx;
+    const sources = (_sceneOverlay && Array.isArray(_sceneOverlay.sources)) ? _sceneOverlay.sources : [];
+    if (sources[_selectedSourceIndex]) {
+      renderOverlaySourceTabs(sources);
+      applySelectedSource(sources[_selectedSourceIndex]);
+      showToast(`สลับไปควบคุม: ${sources[_selectedSourceIndex].source_name}`);
+    }
+  }
+
+  function applySelectedSource(source) {
+    if (!source) return;
+    _activePageId = source.display_page_id;
+    _activeWidgets = source.widgets || [];
+    renderOverlaySceneBar(source);
+    renderOverlayPagesSelect();
+    renderOverlayWidgetList();
+  }
+
+  function renderOverlaySceneBar(source) {
+    const pinnedBox = document.getElementById('boxOverlayPinned');
+    const pageBar = document.getElementById('barOverlayPage');
+    const pinnedName = document.getElementById('txtPinnedPageName');
+    const pinnedDesc = document.getElementById('txtPinnedSceneDesc');
+    const src = source || _sceneOverlay;
+    const isPinned = Boolean(src && src.is_pinned);
+
+    if (isPinned) {
+      if (pinnedBox) pinnedBox.style.display = 'flex';
+      if (pageBar) pageBar.style.display = 'none';
+      if (pinnedName) {
+        pinnedName.textContent = src.display_page_name || src.pinned_page || 'หน้าที่ล็อกไว้';
+      }
+      if (pinnedDesc) {
+        const scName = (_sceneOverlay && _sceneOverlay.scene_name) ? _sceneOverlay.scene_name : '-';
+        pinnedDesc.textContent = `OBS Scene: ${scName} (${src.source_name || 'Browser Source'})`;
+      }
+    } else {
+      if (pinnedBox) pinnedBox.style.display = 'none';
+      if (pageBar) pageBar.style.display = 'flex';
+    }
+  }
+
+  function renderOverlayPagesSelect() {
+    const sel = document.getElementById('selOverlayPage');
+    if (!sel) return;
+    if (!_overlayPages || _overlayPages.length === 0) {
+      sel.innerHTML = '<option value="">(ไม่มีหน้า)</option>';
+      return;
+    }
+    let html = '';
+    _overlayPages.forEach(p => {
+      const isSel = (p.id === _activePageId) ? 'selected' : '';
+      const countText = (typeof p.count !== 'undefined') ? ` (${p.count} widgets)` : '';
+      html += `<option value="${escapeHtml(p.id)}" ${isSel}>${escapeHtml(p.name || p.id)}${countText}</option>`;
+    });
+    sel.innerHTML = html;
+  }
+
+  function renderOverlayWidgetList() {
+    const list = document.getElementById('overlayWidgetList');
+    const countEl = document.getElementById('txtWidgetCount');
+    if (!list) return;
+    if (countEl) countEl.textContent = `${_activeWidgets.length} ชิ้น`;
+    if (!_activeWidgets || _activeWidgets.length === 0) {
+      list.innerHTML = `
+        <div class="overlay-widget-empty">
+          <div>ยังไม่มี Widget ในหน้านี้ครับ</div>
+          <button type="button" class="cover-btn-composer" onclick="openComposer()" style="margin-top:8px;">
+            <span>🌐</span> เปิด Overlay Composer เพื่อเพิ่ม Widget
+          </button>
+        </div>
+      `;
+      return;
+    }
+
+    let html = '';
+    _activeWidgets.forEach((w, idx) => {
+      const isEnabled = (w.enabled !== false);
+      const icon = DOCK_WIDGET_ICONS[w.type] || '▣';
+      const typeLabel = DOCK_WIDGET_LABELS[w.type] || w.type;
+      const displayName = w.name || typeLabel;
+      const layerNum = idx + 1;
+      html += `
+        <div class="overlay-widget-item ${isEnabled ? '' : 'is-hidden'}">
+          <div class="widget-item-left">
+            <span class="widget-item-icon">${icon}</span>
+            <div class="widget-item-info">
+              <div class="widget-item-name" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</div>
+              <div class="widget-item-z">ชั้น ${layerNum} (z:${w.z || 1}) • ${escapeHtml(typeLabel)}</div>
+            </div>
+          </div>
+          <button type="button" class="btn-widget-toggle ${isEnabled ? 'visible' : 'hidden'}" onclick="toggleWidgetVisibility('${escapeHtml(w.id)}', ${!isEnabled})" title="${isEnabled ? 'คลิกเพื่อซ่อน Widget นี้' : 'คลิกเพื่อแสดง Widget นี้'}">
+            <span>${isEnabled ? '👁️' : '🚫'}</span>
+            <span class="toggle-text">${isEnabled ? 'แสดง' : 'ซ่อน'}</span>
+          </button>
+        </div>
+      `;
+    });
+    list.innerHTML = html;
+  }
+
   function updateAllDockStatus(status) {
     if (!status) return;
+    if (typeof status.overlay_hidden !== 'undefined') {
+      updateOverlayHideAllUI(status.overlay_hidden);
+    }
+    if (status.pages || status.active_page_id || status.active_widgets) {
+      updateOverlayWidgetsUI(status);
+    }
     if (typeof status.tts_reading !== 'undefined') {
       _ttsReading = status.tts_reading;
       updateTtsBtnUI(_ttsReading);
@@ -2570,6 +3693,9 @@
     }
     if (status.viewers) {
       updateViewersUI(status.viewers);
+    }
+    if (status.replie) {
+      updateReplieUI(status.replie);
     }
     if (status.ask) {
       updateAskUI(status.ask);
@@ -2588,6 +3714,10 @@
       const hasGw = (typeof status.has_giveaway_widget !== 'undefined') ? status.has_giveaway_widget : status.widgets_installed.giveaway;
       updateGiveawayCover(!hasGw);
     }
+    if (typeof status.has_replie_widget !== 'undefined' || (status.widgets_installed && typeof status.widgets_installed.replie !== 'undefined')) {
+      const hasReplie = (typeof status.has_replie_widget !== 'undefined') ? status.has_replie_widget : status.widgets_installed.replie;
+      updateReplieCover(!hasReplie);
+    }
     if (typeof status.has_chat_widget !== 'undefined' || (status.widgets_installed && typeof status.widgets_installed.chat !== 'undefined') || typeof status.chat_hidden !== 'undefined') {
       const hasChat = (typeof status.has_chat_widget !== 'undefined')
         ? status.has_chat_widget
@@ -2600,6 +3730,7 @@
   // ── INITIALIZE ON LOAD ──
   window.addEventListener('DOMContentLoaded', () => {
     loadModuleSettings();
+    loadCollapsedCards();
     renderAskChoices();
     connectWs();
     // Default fallback values
@@ -2663,6 +3794,342 @@
     });
   }
 
+
+  // ── REPLIE LOGIC ──
+  let _replieCountdownTimer = null;
+
+  function updateReplieUI(replie) {
+    if (!replie) return;
+    const liveBox = document.getElementById('replieLiveStatus');
+    const txtLive = document.getElementById('txtReplieLive');
+    const loopBox = document.getElementById('replieLoopStatus');
+    const txtLoop = document.getElementById('txtReplieLoop');
+    const btnLoopAll = document.getElementById('btnReplieLoopAll');
+    const badge = document.getElementById('badgeReplieStatus');
+    const list = document.getElementById('replieCommandList');
+
+    // Loop status banner
+    if (replie.loop_active) {
+      if (loopBox) loopBox.style.display = 'flex';
+      const loopTarget = replie.loop_command === '__all__' ? 'สลับทุกคำสั่ง' : (replie.loop_command || '');
+      if (txtLoop) txtLoop.textContent = `🔁 กำลังวนลูป: ${loopTarget} (ทุก ${replie.loop_interval_sec || 45} วิ)`;
+      if (btnLoopAll) {
+        btnLoopAll.classList.add('is-loop-all');
+        btnLoopAll.textContent = '⏹️ หยุดวนลูป';
+      }
+    } else {
+      if (loopBox) loopBox.style.display = 'none';
+      if (btnLoopAll) {
+        btnLoopAll.classList.remove('is-loop-all');
+        btnLoopAll.textContent = '🔁 วนลูปทั้งหมด';
+      }
+    }
+
+    // Active Display with Animated Countdown & Progress Bar
+    if (replie.is_active && replie.active_command) {
+      if (liveBox) liveBox.style.display = 'flex';
+      const displayName = replie.active_title ? `${replie.active_command} (${replie.active_title})` : replie.active_command;
+      if (txtLive) txtLive.textContent = `กำลังแสดง: ${displayName}`;
+
+      const remSec = replie.rem_active_sec || 8;
+      const totalSec = replie.duration_sec || remSec || 8;
+
+      // Start / sync countdown progress animation
+      if (_replieCountdownTimer) clearInterval(_replieCountdownTimer);
+      const endTs = Date.now() + (remSec * 1000);
+      const totalMs = Math.max(1000, totalSec * 1000);
+
+      function tick() {
+        const now = Date.now();
+        const leftMs = Math.max(0, endTs - now);
+        const pct = Math.min(100, Math.max(0, (leftMs / totalMs) * 100));
+        const bar = document.getElementById('barReplieLiveProgress');
+        const txtCd = document.getElementById('txtReplieCountdown');
+        if (bar) bar.style.width = pct.toFixed(1) + '%';
+        if (txtCd) txtCd.textContent = (leftMs / 1000).toFixed(1) + 's';
+        if (leftMs <= 0) {
+          clearInterval(_replieCountdownTimer);
+          _replieCountdownTimer = null;
+          if (liveBox) liveBox.style.display = 'none';
+        }
+      }
+      tick();
+      _replieCountdownTimer = setInterval(tick, 60);
+
+      if (badge && _hasReplieWidget) {
+        badge.textContent = replie.loop_active ? '🔁 กำลังวนลูป' : '🔴 กำลังขึ้นจอ';
+        badge.style.background = replie.loop_active ? 'rgba(168, 85, 247, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+        badge.style.color = replie.loop_active ? '#c084fc' : '#f87171';
+        badge.style.borderColor = replie.loop_active ? 'rgba(192, 132, 252, 0.3)' : 'rgba(248, 113, 113, 0.3)';
+      }
+    } else {
+      if (_replieCountdownTimer) {
+        clearInterval(_replieCountdownTimer);
+        _replieCountdownTimer = null;
+      }
+      if (liveBox) liveBox.style.display = 'none';
+      if (badge && _hasReplieWidget) {
+        if (replie.loop_active) {
+          badge.textContent = '🔁 รอวนลูปรอบถัดไป';
+          badge.style.background = 'rgba(168, 85, 247, 0.15)';
+          badge.style.color = '#c084fc';
+          badge.style.borderColor = 'rgba(192, 132, 252, 0.3)';
+        } else {
+          badge.textContent = '🟢 พร้อมรับคำสั่ง';
+          badge.style.background = 'rgba(16, 185, 129, 0.15)';
+          badge.style.color = '#34d399';
+          badge.style.borderColor = 'rgba(52, 211, 153, 0.3)';
+        }
+      }
+    }
+
+    if (!list || !replie.commands) return;
+    list.innerHTML = '';
+    replie.commands.forEach(cmd => {
+      // Flush Card: Header on top, 3 seamless action buttons on bottom (ชนกัน ชนขอบ ไม่เว้น padding ล่าง ไม่ใช้มุมมนภายใน)
+      const card = document.createElement('div');
+      card.className = 'replie-card';
+
+      // ── Line 1: Header (Badge + Title + Status) ──
+      const header = document.createElement('div');
+      header.className = 'replie-card-header';
+
+      const titleGroup = document.createElement('div');
+      titleGroup.style.display = 'flex';
+      titleGroup.style.alignItems = 'center';
+      titleGroup.style.gap = '6px';
+      titleGroup.style.minWidth = '0';
+      titleGroup.style.flex = '1';
+
+      const nameBadge = document.createElement('span');
+      nameBadge.style.background = cmd.enabled ? '#0284c7' : '#334155';
+      nameBadge.style.color = '#fff';
+      nameBadge.style.fontSize = '11px';
+      nameBadge.style.fontWeight = '700';
+      nameBadge.style.padding = '2px 6px';
+      nameBadge.style.borderRadius = '4px';
+      nameBadge.style.flexShrink = '0';
+      nameBadge.textContent = cmd.name;
+
+      const titleSpan = document.createElement('span');
+      titleSpan.style.color = 'var(--text-main)';
+      titleSpan.style.fontSize = '12px';
+      titleSpan.style.fontWeight = '600';
+      titleSpan.style.whiteSpace = 'nowrap';
+      titleSpan.style.overflow = 'hidden';
+      titleSpan.style.textOverflow = 'ellipsis';
+      titleSpan.textContent = cmd.title || cmd.name;
+
+      titleGroup.appendChild(nameBadge);
+      titleGroup.appendChild(titleSpan);
+
+      const statusBtn = document.createElement('button');
+      statusBtn.type = 'button';
+      statusBtn.className = `replie-status-pill is-${cmd.status_type || 'ready'}`;
+      statusBtn.textContent = cmd.status_text;
+      if (cmd.enabled) {
+        statusBtn.title = 'คลิกเพื่อปิดรับคำสั่งนี้จากแชท (ให้สตรีมเมอร์กดขึ้นจอเองได้เท่านั้น)';
+      } else {
+        statusBtn.title = 'คลิกเพื่อเปิดรับคำสั่งนี้จากผู้ชมในแชท';
+      }
+      statusBtn.onclick = (e) => {
+        e.stopPropagation();
+        sendAction('replie_toggle', { name: cmd.name });
+      };
+
+      header.appendChild(titleGroup);
+      header.appendChild(statusBtn);
+      card.appendChild(header);
+
+      // ── Line 2: 3 Seamless Action Buttons (ชนกัน ชนขอบ ไม่เว้น padding ล่าง และไม่มีมุมมนภายใน) ──
+      const btnRow = document.createElement('div');
+      btnRow.className = 'replie-btn-row';
+
+      // 1. ปุ่มส่งขึ้นจอทันที (เปลี่ยนเป็น STOP เมื่อกำลังขึ้นจอ)
+      const btnLaunch = document.createElement('button');
+      btnLaunch.type = 'button';
+      btnLaunch.className = 'replie-card-btn';
+      btnLaunch.setAttribute('data-cmd', cmd.name);
+      const isThisActive = replie.is_active && (replie.active_command && replie.active_command.toLowerCase() === cmd.name.toLowerCase());
+      if (isThisActive) {
+        btnLaunch.classList.add('is-active-launch');
+        btnLaunch.textContent = '⏹️ STOP';
+        btnLaunch.title = 'กำลังแสดงผลบนจอ — คลิกเพื่อหยุด/ซ่อนทันที';
+        btnLaunch.onclick = () => sendAction('replie_dismiss');
+      } else {
+        btnLaunch.textContent = '▶ ส่งขึ้นจอทันที';
+        btnLaunch.title = 'ส่งคำสั่งนี้ขึ้นหน้าจอ Overlay ทันที';
+        btnLaunch.onclick = () => sendAction('replie_trigger', { name: cmd.name });
+      }
+
+      // 2. ปุ่มตั้งเวลาขึ้นจอ (หรือ แสดงอัตโนมัติตามเวลา + loading dots)
+      const btnSchedule = document.createElement('button');
+      btnSchedule.type = 'button';
+      btnSchedule.className = 'replie-card-btn';
+      if (cmd.is_scheduled) {
+        btnSchedule.classList.add('is-scheduled');
+        const safeCmdId = cmd.name.replace(/[^a-zA-Z0-9_]/g, '_');
+        btnSchedule.innerHTML = `
+          <span>แสดงอัตโนมัติตามเวลา</span>
+          <span class="loading-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>
+          <div class="sched-progress-bar-track">
+            <div class="sched-progress-bar-fill" id="schedBar_${safeCmdId}" style="width: 100%;"></div>
+          </div>
+        `;
+        btnSchedule.title = `กำลังรันคำสั่งนี้อัตโนมัติทุกๆ ${cmd.sched_interval_min || 5} นาที — คลิกเพื่อหยุด`;
+        btnSchedule.onclick = () => openStopScheduleDialog(cmd.name);
+      } else {
+        btnSchedule.textContent = '⏱️ ตั้งเวลาขึ้นจอ';
+        btnSchedule.title = 'ตั้งเวลาให้คำสั่งนี้ขึ้นจออัตโนมัติทุกๆ กี่นาที';
+        btnSchedule.onclick = () => openStartScheduleDialog(cmd.name);
+      }
+
+      btnRow.appendChild(btnLaunch);
+      btnRow.appendChild(btnSchedule);
+
+      card.appendChild(btnRow);
+      list.appendChild(card);
+    });
+
+    // Start / update scheduled progress bars timer
+    _lastScheduledCommands = (replie.commands || []).filter(c => c.is_scheduled);
+    if (_lastScheduledCommands.length > 0) {
+      updateSchedProgressBars();
+      if (!_schedProgressTimer) {
+        _schedProgressTimer = setInterval(updateSchedProgressBars, 100);
+      }
+    } else {
+      if (_schedProgressTimer) {
+        clearInterval(_schedProgressTimer);
+        _schedProgressTimer = null;
+      }
+    }
+  }
 </script>
+
+<!-- MODAL: SET REPLIE SCHEDULE -->
+<div id="modalReplieSchedule" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(2, 6, 23, 0.88); z-index:99999; align-items:center; justify-content:center; contain:strict; isolation:isolate;">
+  <div style="background:#0b1120; border:1px solid #334155; border-radius:10px; width:340px; max-width:92vw; padding:18px; box-shadow:0 12px 35px rgba(0,0,0,0.85); display:flex; flex-direction:column; gap:14px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #1e293b; padding-bottom:8px;">
+      <span style="font-weight:700; font-size:13.5px; color:#f8fafc;" id="lblSchedCmdName">⏱️ ตั้งเวลาขึ้นจออัตโนมัติ</span>
+      <button type="button" onclick="closeReplieScheduleDialog()" style="background:none; border:none; color:#94a3b8; font-size:16px; cursor:pointer;">✕</button>
+    </div>
+    <div style="font-size:12px; color:#cbd5e1; line-height:1.5;">
+      จะให้อันนี้ขึ้นจออัตโนมัติเอง ทุกๆกี่นาที?
+    </div>
+    <!-- Quick Preset Buttons -->
+    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+      <button type="button" class="btn-sched-preset" onclick="setSchedPreset(3)" style="background:#1e293b; color:#f8fafc; border:1px solid #334155; border-radius:4px; padding:5px 9px; font-size:11.5px; font-weight:600; cursor:pointer;">3 นาที</button>
+      <button type="button" class="btn-sched-preset" onclick="setSchedPreset(5)" style="background:#1e293b; color:#f8fafc; border:1px solid #334155; border-radius:4px; padding:5px 9px; font-size:11.5px; font-weight:600; cursor:pointer;">5 นาที</button>
+      <button type="button" class="btn-sched-preset" onclick="setSchedPreset(10)" style="background:#1e293b; color:#f8fafc; border:1px solid #334155; border-radius:4px; padding:5px 9px; font-size:11.5px; font-weight:600; cursor:pointer;">10 นาที</button>
+      <button type="button" class="btn-sched-preset" onclick="setSchedPreset(15)" style="background:#1e293b; color:#f8fafc; border:1px solid #334155; border-radius:4px; padding:5px 9px; font-size:11.5px; font-weight:600; cursor:pointer;">15 นาที</button>
+      <button type="button" class="btn-sched-preset" onclick="setSchedPreset(30)" style="background:#1e293b; color:#f8fafc; border:1px solid #334155; border-radius:4px; padding:5px 9px; font-size:11.5px; font-weight:600; cursor:pointer;">30 นาที</button>
+    </div>
+    <!-- Custom Number Input -->
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span style="font-size:11.5px; color:#94a3b8;">หรือระบุ:</span>
+      <input type="number" id="inpSchedMinutes" value="5" min="1" max="180" style="width:70px; background:#1e293b; border:1px solid #38bdf8; border-radius:4px; color:#fff; padding:5px 8px; font-size:13px; font-weight:700; text-align:center;">
+      <span style="font-size:12px; color:#e2e8f0;">นาที</span>
+    </div>
+    <!-- Action Buttons -->
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
+      <button type="button" onclick="closeReplieScheduleDialog()" style="background:#1e293b; color:#94a3b8; border:1px solid #334155; border-radius:4px; padding:6px 14px; font-size:12px; cursor:pointer;">ยกเลิก</button>
+      <button type="button" onclick="confirmStartSchedule()" style="background:#ea580c; color:#fff; border:none; border-radius:4px; padding:6px 16px; font-size:12px; font-weight:700; cursor:pointer;">🚀 เริ่มรันอัตโนมัติ</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: CONFIRM STOP REPLIE SCHEDULE -->
+<div id="modalReplieStopSchedule" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(2, 6, 23, 0.88); z-index:99999; align-items:center; justify-content:center; contain:strict; isolation:isolate;">
+  <div style="background:#0b1120; border:1px solid #334155; border-radius:10px; width:330px; max-width:92vw; padding:18px; box-shadow:0 12px 35px rgba(0,0,0,0.85); display:flex; flex-direction:column; gap:14px;">
+    <div style="font-weight:700; font-size:14px; color:#f8fafc;" id="lblStopSchedTitle">⏹️ หยุดการรันอัตโนมัติ?</div>
+    <div style="font-size:12.5px; color:#cbd5e1; line-height:1.5;" id="lblStopSchedMsg">
+      จะหยุดการรันคำสั่งอัตโนมัติตามเวลาหรือไม่?
+    </div>
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
+      <button type="button" onclick="closeStopScheduleDialog()" style="background:#1e293b; color:#94a3b8; border:1px solid #334155; border-radius:4px; padding:6px 14px; font-size:12px; cursor:pointer;">ยกเลิก</button>
+      <button type="button" onclick="confirmStopSchedule()" style="background:#dc2626; color:#fff; border:none; border-radius:4px; padding:6px 16px; font-size:12px; font-weight:700; cursor:pointer;">⏹️ หยุดรันอัตโนมัติ</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let _activeSchedTargetCmd = null;
+  let _schedProgressTimer = null;
+  let _lastScheduledCommands = [];
+
+  function updateSchedProgressBars() {
+    if (!_lastScheduledCommands || _lastScheduledCommands.length === 0) {
+      if (_schedProgressTimer) {
+        clearInterval(_schedProgressTimer);
+        _schedProgressTimer = null;
+      }
+      return;
+    }
+
+    const now = Date.now();
+    _lastScheduledCommands.forEach(cmd => {
+      const safeCmdId = cmd.name.replace(/[^a-zA-Z0-9_]/g, '_');
+      const bar = document.getElementById('schedBar_' + safeCmdId);
+      if (bar && cmd.sched_next_ts) {
+        const nextMs = cmd.sched_next_ts * 1000;
+        const totalMs = Math.max(1000, (cmd.sched_interval_min * 60) * 1000);
+        const leftMs = Math.max(0, nextMs - now);
+        const pct = Math.min(100, Math.max(0, (leftMs / totalMs) * 100));
+        bar.style.width = pct.toFixed(1) + '%';
+      }
+    });
+  }
+
+  function openStartScheduleDialog(cmdName) {
+    _activeSchedTargetCmd = cmdName;
+    const modal = document.getElementById('modalReplieSchedule');
+    const lbl = document.getElementById('lblSchedCmdName');
+    const inp = document.getElementById('inpSchedMinutes');
+    if (lbl) lbl.textContent = `⏱️ ตั้งเวลาขึ้นจอ: ${cmdName}`;
+    if (inp) inp.value = 5;
+    if (modal) modal.style.display = 'flex';
+  }
+
+  function closeReplieScheduleDialog() {
+    const modal = document.getElementById('modalReplieSchedule');
+    if (modal) modal.style.display = 'none';
+    _activeSchedTargetCmd = null;
+  }
+
+  function setSchedPreset(min) {
+    const inp = document.getElementById('inpSchedMinutes');
+    if (inp) inp.value = min;
+  }
+
+  function confirmStartSchedule() {
+    if (!_activeSchedTargetCmd) return;
+    const inp = document.getElementById('inpSchedMinutes');
+    const min = Math.max(1, parseInt(inp ? inp.value : 5, 10) || 5);
+    sendAction('replie_schedule_start', { name: _activeSchedTargetCmd, interval_min: min });
+    closeReplieScheduleDialog();
+  }
+
+  function openStopScheduleDialog(cmdName) {
+    _activeSchedTargetCmd = cmdName;
+    const modal = document.getElementById('modalReplieStopSchedule');
+    const msg = document.getElementById('lblStopSchedMsg');
+    if (msg) msg.textContent = `จะหยุดการรันคำสั่ง ${cmdName} อัตโนมัติตามเวลาหรือไม่?`;
+    if (modal) modal.style.display = 'flex';
+  }
+
+  function closeStopScheduleDialog() {
+    const modal = document.getElementById('modalReplieStopSchedule');
+    if (modal) modal.style.display = 'none';
+    _activeSchedTargetCmd = null;
+  }
+
+  function confirmStopSchedule() {
+    if (!_activeSchedTargetCmd) return;
+    sendAction('replie_schedule_stop', { name: _activeSchedTargetCmd });
+    closeStopScheduleDialog();
+  }
+</script>
+
 </body>
 </html>

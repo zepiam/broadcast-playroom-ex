@@ -163,6 +163,7 @@ class UserRecord:
     donate_total: int = 0             # total_donate_count จาก donate_tracker
     supporter: bool = False
     block_status: str | None = None   # None | "block_all" | "block_tts"
+    replie_blocked: bool = False
     forced_translate: bool = False
     is_new: bool = False              # เห็นครั้งแรกวันนี้
     is_regular: bool = False          # แชทประจำ
@@ -211,6 +212,7 @@ def build_roster(app, settings=None, only_key: str | None = None) -> list[UserRe
     blocked = _blocked_map(settings)
     forced = {str(u).lower() for u in (getattr(settings, "force_translate_users", []) or [])}
     bots = {str(b).strip().lower() for b in (getattr(settings, "tts_bot_blacklist", []) or []) if str(b).strip()}
+    replie_blocked_set = {str(u).strip().lower() for u in (getattr(settings, "replie_blocked_users", []) or []) if str(u).strip()}
 
     # ★ สรุปรายคนจาก message_history (สถิติแยกจากตัวข้อความ → ล้างประวัติข้อความแล้วข้อมูลรายคนยังอยู่ครบ
     #   และไม่ต้อง copy ข้อความทั้งหมดมานับใหม่ทุกครั้งที่เปิดหน้านี้)
@@ -307,6 +309,7 @@ def build_roster(app, settings=None, only_key: str | None = None) -> list[UserRe
             donate_total=donate_total,
             supporter=donate_total > 0 or bool(e_stat and e_stat["don"]),
             block_status=blocked.get(key),
+            replie_blocked=key in replie_blocked_set,
             forced_translate=key in forced,
             is_new=bool(first) and first[:10] == today,
             is_regular=len(days) >= REGULAR_MIN_DAYS,

@@ -569,6 +569,21 @@ QMainWindow, QDialog {
     background-color: __BG__;
 }
 
+/* ═══ Message Box / Popups ═══ */
+QMessageBox {
+    background-color: __BG__;
+}
+QMessageBox QLabel {
+    color: __TEXT__;
+    min-height: 0px;
+    font-size: 14px;
+}
+QMessageBox QPushButton {
+    min-width: 75px;
+    padding: 6px 16px;
+    font-size: 13.5px;
+}
+
 /* ═══ Frames / Panels ═══ */
 QFrame#Sidebar {
     background-color: __BG_DARK__;

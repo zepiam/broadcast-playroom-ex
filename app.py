@@ -185,6 +185,8 @@ class TTSForLivestreamApp(QMainWindow):
         # ★ Giveaway / Loyalty Draw (สร้างเมื่อกดปุ่มครั้งแรก)
         self._giveaway_service = None
         self._giveaway_panel = None
+        # ★ Replie Service (ตอบกลับภาพบนจอ Overlay)
+        self._replie_service = None
         # ★ ข้อความที่เพิ่งส่งผ่านช่องพิมพ์โปรแกรม [(text, ts), ...]
         #   ใช้แยก: IRC echo ของที่โปรแกรมส่ง (ซ่อน — โปรแกรม echo แล้ว)
         #   กับข้อความที่เราพิมพ์ตรง ๆ บนหน้า Twitch (แสดงปกติ แต่ไม่อ่าน TTS)
@@ -623,6 +625,7 @@ class TTSForLivestreamApp(QMainWindow):
                     QTimer.singleShot(3000, _warn_port_changed)
                 # ★ เชื่อมต่อ GiveawayService ตั้งแต่เริ่ม เพื่อให้ OBS Dock ใช้งานได้ทันที
                 self._ensure_giveaway_service()
+                self._ensure_replie_service()
             else:
                 logger.error("Composer server failed to start")
                 self.composer_server = None
@@ -798,29 +801,38 @@ class TTSForLivestreamApp(QMainWindow):
             old.stop()
             self._obs_watcher = None
 
-        if not getattr(self.settings, 'obs_ws_enabled', False):
+        if not getattr(self.settings, 'obs_ws_enabled', True):
             # ★ ปิดใช้งาน → ไม่เริ่ม watcher, ไม่ขึ้นสถานะเลย
             logger.info("OBS WS disabled — skipping watcher")
             return
         try:
-            from obs_refresh import OBSWatcher
+            from obs_refresh import OBSWatcher, get_obs_auto_password
 
             host = getattr(self.settings, 'obs_ws_host', 'localhost')
             port = int(getattr(self.settings, 'obs_ws_port', 4455))
-            pw = getattr(self.settings, 'obs_ws_password', '')
+            pw = getattr(self.settings, 'obs_ws_password', '') or get_obs_auto_password()
+            composer_port = int(getattr(self.settings, 'composer_port', 8801))
 
             self._obs_watcher = OBSWatcher(
                 host=host, port=port, password=pw,
+                match_ports=(composer_port,),
                 on_connected=lambda: logger.info("OBS WS connected"),
                 on_refreshed=lambda n: logger.info(f"OBS WS refreshed {n} source(s)"),
                 on_status=lambda msg: self.status_bar.set_status(msg),
                 on_stream_started=lambda tc, dur: QTimer.singleShot(0, lambda: self._on_live_stream_started("OBS", tc, dur)),
                 on_stream_stopped=lambda: QTimer.singleShot(0, self._on_live_stream_stopped),
+                on_scene_changed=self._on_obs_scene_changed,
             )
             self._obs_watcher.start()
             logger.info(f"OBS WS watcher started (host={host}:{port})")
         except Exception as e:
             logger.error(f"OBS WS watcher error: {e}")
+
+    def _on_obs_scene_changed(self, info: dict):
+        """รับแจ้งเมื่อ OBS สลับ scene หรือข้อมูล overlay ใน scene เปลี่ยน"""
+        logger.info(f"OBS Scene overlay: {info.get('scene_name')} pinned={info.get('is_pinned')} page={info.get('pinned_page')}")
+        if self.composer_server:
+            self.composer_server.set_scene_overlay_info(info)
 
     def _composer_push_message(self, msg):
         """forward chat message ไป composer server"""
@@ -884,6 +896,12 @@ class TTSForLivestreamApp(QMainWindow):
                 self.settings.composer_canvas_size = canvas_size
             from settings import save_settings
             save_settings(self.settings)
+            # ตรวจเช็คสถานะการวาง widget บน overlay ทันทีสำหรับหน้าต่างเครื่องมือต่างๆ
+            try:
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(0, self._check_all_widget_panels_status)
+            except Exception:
+                pass
             # ★ sync np_source จาก now_playing widget → set_source_filter() ให้ watcher
             #   (ผู้ใช้เลือก "เฉพาะ Spotify/YTMusic/browser" ใน composer UI → watcher ต้องรู้)
             self._sync_np_source_to_watcher(widgets)
@@ -918,9 +936,14 @@ class TTSForLivestreamApp(QMainWindow):
         except Exception as e:
             logger.error(f"Failed to save playroom triggers: {e}")
 
-    def _open_composer(self):
+    def _open_composer(self, page_id: str = None):
         """เปิด composer editor ในเบราว์เซอร์"""
         import webbrowser
+        if page_id and getattr(self, "composer_server", None):
+            try:
+                self.composer_server.switch_page(str(page_id))
+            except Exception:
+                pass
         port = (self.composer_server.port if (self.composer_server and hasattr(self.composer_server, 'port')) else int(getattr(self.settings, 'composer_port', 8801)))
         url = f"http://localhost:{port}/editor"
         webbrowser.open(url)
@@ -1171,6 +1194,7 @@ class TTSForLivestreamApp(QMainWindow):
             self.status_bar.set_version(f"v{get_current_version()}")
         except Exception:
             pass
+        self.status_bar.setVisible(False)
         layout.addWidget(self.status_bar)
 
         # ═══ Connect TopBar signals ═══
@@ -1200,6 +1224,7 @@ class TTSForLivestreamApp(QMainWindow):
         self.topbar.update_clicked.connect(self._on_update_button_clicked)
         # ★ OBS launch button — เปิด OBS หรือดึงหน้าต่าง OBS ขึ้นมา
         self.topbar.obs_launch_clicked.connect(self._on_obs_launch)
+        self.topbar.supporters_clicked.connect(self._open_settings_supporters)
         # ★ Mark clip (เชื่อมต่อจาก ChatPanel ที่อยู่ขวากระดิ่ง)
         self.chat_panel.mark_clip_clicked.connect(self._on_mark_clip_clicked)
         self.chat_panel.mark_clip_settings.connect(self._open_clip_hotkey_dialog)
@@ -1286,6 +1311,7 @@ class TTSForLivestreamApp(QMainWindow):
         self.chat_panel.ask_toggled.connect(self._toggle_ask_panel)
         # ★ ปุ่ม Giveaway (ข้างปุ่ม ASK) — toggle แผงสุ่มแจกรางวัล
         self.chat_panel.giveaway_toggled.connect(self._toggle_giveaway_panel)
+        self.chat_panel.replie_toggled.connect(self._toggle_replie_panel)
         # ★ checkbox "TTS" ข้างปุ่มส่ง — โหลดค่าล่าสุดจาก settings + บันทึกทุกครั้งที่ติ๊ก
         try:
             self.chat_panel.tts_check.setChecked(
@@ -1362,6 +1388,7 @@ class TTSForLivestreamApp(QMainWindow):
             card.refresh_stream_requested.connect(self._on_refresh_stream_title)
             card.mute_toggled.connect(self._on_platform_mute)
             card.volume_changed.connect(self._on_platform_volume)
+            card.hide_requested.connect(self._on_hide_platform)
             # ★ restore volume slider จาก settings (default 100 ถ้าไม่มี)
             vol_val = max(1, getattr(self.settings, f'tts_volume_{plat}', 100))
             card.vol_slider.setValue(vol_val)
@@ -1410,6 +1437,22 @@ class TTSForLivestreamApp(QMainWindow):
 
         # ★ rebuild
         self._build_platform_cards()
+
+    def _on_hide_platform(self, platform_key: str):
+        """★ ซ่อนการ์ดแพลตฟอร์มจากการคลิกขวาที่การ์ดใน sidebar (ต้องหยุดเชื่อมต่อก่อน)"""
+        if not self.settings:
+            return
+        card = self._platform_cards.get(platform_key)
+        if (card and getattr(card, '_connected', False)) or platform_key in self.chat_clients:
+            label = PLATFORM_LABELS.get(platform_key, platform_key)
+            self.status_bar.set_status(f"⚠️ ไม่สามารถซ่อน {label} ได้: กรุณากด 'หยุดเชื่อมต่อ' ก่อน")
+            return
+        attr = f"show_{platform_key}"
+        setattr(self.settings, attr, False)
+        self.settings.save_settings()
+        self._rebuild_platform_cards()
+        label = PLATFORM_LABELS.get(platform_key, platform_key)
+        self.status_bar.set_status(f"👁️ ซ่อนการ์ด {label} แล้ว (เปิดกลับมาได้ที่ ⚙ ตั้งค่า > แพลตฟอร์ม)")
 
     def _on_platform_mute(self, platform, muted):
         """ปิด/เปิดเสียง TTS ของแพลตฟอร์ม — save + sync pipeline ทันที (live, ไม่ต้องรอ rebuild)
@@ -1954,6 +1997,19 @@ class TTSForLivestreamApp(QMainWindow):
                 and getattr(msg, 'event', 'message') == 'message'):
             if self._ask_try_vote(getattr(msg, 'platform', ''), msg.author or '', msg.text or ''):
                 skip_tts = True
+        # ★ Replie — ดักจับคำสั่งตอบกลับภาพ/ข้อความบนจอ Overlay (เช่น !donate, !qrcode)
+        if (not is_bot and getattr(self, '_replie_service', None) is not None
+                and getattr(msg, 'event', 'message') == 'message'
+                and (msg.text or '').strip()):
+            try:
+                if self._replie_service.handle_chat_message(
+                        getattr(msg, 'platform', ''),
+                        getattr(msg, 'author', '') or '',
+                        getattr(msg, 'text', '') or ''):
+                    skip_tts = True
+            except Exception as e:
+                logger.debug(f"replie check error: {e}")
+
         # ★ Giveaway — ดักจับโค้ดเช็คชื่อ/สะสมแต้ม → บันทึกผู้เข้าร่วม + ไม่อ่าน TTS
         #   (ต้องไม่ติด skip_tts จาก is_command เพราะโค้ด giveaway มักเป็นคำสั่ง เช่น !join)
         if (not is_bot and getattr(self, '_giveaway_service', None) is not None
@@ -2753,6 +2809,17 @@ class TTSForLivestreamApp(QMainWindow):
             self.overlay_server.set_giveaway_service(self._giveaway_service)
         return self._giveaway_service
 
+    def _ensure_replie_service(self):
+        """สร้างหรือคืนค่า ReplieService สำหรับแสดงภาพ/ข้อความบน OBS Overlay"""
+        if getattr(self, '_replie_service', None) is None:
+            from replie_service import ReplieService
+            self._replie_service = ReplieService(self)
+        if self.composer_server is not None:
+            if getattr(self.composer_server, 'replie_service', None) is None:
+                self.composer_server.set_replie_service(self._replie_service)
+            self.composer_server.on_open_replie_tool = lambda: self._toggle_replie_panel(force_show=True)
+        return self._replie_service
+
     def _toggle_giveaway_panel(self):
         """เปิด/ปิดหน้าต่างระบบเช็คชื่อ & สุ่มแจกรางวัล (Loyalty Giveaway)"""
         try:
@@ -2769,6 +2836,72 @@ class TTSForLivestreamApp(QMainWindow):
                 self._giveaway_panel.activateWindow()
         except Exception as e:
             logger.error(f"_toggle_giveaway_panel error: {e}", exc_info=True)
+
+    def _check_all_widget_panels_status(self):
+        """ตรวจเช็คสถานะการวาง Widget บน Overlay ทันทีสำหรับทุกเครื่องมือ (Replie, Giveaway, ASK)"""
+        for p_name in ("_replie_panel", "_giveaway_panel", "_ask_panel"):
+            p = getattr(self, p_name, None)
+            if p and hasattr(p, "_check_widget_status"):
+                try:
+                    p._check_widget_status()
+                except Exception:
+                    pass
+
+    def _replie_widget_exists(self) -> bool:
+        """★ มี Replie widget ใน Composer layout ไหม (เปิดใช้งานอยู่)"""
+        try:
+            if hasattr(self, "composer_server") and self.composer_server:
+                return bool(self.composer_server._is_widget_installed("replie"))
+            widgets = getattr(self.settings, "composer_widgets", None) or []
+            return any(isinstance(w, dict) and w.get("type") == "replie"
+                       and w.get("enabled", True) for w in widgets)
+        except Exception:
+            return False
+
+    def _toggle_replie_panel(self, force_show=False):
+        """เปิด/ปิดหน้าต่างแผงควบคุมระบบ Replie Widget"""
+        try:
+            self._ensure_replie_service()
+            if getattr(self, '_replie_panel', None) is None:
+                from ui.widgets.replie_panel import RepliePanel
+                self._replie_panel = RepliePanel(self._replie_service, self)
+                self._replie_panel.closed.connect(self._update_replie_panel_btn)
+                try:
+                    geo = self.geometry()
+                    x = max(40, geo.x() + (geo.width() - self._replie_panel.width()) // 2)
+                    y = max(40, geo.y() + (geo.height() - self._replie_panel.height()) // 2)
+                    self._replie_panel.move(x, y)
+                except Exception:
+                    pass
+            if hasattr(self._replie_panel, "_check_widget_status"):
+                self._replie_panel._check_widget_status()
+
+            if force_show:
+                if self._replie_panel.isMinimized():
+                    self._replie_panel.showNormal()
+                self._replie_panel.show()
+                self._replie_panel.raise_()
+                self._replie_panel.activateWindow()
+            elif self._replie_panel.isVisible() and not self._replie_panel.isMinimized():
+                self._replie_panel.hide()
+            else:
+                if self._replie_panel.isMinimized():
+                    self._replie_panel.showNormal()
+                self._replie_panel.show()
+                self._replie_panel.raise_()
+                self._replie_panel.activateWindow()
+            self._update_replie_panel_btn()
+        except Exception as e:
+            logger.error(f"_toggle_replie_panel error: {e}", exc_info=True)
+
+    def _update_replie_panel_btn(self):
+        """sync สถานะปุ่ม Replie บน Chat Panel"""
+        try:
+            is_open = getattr(self, '_replie_panel', None) is not None and self._replie_panel.isVisible()
+            if hasattr(self, 'chat_panel') and hasattr(self.chat_panel, 'set_replie_active'):
+                self.chat_panel.set_replie_active(is_open)
+        except Exception as e:
+            logger.debug(f"_update_replie_panel_btn error: {e}")
 
     def _ask_push_presets(self):
         """ส่งรายการ preset ล่าสุดให้ panel และ OBS Dock ผ่าน composer_server"""
@@ -5023,13 +5156,11 @@ class TTSForLivestreamApp(QMainWindow):
         if now - last < 3.0:
             return
         self._test_voice_last = now
-        # ★ เปลี่ยนข้อความเป็น "รอซักครู่" + disable
+        # ★ เปลี่ยนข้อความเป็น "รอซักครู่" (ไม่ใช้ setEnabled(False) กัน scroll เด้งกลับบนสุด)
         btn.setText("รอซักครู่")
-        btn.setEnabled(False)
-        # ★ คืนข้อความ + enable หลัง 3 วินาที
+        # ★ คืนข้อความหลัง 3 วินาที
         def _restore():
             btn.setText("ทดสอบฟัง")
-            btn.setEnabled(True)
         QTimer.singleShot(3000, _restore)
         import random
         phrases = [
@@ -5094,89 +5225,172 @@ class TTSForLivestreamApp(QMainWindow):
     # ════════════════════════════════════════════════════════════
     # TopBar actions (#6 Translate + #10 OBS + #11 Secret code + #12 Viewer profile + #13 Playroom + #14 Overlay+ + #15 Menu)
     # ════════════════════════════════════════════════════════════
-    def _validate_oauth_tokens_bg(self):
-        """ตรวจสอบ Twitch / KICK OAuth token ใน background thread ไม่บล็อก UI"""
-        if not self.settings:
-            return
-        # Twitch
-        if getattr(self.settings, 'twitch_oauth_token', ''):
-            def _twitch_clear(msg):
-                logger.warning(msg)
-                self.settings.twitch_oauth_token = ''
-                self.settings.twitch_oauth_refresh = ''
-                self.settings.twitch_bot_username = ''
-                self._oauth_expired_flags.append("twitch")
-            try:
-                import urllib.request, json
-                req = urllib.request.Request('https://id.twitch.tv/oauth2/validate')
-                req.add_header('Authorization', f'OAuth {self.settings.twitch_oauth_token}')
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    result = json.loads(resp.read().decode())
-                if result.get('expires_in', 0) < 300:
-                    from twitch_oauth import refresh_access_token
-                    refresh_result = refresh_access_token(self.settings.twitch_oauth_refresh)
-                    if refresh_result and refresh_result.get('access_token'):
-                        self.settings.twitch_oauth_token = refresh_result['access_token']
-                        if refresh_result.get('refresh_token'):
-                            self.settings.twitch_oauth_refresh = refresh_result['refresh_token']
-                        try:
-                            import time as _t2
-                            self.settings.twitch_token_expiry_ts = _t2.time() + int(refresh_result.get('expires_in', 0) or 0)
-                        except Exception:
-                            pass
-                        logger.info("Twitch token refreshed on startup")
-                    else:
-                        _twitch_clear("Twitch token refresh failed — clearing token")
-            except Exception as e:
-                refreshed = False
-                try:
-                    from twitch_oauth import refresh_access_token as _tr
-                    rr = _tr(self.settings.twitch_oauth_refresh)
-                    if rr and rr.get('access_token'):
-                        self.settings.twitch_oauth_token = rr['access_token']
-                        self.settings.twitch_oauth_refresh = rr.get('refresh_token', '') or self.settings.twitch_oauth_refresh
-                        refreshed = True
-                        logger.info("Twitch token refreshed on startup (after validate fail)")
-                except Exception:
-                    pass
-                if not refreshed:
-                    _twitch_clear(f"Twitch token invalid/expired — clearing: {e}")
-            try:
-                self.settings.save_settings()
-            except Exception:
-                pass
-
-        # KICK
-        if getattr(self.settings, 'kick_oauth_token', ''):
-            try:
-                from kick_oauth import get_user_info
-                info = get_user_info(self.settings.kick_oauth_token)
-                if not info:
-                    raise RuntimeError("invalid token")
-            except Exception as e:
-                refreshed = False
-                try:
-                    from kick_oauth import refresh_access_token as _kr
-                    rr = _kr(self.settings.kick_oauth_refresh)
-                    if rr and rr.get('access_token'):
-                        self.settings.kick_oauth_token = rr['access_token']
-                        self.settings.kick_oauth_refresh = rr.get('refresh_token', '')
-                        refreshed = True
-                        logger.info("KICK token refreshed on startup")
-                except Exception:
-                    pass
-                if not refreshed:
-                    logger.warning(f"KICK token invalid/expired — clearing: {e}")
-                    self.settings.kick_oauth_token = ''
-                    self.settings.kick_oauth_refresh = ''
-                    self.settings.kick_bot_username = ''
-                    self.settings.kick_user_id = 0
-                    self._oauth_expired_flags.append("kick")
-                try:
-                    self.settings.save_settings()
-                except Exception:
-                    pass
-
+    def _validate_oauth_tokens_bg(self):
+
+        """ตรวจสอบ Twitch / KICK OAuth token ใน background thread ไม่บล็อก UI"""
+
+        if not self.settings:
+
+            return
+
+        # Twitch
+
+        if getattr(self.settings, 'twitch_oauth_token', ''):
+
+            def _twitch_clear(msg):
+
+                logger.warning(msg)
+
+                self.settings.twitch_oauth_token = ''
+
+                self.settings.twitch_oauth_refresh = ''
+
+                self.settings.twitch_bot_username = ''
+
+                self._oauth_expired_flags.append("twitch")
+
+            try:
+
+                import urllib.request, json
+
+                req = urllib.request.Request('https://id.twitch.tv/oauth2/validate')
+
+                req.add_header('Authorization', f'OAuth {self.settings.twitch_oauth_token}')
+
+                with urllib.request.urlopen(req, timeout=10) as resp:
+
+                    result = json.loads(resp.read().decode())
+
+                if result.get('expires_in', 0) < 300:
+
+                    from twitch_oauth import refresh_access_token
+
+                    refresh_result = refresh_access_token(self.settings.twitch_oauth_refresh)
+
+                    if refresh_result and refresh_result.get('access_token'):
+
+                        self.settings.twitch_oauth_token = refresh_result['access_token']
+
+                        if refresh_result.get('refresh_token'):
+
+                            self.settings.twitch_oauth_refresh = refresh_result['refresh_token']
+
+                        try:
+
+                            import time as _t2
+
+                            self.settings.twitch_token_expiry_ts = _t2.time() + int(refresh_result.get('expires_in', 0) or 0)
+
+                        except Exception:
+
+                            pass
+
+                        logger.info("Twitch token refreshed on startup")
+
+                    else:
+
+                        _twitch_clear("Twitch token refresh failed — clearing token")
+
+            except Exception as e:
+
+                refreshed = False
+
+                try:
+
+                    from twitch_oauth import refresh_access_token as _tr
+
+                    rr = _tr(self.settings.twitch_oauth_refresh)
+
+                    if rr and rr.get('access_token'):
+
+                        self.settings.twitch_oauth_token = rr['access_token']
+
+                        self.settings.twitch_oauth_refresh = rr.get('refresh_token', '') or self.settings.twitch_oauth_refresh
+
+                        refreshed = True
+
+                        logger.info("Twitch token refreshed on startup (after validate fail)")
+
+                except Exception:
+
+                    pass
+
+                if not refreshed:
+
+                    _twitch_clear(f"Twitch token invalid/expired — clearing: {e}")
+
+            try:
+
+                self.settings.save_settings()
+
+            except Exception:
+
+                pass
+
+
+
+        # KICK
+
+        if getattr(self.settings, 'kick_oauth_token', ''):
+
+            try:
+
+                from kick_oauth import get_user_info
+
+                info = get_user_info(self.settings.kick_oauth_token)
+
+                if not info:
+
+                    raise RuntimeError("invalid token")
+
+            except Exception as e:
+
+                refreshed = False
+
+                try:
+
+                    from kick_oauth import refresh_access_token as _kr
+
+                    rr = _kr(self.settings.kick_oauth_refresh)
+
+                    if rr and rr.get('access_token'):
+
+                        self.settings.kick_oauth_token = rr['access_token']
+
+                        self.settings.kick_oauth_refresh = rr.get('refresh_token', '')
+
+                        refreshed = True
+
+                        logger.info("KICK token refreshed on startup")
+
+                except Exception:
+
+                    pass
+
+                if not refreshed:
+
+                    logger.warning(f"KICK token invalid/expired — clearing: {e}")
+
+                    self.settings.kick_oauth_token = ''
+
+                    self.settings.kick_oauth_refresh = ''
+
+                    self.settings.kick_bot_username = ''
+
+                    self.settings.kick_user_id = 0
+
+                    self._oauth_expired_flags.append("kick")
+
+                try:
+
+                    self.settings.save_settings()
+
+                except Exception:
+
+                    pass
+
+
+
     def _show_first_run_wizard(self):
         """★ แสดงหน้าต่าง First-Run Setup Wizard สำหรับการเปิดใช้งานครั้งแรก"""
         try:
@@ -5502,9 +5716,14 @@ class TTSForLivestreamApp(QMainWindow):
                 pass
         return stats
 
-    def _open_composer(self):
+    def _open_composer(self, page_id: str = None):
         """เปิด composer editor ในเบราว์เซอร์"""
         import webbrowser
+        if page_id and getattr(self, "composer_server", None):
+            try:
+                self.composer_server.switch_page(str(page_id))
+            except Exception:
+                pass
         port = (self.composer_server.port if (self.composer_server and hasattr(self.composer_server, 'port')) else int(getattr(self.settings, 'composer_port', 8801)))
         url = f"http://localhost:{port}/editor"
         webbrowser.open(url)
@@ -5788,8 +6007,11 @@ class TTSForLivestreamApp(QMainWindow):
             self._giveaway_panel.activateWindow()
         elif action == "open_ask_tool":
             self._toggle_ask_panel()
+        elif action == "open_replie_tool":
+            self._toggle_replie_panel(force_show=True)
         elif action == "open_composer":
-            self._open_composer()
+            target_page = data.get("page_id") or data.get("page")
+            self._open_composer(target_page)
         elif action == "toggle_voice_gender":
             gender = data.get("gender")
             if not gender:
@@ -5808,6 +6030,8 @@ class TTSForLivestreamApp(QMainWindow):
         """restore topbar state จาก settings (เรียกตอน init)"""
         if not self.settings:
             return
+        # sync settings & hidden buttons to topbar
+        self.topbar.set_settings(self.settings)
         # TTS state
         muted = getattr(self.settings, 'tts_muted', False)
         self.topbar.set_tts_state(not muted)
@@ -6032,7 +6256,11 @@ class TTSForLivestreamApp(QMainWindow):
         if self.pipeline:
             self.pipeline.config.auto_translate_enabled = self.settings.auto_translate_enabled
             self.pipeline.config.multilang_enabled = self.settings.multilang_enabled
-        labels = {"multilang": "อ่านทุกภาษา", "translate": "แปลภาษา"}
+        is_muted = getattr(self.settings, 'tts_muted', False)
+        if is_muted:
+            labels = {"multilang": "แสดงทุกภาษาในแชท", "translate": "แปลภาษาในแชท"}
+        else:
+            labels = {"multilang": "อ่านทุกภาษา", "translate": "แปลภาษา"}
         self.status_bar.set_status(f"🌐 โหมดภาษา: {labels.get(mode, mode)}")
 
     # ════════════════════════════════════════════════════════════
@@ -6554,7 +6782,8 @@ class TTSForLivestreamApp(QMainWindow):
             'soop': getattr(self.settings, 'auto_connect_soop', False),
         }
         for plat, auto in auto_map.items():
-            if auto and plat in self._platform_cards:
+            is_shown = getattr(self.settings, f'show_{plat}', True)
+            if auto and is_shown and plat in self._platform_cards:
                 target = self._get_platform_target(plat)
                 if target:
                     self.status_bar.set_status(f"🔌 Auto-connect {plat}...")

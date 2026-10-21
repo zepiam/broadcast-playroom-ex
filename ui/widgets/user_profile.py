@@ -356,6 +356,24 @@ class UserProfilePanel(QFrame):
         b.clicked.connect(lambda: self._show_block_menu(b))
         btns.append(b)
 
+        # ปุ่มบล็อก/อนุญาตคำสั่ง Replie
+        is_replie_blocked = bool(getattr(rec, "replie_blocked", False))
+        if not is_replie_blocked:
+            replie_blocked_list = list(getattr(self.settings, "replie_blocked_users", []) or [])
+            is_replie_blocked = any(u.lower() == self._key for u in replie_blocked_list)
+
+        if is_replie_blocked:
+            r_btn = QPushButton("🚫 ปิดคำสั่ง Replie อยู่")
+            r_kind = "danger_soft"
+            r_btn.setToolTip("คลิกเพื่อปลดบล็อกให้ผู้ใช้นี้สามารถพิมพ์คำสั่ง Replie ได้ตามเดิม")
+        else:
+            r_btn = QPushButton("🚫 ไม่ให้ใช้คำสั่ง Replie")
+            r_kind = "ghost"
+            r_btn.setToolTip("คลิกเพื่อปิดกั้นไม่ให้ผู้ใช้นี้เรียกใช้คำสั่ง Replie (เช่น !donate, !qrcode)")
+        self._style_action(r_btn, r_kind)
+        r_btn.clicked.connect(self._toggle_replie_block)
+        btns.append(r_btn)
+
         translate_on = bool(getattr(self.settings, "auto_translate_enabled", False))
         if translate_on or rec.forced_translate:
             t = QPushButton("🌐 บังคับแปลอยู่" if rec.forced_translate else "🌐 บังคับแปล")
@@ -439,6 +457,25 @@ class UserProfilePanel(QFrame):
                 pipeline.config.force_translate_users = list(lst)
         except Exception:
             pass
+        self.reload()
+        self.toast.show_message(msg)
+        self.changed.emit()
+
+    def _toggle_replie_block(self) -> None:
+        s = self.settings
+        if not s:
+            return
+        lst = list(getattr(s, "replie_blocked_users", []) or [])
+        user_key = self._key
+        user_orig = self._rec.original if self._rec else user_key
+        if any(u.lower() == user_key for u in lst):
+            lst = [u for u in lst if u.lower() != user_key]
+            msg = "✅ อนุญาตให้ใช้คำสั่ง Replie ได้ตามปกติแล้ว"
+        else:
+            lst.append(user_orig)
+            msg = "🚫 ปิดไม่ให้ผู้ใช้นี้ใช้คำสั่ง Replie แล้ว"
+        s.replie_blocked_users = lst
+        self._save_settings()
         self.reload()
         self.toast.show_message(msg)
         self.changed.emit()

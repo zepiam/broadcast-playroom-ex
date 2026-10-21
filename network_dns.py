@@ -56,6 +56,12 @@ _DNS_CACHE: dict[str, tuple[list[str], float]] = {}
 _DNS_CACHE_TTL = 300.0  # 5 นาที
 
 
+def clear_dns_cache() -> None:
+    """ล้างแคช DNS ทั้งหมดที่เก็บไว้ในหน่วยความจำ"""
+    _DNS_CACHE.clear()
+
+
+
 def query_doh(host: str, doh_url: str = "https://1.1.1.1/dns-query", timeout: float = 4.0) -> list[str]:
     """สืบค้น IP ผ่าน DNS-over-HTTPS (DoH) แบบเข้ารหัสผ่าน HTTPS พอร์ต 443"""
     sep = "&" if "?" in doh_url else "?"

@@ -9,12 +9,13 @@ Layout (ซ้าย → ขวา):
   [Overlay+ ▼]
   [⚙ Settings]
 """
-from PySide6.QtCore import Qt, Signal, QVariantAnimation, QSize
+from PySide6.QtCore import Qt, Signal, QVariantAnimation, QSize, QEasingCurve, QPointF
+import math
 from PySide6.QtWidgets import (
     QFrame, QLabel, QPushButton, QHBoxLayout, QWidget,
-    QSlider, QWidgetAction,
+    QSlider, QWidgetAction, QDialog, QCheckBox, QVBoxLayout, QMenu,
 )
-from PySide6.QtGui import QPainter, QColor, QPen, QFont, QPainterPath
+from PySide6.QtGui import QPainter, QColor, QPen, QFont, QPainterPath, QCursor, QRadialGradient, QBrush
 import ui.theme as theme  # ★ อ้าง theme.COLOR_X สดตอนสร้าง widget (ตามธีมที่เลือกไว้จริง)
 from ui.widgets.split_button import SplitButton
 
@@ -97,10 +98,312 @@ class NeonButton(QPushButton):
         painter.drawText(rect, Qt.AlignCenter, self.text())
 
 
+MENU_STYLE = """
+    QMenu {
+        background-color: #0f172a;
+        color: #e2e8f0;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 4px;
+        font-size: 13px;
+    }
+    QMenu::item {
+        padding: 6px 14px;
+        border-radius: 4px;
+    }
+    QMenu::item:selected {
+        background-color: #1e293b;
+        color: #38bdf8;
+    }
+    QMenu::item:disabled {
+        color: #64748b;
+    }
+    QMenu::separator {
+        height: 1px;
+        background: #334155;
+        margin: 4px 6px;
+    }
+"""
+
+
+class RestoreButtonsDialog(QDialog):
+    """ไดอะล็อกเลือกแสดงปุ่มบน Topbar ที่ถูกซ่อนอยู่"""
+    def __init__(self, hidden_items: list[tuple[str, str]], parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("แสดงปุ่มบนแถบด้านบน")
+        self.setFixedWidth(360)
+        self.setModal(True)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+
+        import os as _os
+        _icon_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))), "assets", "check_white.png").replace("\\", "/")
+
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: #0b1120;
+                border: 1px solid #1e293b;
+                border-radius: 12px;
+            }}
+            QLabel {{
+                color: #e2e8f0;
+                font-size: 13px;
+            }}
+            QCheckBox {{
+                color: #f1f5f9;
+                font-size: 13.5px;
+                font-weight: 500;
+                spacing: 10px;
+                padding: 6px 8px;
+                border-radius: 6px;
+            }}
+            QCheckBox:hover {{
+                background-color: #1e293b;
+            }}
+            QCheckBox::indicator {{
+                width: 18px;
+                height: 18px;
+                border-radius: 4px;
+                border: 1.5px solid #475569;
+                background-color: #0b1120;
+            }}
+            QCheckBox::indicator:hover {{
+                border-color: #a78bfa;
+            }}
+            QCheckBox::indicator:checked {{
+                background-color: #7c3aed;
+                border-color: #8b5cf6;
+                image: url(\"{_icon_path}\");
+            }}
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(22, 20, 22, 18)
+        layout.setSpacing(14)
+
+        title_lbl = QLabel("เลือกปุ่มที่ต้องการให้กลับมาแสดง:")
+        title_lbl.setStyleSheet("font-size: 14px; font-weight: 700; color: #f8fafc;")
+        layout.addWidget(title_lbl)
+
+        hint_lbl = QLabel('ทำเครื่องหมายถูกที่ปุ่มที่ต้องการแสดง แล้วกด "แสดงปุ่มที่เลือก"')
+        hint_lbl.setStyleSheet("font-size: 12px; color: #94a3b8;")
+        hint_lbl.setWordWrap(True)
+        layout.addWidget(hint_lbl)
+
+        chk_container = QWidget(self)
+        chk_layout = QVBoxLayout(chk_container)
+        chk_layout.setContentsMargins(10, 8, 10, 8)
+        chk_layout.setSpacing(4)
+        chk_container.setStyleSheet("background-color: #131d31; border: 1px solid #1e293b; border-radius: 8px;")
+
+        self._checkboxes = {}
+        icon_map = {
+            "game_overlay": "🎮 ",
+            "overlay_plus": "🪟 ",
+            "user_manager": "👤 ",
+        }
+        for key, name in hidden_items:
+            prefix = icon_map.get(key, "")
+            chk = QCheckBox(f"{prefix}{name}")
+            chk.setChecked(False)  # ★ เริ่มต้นไม่ติ๊กข้อไหนเลยตามที่คุณต้องการ
+            chk.setCursor(Qt.PointingHandCursor)
+            chk.stateChanged.connect(self._on_check_changed)
+            chk_layout.addWidget(chk)
+            self._checkboxes[key] = chk
+
+        layout.addWidget(chk_container)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(10)
+        btn_layout.addStretch()
+
+        self.btn_cancel = QPushButton("ยกเลิก")
+        self.btn_cancel.setCursor(Qt.PointingHandCursor)
+        self.btn_cancel.setStyleSheet("""
+            QPushButton {
+                background-color: #1e293b;
+                color: #94a3b8;
+                border: 1px solid #334155;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-size: 12px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #334155;
+                color: #f1f5f9;
+            }
+        """)
+        self.btn_cancel.clicked.connect(self.reject)
+        btn_layout.addWidget(self.btn_cancel)
+
+        self.btn_restore = QPushButton("แสดงปุ่มที่เลือก")
+        self.btn_restore.setCursor(Qt.PointingHandCursor)
+        self.btn_restore.clicked.connect(self.accept)
+        btn_layout.addWidget(self.btn_restore)
+
+        layout.addLayout(btn_layout)
+        self._on_check_changed()
+
+    def _on_check_changed(self):
+        """ถ้าไม่มีการติ๊กเลือกเลย ให้ disable ปุ่ม 'แสดงปุ่มที่เลือก'"""
+        has_checked = any(chk.isChecked() for chk in self._checkboxes.values())
+        self.btn_restore.setEnabled(has_checked)
+        if has_checked:
+            self.btn_restore.setStyleSheet("""
+                QPushButton {
+                    background-color: #7c3aed;
+                    color: #ffffff;
+                    border: 1px solid #8b5cf6;
+                    border-radius: 6px;
+                    padding: 6px 16px;
+                    font-size: 12px;
+                    font-weight: 700;
+                }
+                QPushButton:hover {
+                    background-color: #6d28d9;
+                    border-color: #a78bfa;
+                }
+            """)
+        else:
+            self.btn_restore.setStyleSheet("""
+                QPushButton {
+                    background-color: #1e293b;
+                    color: #475569;
+                    border: 1px solid #334155;
+                    border-radius: 6px;
+                    padding: 6px 16px;
+                    font-size: 12px;
+                    font-weight: 700;
+                }
+            """)
+
+    def get_selected_keys(self) -> list[str]:
+        return [k for k, chk in self._checkboxes.items() if chk.isChecked()]
+
+
+class CloverButton(QPushButton):
+    """ปุ่ม 🍀 สนับสนุนการพัฒนาโปรแกรม
+    - ไม่มีกรอบ วาง 🍀 ลงไปแบบไร้ขอบ (Flat & Transparent)
+    - เวลา Hover จะมีอนิเมชั่น 'Aurora Glow' (แสงออโรร่าสีเขียวมรกต-ฟ้าไซแอน-ม่วงพาสเทลเรืองแสงนุ่มนวล)
+    - เมื่อเลิก Hover แสงจะค่อยๆ จางหายไปและกลับสู่สถานะ 0% GPU idle
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(34, 32)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip("สนับสนุนการพัฒนาโปรแกรม")
+        self.setStyleSheet("QPushButton { background: transparent; border: none; padding: 0px; margin: 0px; }")
+
+        # Animation states
+        self._hover_progress = 0.0  # 0.0 (idle) -> 1.0 (hovered)
+        self._phase = 0.0           # 0.0 -> 360.0 (aurora rotation angle)
+        self._is_hovered = False
+
+        # Fade in/out transition
+        self._fade_anim = QVariantAnimation(self)
+        self._fade_anim.setDuration(220)
+        self._fade_anim.setEasingCurve(QEasingCurve.OutCubic)
+        self._fade_anim.valueChanged.connect(self._on_fade_value)
+
+        # Continuous gentle aurora rotation loop while hovered
+        self._aurora_loop = QVariantAnimation(self)
+        self._aurora_loop.setDuration(3600)
+        self._aurora_loop.setStartValue(0.0)
+        self._aurora_loop.setEndValue(360.0)
+        self._aurora_loop.setLoopCount(-1)
+        self._aurora_loop.valueChanged.connect(self._on_phase_value)
+
+    def _on_fade_value(self, val):
+        self._hover_progress = float(val)
+        self.update()
+
+    def _on_phase_value(self, val):
+        self._phase = float(val)
+        self.update()
+
+    def enterEvent(self, event):
+        self._is_hovered = True
+        self._fade_anim.stop()
+        self._fade_anim.setStartValue(self._hover_progress)
+        self._fade_anim.setEndValue(1.0)
+        self._fade_anim.start()
+        if self._aurora_loop.state() != QVariantAnimation.Running:
+            self._aurora_loop.start()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._is_hovered = False
+        self._aurora_loop.stop()
+        self._fade_anim.stop()
+        self._fade_anim.setStartValue(self._hover_progress)
+        self._fade_anim.setEndValue(0.0)
+        self._fade_anim.start()
+        super().leaveEvent(event)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+        painter.setRenderHint(QPainter.TextAntialiasing)
+
+        w = self.width()
+        h = self.height()
+        cx = w / 2.0
+        cy = h / 2.0
+
+        # ── 1. วาด Aurora Glow ด้านหลังเมื่อ hover ──
+        if self._hover_progress > 0.01:
+            hp = self._hover_progress
+            painter.save()
+
+            rad = math.radians(self._phase)
+            shift_x = math.cos(rad) * 2.5 * hp
+            shift_y = math.sin(rad) * 2.0 * hp
+            glow_center = QPointF(cx + shift_x, cy + shift_y)
+
+            # ชั้นที่ 1: Outer Ethereal Bloom (รัศมีกว้าง ละมุน)
+            grad1 = QRadialGradient(glow_center, 22.0)
+            # สีออโรร่า: เขียวมรกต (#10b981) ผสาน ฟ้าเทอร์ควอยซ์ (#06b6d4)
+            grad1.setColorAt(0.0, QColor(16, 185, 129, int(150 * hp)))
+            grad1.setColorAt(0.45, QColor(6, 182, 212, int(95 * hp)))
+            grad1.setColorAt(0.75, QColor(139, 92, 246, int(45 * hp)))
+            grad1.setColorAt(1.0, QColor(139, 92, 246, 0))
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QBrush(grad1))
+            painter.drawEllipse(glow_center, 22, 22)
+
+            # ชั้นที่ 2: Core Aurora Shimmer (รัศมีแกนกลางสดสว่าง)
+            grad2 = QRadialGradient(glow_center, 13.0)
+            grad2.setColorAt(0.0, QColor(52, 211, 153, int(180 * hp)))
+            grad2.setColorAt(0.6, QColor(16, 185, 129, int(110 * hp)))
+            grad2.setColorAt(1.0, QColor(16, 185, 129, 0))
+            painter.setBrush(QBrush(grad2))
+            painter.drawEllipse(glow_center, 13, 13)
+
+            painter.restore()
+
+        # ── 2. วาดไอคอน 🍀 (พร้อมสเกลเล็กน้อย 1.0 -> 1.15 บน hover) ──
+        painter.save()
+        scale = 1.0 + (0.15 * self._hover_progress)
+        painter.translate(cx, cy)
+        painter.scale(scale, scale)
+        painter.translate(-cx, -cy)
+
+        font = QFont("Segoe UI Emoji", 15)
+        if not font.exactMatch():
+            font = QFont("Apple Color Emoji", 15)
+        font.setPixelSize(18)
+        painter.setFont(font)
+        painter.setPen(QColor(255, 255, 255))
+        painter.drawText(self.rect(), Qt.AlignCenter, "🍀")
+        painter.restore()
+
+
 class TopBar(QFrame):
     """Top bar — platform status + action buttons (new design)"""
 
     # ═══ Signals ═══
+    supporters_clicked = Signal()                       # 🍀 สนับสนุนการพัฒนาโปรแกรม
     settings_clicked = Signal()                         # ⚙ Settings
     # TTS toggle
     tts_toggled = Signal(bool)                          # True = เปิดอ่าน, False = ปิด
@@ -140,7 +443,12 @@ class TopBar(QFrame):
         self.setMinimumHeight(48)
         self.setMaximumHeight(52)
         self._translate_mode = "off"  # "off" | "multilang" | "translate"
+        self._tts_on = True
+        self._settings = None
+        self._hideable_buttons = {}
+        self._hidden_button_keys = []
         self._build_ui()
+        self._setup_hideable_buttons()
         theme.register_theme_listener(self._update_tts_button)   # ★ ปุ่มอ่านแชท/ปิดอ่านตั้งสีเอง → รีเฟรชสดตอนสลับธีม
 
     def _build_ui(self):
@@ -148,7 +456,12 @@ class TopBar(QFrame):
         layout.setContentsMargins(12, 0, 12, 0)
         layout.setSpacing(6)
 
-        # ═══ Left: เปิด OBS (icon จาก obs64.exe) ═══
+        # ═══ Left 0: 🍀 สนับสนุนการพัฒนาโปรแกรม (Aurora Glow on hover) ═══
+        self.btn_clover = CloverButton(self)
+        self.btn_clover.clicked.connect(self.supporters_clicked.emit)
+        layout.addWidget(self.btn_clover)
+
+        # ═══ Left 1: เปิด OBS (icon จาก obs64.exe) ═══
         #   ★ กด 1 ครั้ง → เปิด OBS (ถ้ายังไม่รัน) หรือ bring-to-front (ถ้ารันอยู่)
         self.btn_obs = QPushButton("  OBS")
         self.btn_obs.setObjectName("OBSButton")
@@ -218,7 +531,18 @@ class TopBar(QFrame):
         self._tts_on = True
         self._update_tts_button()
 
-        # ═══ 2. Overlay ▼ (Composer toggle + copy URL) ═══
+        # ═══ 2. แปลภาษา/อ่านทุกภาษา ▼ (toggle 2-state + settings) ═══
+        self.btn_translate = SplitButton(
+            "🌐 แปลภาษา", tooltip="คลิกเพื่อสลับโหมด — แปลภาษา ↔ อ่านทุกภาษา",
+            parent=self,
+        )
+        self.btn_translate.set_menu_actions([
+            ("⚙ ตั้งค่าภาษาที่รองรับ", self.translate_settings.emit),
+        ])
+        self.btn_translate.main_clicked.connect(self._toggle_translate)
+        layout.addWidget(self.btn_translate)
+
+        # ═══ 3. Overlay ▼ (Composer toggle + copy URL) ═══
         self.btn_composer = SplitButton(
             "🖥️ Overlay", tooltip="เปิด/ปิด Composer (Canvas Overlay)",
             parent=self,
@@ -229,17 +553,6 @@ class TopBar(QFrame):
         self.btn_composer.main_clicked.connect(self.composer_toggled.emit)
         self.btn_composer.set_active(True)  # ★ สี accent ตลอดเวลา (composer เปิดอยู่เสมอ)
         layout.addWidget(self.btn_composer)
-
-        # ═══ 3. แปลภาษา/อ่านทุกภาษา ▼ (toggle 2-state + settings) ═══
-        self.btn_translate = SplitButton(
-            "🌐 แปลภาษา", tooltip="คลิกเพื่อสลับโหมด — แปลภาษา ↔ อ่านทุกภาษา",
-            parent=self,
-        )
-        self.btn_translate.set_menu_actions([
-            ("⚙ ตั้งค่าภาษาที่รองรับ", self.translate_settings.emit),
-        ])
-        self.btn_translate.main_clicked.connect(self._toggle_translate)
-        layout.addWidget(self.btn_translate)
 
         # ═══ 4. Game Overlay ▼ (toggle + edit/settings) ═══
         self.btn_game = SplitButton(
@@ -358,6 +671,7 @@ class TopBar(QFrame):
                 "border-radius: 0 14px 14px 0; padding: 4px 2px; font-size: 11px; }"
                 f"QPushButton:hover {{ background-color: {theme.COLOR_DANGER_BTN_HOVER}; }}"
             )
+        self._update_translate_button()
 
     def set_tts_state(self, on):
         """set TTS state จากภายนอก (เช่น restore จาก settings)"""
@@ -379,23 +693,129 @@ class TopBar(QFrame):
         """คลิกปุ่ม → เปิด Settings > การแปล (ไม่ toggle โหมดแล้ว)"""
         self.translate_settings.emit()
 
+    def _update_translate_button(self):
+        """อัปเดตข้อความปุ่ม translate ให้สอดคล้องกับสถานะ TTS อ่านแชท/ปิดอ่าน"""
+        if not hasattr(self, "btn_translate"):
+            return
+        if self._translate_mode == "off":
+            self.btn_translate.setVisible(False)
+            return
+        self.btn_translate.setVisible(True)
+        if self._tts_on:
+            labels = {
+                "multilang": ("🌐 อ่านทุกภาษา", "on"),
+                "translate": ("🔄 แปลภาษา", "warning"),
+            }
+        else:
+            labels = {
+                "multilang": ("🌐 แสดงทุกภาษาในแชท", "on"),
+                "translate": ("🔄 แปลภาษาในแชท", "warning"),
+            }
+        text, state = labels.get(self._translate_mode, ("🔄 แปลภาษา", "warning"))
+        self.btn_translate.setText(text)
+        self.btn_translate.set_state(state)
+
     def set_translate_mode(self, mode):
         """set translate mode จากภายนอก + update button (แสดงสถานะเท่านั้น)
 
         ★ mode="off" → ซ่อนปุ่ม (ปิดแล้วไม่ควรเห็น)
         """
         self._translate_mode = mode
-        if mode == "off":
-            self.btn_translate.setVisible(False)
-            return
-        self.btn_translate.setVisible(True)
-        labels = {
-            "multilang": ("🌐 อ่านทุกภาษา", "on"),
-            "translate": ("🔄 แปลภาษา", "warning"),
+        self._update_translate_button()
+
+    # ════════════════════════════════════════════════════════════
+    # ปุ่มบน TopBar: ซ่อน / คืนค่า ผ่านคลิกขวา (Game Overlay, Overlay+, User Manager)
+    # ════════════════════════════════════════════════════════════
+    def _setup_hideable_buttons(self):
+        self._hideable_buttons = {
+            "game_overlay": ("Game Overlay", self.btn_game),
+            "overlay_plus": ("Overlay+", self.btn_overlay_plus),
+            "user_manager": ("User Manager", self.btn_user_manager),
         }
-        text, state = labels.get(mode, ("🔄 แปลภาษา", "warning"))
-        self.btn_translate.setText(text)
-        self.btn_translate.set_state(state)
+        for key, (label, widget) in self._hideable_buttons.items():
+            self._bind_hideable_context_menu(key, label, widget)
+
+    def _bind_hideable_context_menu(self, key: str, label: str, widget: QWidget):
+        def show_menu(pos):
+            menu = QMenu(self)
+            menu.setStyleSheet(MENU_STYLE)
+            act_hide = menu.addAction(f"ซ่อนปุ่ม {label}")
+            act_hide.triggered.connect(lambda: self.hide_button(key))
+            hidden = self.get_hidden_buttons()
+            if hidden:
+                menu.addSeparator()
+                act_restore = menu.addAction("👁️ แสดงปุ่มที่ซ่อนอยู่...")
+                act_restore.triggered.connect(self.open_restore_dialog)
+            menu.exec_(QCursor.pos())
+
+        widget.setContextMenuPolicy(Qt.CustomContextMenu)
+        widget.customContextMenuRequested.connect(show_menu)
+        if isinstance(widget, SplitButton):
+            widget._main_btn.setContextMenuPolicy(Qt.CustomContextMenu)
+            widget._main_btn.customContextMenuRequested.connect(show_menu)
+            widget._arrow_btn.setContextMenuPolicy(Qt.CustomContextMenu)
+            widget._arrow_btn.customContextMenuRequested.connect(show_menu)
+
+    def contextMenuEvent(self, event):
+        """คลิกขวาบนพื้นที่ว่างของแถบด้านบน → แสดงเมนูคืนค่าปุ่มที่ซ่อน"""
+        menu = QMenu(self)
+        menu.setStyleSheet(MENU_STYLE)
+        hidden = self.get_hidden_buttons()
+        act_restore = menu.addAction("👁️ แสดงปุ่มที่ซ่อนอยู่...")
+        if hidden:
+            act_restore.triggered.connect(self.open_restore_dialog)
+        else:
+            act_restore.setEnabled(False)
+            act_restore.setText("👁️ แสดงปุ่มที่ซ่อนอยู่ (ไม่มีปุ่มที่ซ่อน)")
+        menu.exec_(event.globalPos())
+
+    def hide_button(self, key: str, save: bool = True):
+        """ซ่อนปุ่มตาม key และบันทึกค่าลง settings"""
+        if key in self._hideable_buttons:
+            label, widget = self._hideable_buttons[key]
+            widget.setVisible(False)
+            if key not in self._hidden_button_keys:
+                self._hidden_button_keys.append(key)
+            if save and self._settings is not None:
+                self._settings.topbar_hidden_buttons = list(self._hidden_button_keys)
+                self._settings.save_settings()
+
+    def restore_button(self, key: str, save: bool = True):
+        """คืนค่าแสดงปุ่มตาม key และบันทึกค่าลง settings"""
+        if key in self._hideable_buttons:
+            label, widget = self._hideable_buttons[key]
+            widget.setVisible(True)
+            if key in self._hidden_button_keys:
+                self._hidden_button_keys.remove(key)
+            if save and self._settings is not None:
+                self._settings.topbar_hidden_buttons = list(self._hidden_button_keys)
+                self._settings.save_settings()
+
+    def get_hidden_buttons(self) -> list[tuple[str, str]]:
+        """คืนค่ารายการ (key, label) ของปุ่มที่กำลังถูกซ่อนอยู่"""
+        return [(k, self._hideable_buttons[k][0]) for k in self._hidden_button_keys if k in self._hideable_buttons]
+
+    def open_restore_dialog(self):
+        """เปิดหน้าต่างกล่องเล็กๆ เลือกปุ่มที่ต้องการกู้คืน"""
+        hidden = self.get_hidden_buttons()
+        if not hidden:
+            return
+        dlg = RestoreButtonsDialog(hidden, parent=self.window())
+        if dlg.exec_() == QDialog.Accepted:
+            selected_keys = dlg.get_selected_keys()
+            for key in selected_keys:
+                self.restore_button(key, save=False)
+            if self._settings is not None:
+                self._settings.topbar_hidden_buttons = list(self._hidden_button_keys)
+                self._settings.save_settings()
+
+    def set_settings(self, settings):
+        """ผูก AppSettings และซ่อนปุ่มตามที่บันทึกไว้ใน settings"""
+        self._settings = settings
+        hidden_keys = getattr(settings, "topbar_hidden_buttons", []) or []
+        for key in list(hidden_keys):
+            if key in self._hideable_buttons:
+                self.hide_button(key, save=False)
 
     # ════════════════════════════════════════════════════════════
     # Game Overlay + Overlay+ state updates (เรียกจาก app.py)

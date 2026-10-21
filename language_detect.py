@@ -11,7 +11,7 @@ from __future__ import annotations
 # edge-tts voice ID สำหรับแต่ละภาษา (คัดมาแล้ว — Neural voice เสียงดี)
 VOICE_BY_LANG: dict[str, str] = {
     "th": "th-TH-PremwadeeNeural",  # ไทย
-    "en": "en-US-AriaNeural",       # อังกฤษ
+    "en": "th-TH-PremwadeeNeural",  # อังกฤษ (ใช้เสียงโมเดลไทยอ่านสำเนียงไทย)
     "ja": "ja-JP-NanamiNeural",     # ญี่ปุ่น
     "ko": "ko-KR-SunHiNeural",      # เกาหลี
     "zh": "zh-CN-XiaoxiaoNeural",   # จีนกลาง

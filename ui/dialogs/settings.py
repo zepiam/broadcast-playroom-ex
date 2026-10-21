@@ -3950,6 +3950,67 @@ class SettingsDialog(QDialog):
         tip_text.setWordWrap(True)
         layout.insertWidget(ci(), tip_text)
 
+        # เส้นคั่นบางๆ
+        div3 = QFrame()
+        div3.setFixedHeight(1)
+        div3.setStyleSheet("background: #1e293b; border: none; margin: 10px 0 6px 0;")
+        layout.insertWidget(ci(), div3)
+
+        # ── 4. ซ่อมแซมการเชื่อมต่อ (Quick Repair) ──
+        repair_header = QLabel("ซ่อมแซมการเชื่อมต่อ (Quick Repair)")
+        repair_header.setStyleSheet("font-size: 13.5px; font-weight: 700; color: #f1f5f9;")
+        layout.insertWidget(ci(), repair_header)
+
+        repair_desc = QLabel(
+            "กรณีพบปัญหาไฟสถานะ TTS ขึ้นสีแดง ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ หรือเสียงไม่อ่านเนื่องจากเครือข่ายถูกปิดกั้น "
+            "สามารถกดปุ่มนี้เพื่อสลับมาใช้ระบบ Cloudflare DoH และล้างแคชเครือข่ายอัตโนมัติ "
+            "(ไม่มีผลกระทบต่อคลังคำศัพท์หรือการตั้งค่าอื่นๆ ในโปรแกรม)"
+        )
+        repair_desc.setStyleSheet("font-size: 12.5px; color: #94a3b8; line-height: 1.6; background: transparent; border: none;")
+        repair_desc.setWordWrap(True)
+        layout.insertWidget(ci(), repair_desc)
+
+        repair_row = QHBoxLayout()
+        repair_row.setSpacing(12)
+
+        self.btn_quick_repair = QPushButton("⚡ ซ่อมแซมและเชื่อมต่อใหม่")
+        self.btn_quick_repair.setCursor(Qt.PointingHandCursor)
+        self.btn_quick_repair.setFixedHeight(36)
+        self.btn_quick_repair.setFocusPolicy(Qt.NoFocus)
+        self.btn_quick_repair.setStyleSheet("""
+            QPushButton {
+                background: #0d9488;
+                color: #ffffff;
+                font-weight: 700;
+                font-size: 13px;
+                padding: 6px 20px;
+                border-radius: 6px;
+                border: 1px solid #14b8a6;
+            }
+            QPushButton:hover {
+                background: #0f766e;
+                border-color: #2dd4bf;
+            }
+            QPushButton:pressed {
+                background: #115e59;
+            }
+            QPushButton:disabled {
+                background: #1e293b;
+                border-color: #334155;
+                color: #64748b;
+            }
+        """)
+        self.btn_quick_repair.clicked.connect(self._on_quick_repair_clicked)
+        repair_row.addWidget(self.btn_quick_repair)
+        repair_row.addStretch()
+        layout.insertLayout(ci(), repair_row)
+
+        self.repair_status_badge = QLabel("")
+        self.repair_status_badge.setWordWrap(True)
+        self.repair_status_badge.setStyleSheet("QLabel { font-size: 12.5px; font-weight: 600; color: #94a3b8; background: transparent; border: none; padding: 2px 0; }")
+        self.repair_status_badge.setVisible(False)
+        layout.insertWidget(ci(), self.repair_status_badge)
+
     def _on_dns_enabled_toggled(self, checked):
         self._update_dns_controls_state()
         self._auto_save()
@@ -3993,14 +4054,48 @@ class SettingsDialog(QDialog):
 
         threading.Thread(target=_worker, daemon=True).start()
 
+    def _on_quick_repair_clicked(self):
+        """ล้างแคช DNS, บังคับเปิดใช้งาน Cloudflare DoH และทดสอบการเชื่อมต่ออัตโนมัติ"""
+        try:
+            from network_dns import clear_dns_cache
+            clear_dns_cache()
+        except Exception:
+            pass
+
+        # 1. ปรับค่าเปิดใช้งาน DNS เป็น Cloudflare DoH
+        self.dns_enabled_cb.setChecked(True)
+        idx = self.dns_service_combo.findData("cloudflare_doh")
+        if idx >= 0:
+            self.dns_service_combo.setCurrentIndex(idx)
+
+        self.repair_status_badge.setVisible(True)
+        self.repair_status_badge.setText("🟡 กำลังล้างแคชและเริ่มทดสอบการเชื่อมต่อไปยังเซิร์ฟเวอร์...")
+        self.repair_status_badge.setStyleSheet("QLabel { font-size: 12.5px; font-weight: 600; color: #fbbf24; background: transparent; border: none; padding: 2px 0; }")
+
+        self.btn_quick_repair.setEnabled(False)
+        self.btn_quick_repair.setText("⏳ กำลังดำเนินการ...")
+
+        self._auto_save()
+        if hasattr(self.parent_app, '_check_tts_health'):
+            self.parent_app._check_tts_health()
+
+        # 2. กระตุ้นให้ทดสอบการเชื่อมต่อทันที
+        self._on_start_dns_test()
+
     def _on_dns_test_result(self, success: bool, latency: float, ip: str, msg: str):
         """รับผลการทดสอบ DNS บน UI Thread"""
         self.btn_test_dns.setEnabled(True)
         self.btn_test_dns.setText("ทดสอบการเชื่อมต่อ")
+        if hasattr(self, 'btn_quick_repair'):
+            self.btn_quick_repair.setEnabled(True)
+            self.btn_quick_repair.setText("⚡ ซ่อมแซมและเชื่อมต่อใหม่")
 
         if success:
             self.dns_status_badge.setText(f"🟢 เชื่อมต่อสำเร็จ (Latency: {latency:.0f} ms | IP: {ip})")
             self.dns_status_badge.setStyleSheet("QLabel { font-size: 12.5px; font-weight: 700; color: #34d399; background: transparent; border: none; padding: 2px 0; }")
+            if hasattr(self, 'repair_status_badge') and self.repair_status_badge.isVisible():
+                self.repair_status_badge.setText(f"🟢 ซ่อมแซมและเชื่อมต่อเซิร์ฟเวอร์สำเร็จแล้ว (Latency: {latency:.0f} ms)")
+                self.repair_status_badge.setStyleSheet("QLabel { font-size: 12.5px; font-weight: 700; color: #34d399; background: transparent; border: none; padding: 2px 0; }")
             if self.dns_enabled_cb.isChecked():
                 self._auto_save()
                 if hasattr(self.parent_app, '_check_tts_health'):
@@ -4008,6 +4103,9 @@ class SettingsDialog(QDialog):
         else:
             self.dns_status_badge.setText(f"🔴 เชื่อมต่อไม่สำเร็จ: {msg}")
             self.dns_status_badge.setStyleSheet("QLabel { font-size: 12.5px; font-weight: 700; color: #f87171; background: transparent; border: none; padding: 2px 0; }")
+            if hasattr(self, 'repair_status_badge') and self.repair_status_badge.isVisible():
+                self.repair_status_badge.setText(f"🔴 การเชื่อมต่อยังขัดข้อง: {msg}")
+                self.repair_status_badge.setStyleSheet("QLabel { font-size: 12.5px; font-weight: 700; color: #f87171; background: transparent; border: none; padding: 2px 0; }")
 
     # ════════════════════════════════════════════════════════════
     # 🛡️ Windows Defender Section (1-Click Exclusion)

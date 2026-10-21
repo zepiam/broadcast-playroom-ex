@@ -58,11 +58,13 @@ class ComposerServer:
         self.on_save_widgets = None
         # ★ callback สำหรับเปิด settings tab ของแอป (เช่น Playroom settings)
         self.on_open_playroom_settings = None
+        self.on_open_replie_tool = None
         # ★ callback สำหรับบันทึก playroom widget_ids (จาก composer settings modal checkbox)
         #    signature: on_save_playroom_triggers(trigger_codes_by_widget: dict[str, list[str]])
         #    key = widget_id, value = list ของ trigger code ที่ติ๊กไว้
         self.on_save_playroom_triggers = None
         self.giveaway_service = None
+        self.replie_service = None
         self.on_dock_action = None
         self._last_tts_health = {"status": "green", "latency": 0.0, "err_detail": ""}
         self._last_tts_reading = True
@@ -70,6 +72,8 @@ class ComposerServer:
         self._last_voice_gender = "premwadee"
         self._last_viewers = {"total": 0, "platforms": {}}
         self._chat_hidden = False
+        self._overlay_hidden = False
+        self._obs_scene_overlay_info = {}
         self._ask_presets = list(getattr(settings, 'ask_presets', []) or [])
 
     # ── lifecycle ──
@@ -174,6 +178,10 @@ class ComposerServer:
         # ★ giveaway banner image & state
         app.router.add_get("/giveaway/image", self._handle_giveaway_image)
         app.router.add_get("/giveaway/state", self._handle_giveaway_state)
+        # Static assets serving
+        assets_dir = os.path.join(get_base_dir(), "assets")
+        if os.path.isdir(assets_dir):
+            app.router.add_static("/assets", assets_dir)
         app.router.add_get("/ws", self._handle_ws)
         self._runner = web.AppRunner(app)
         await self._runner.setup()
@@ -231,6 +239,9 @@ class ComposerServer:
     async def _handle_editor(self, request):
         """redirect ไป composer.html?edit=1 (โหมด editor ลาก widget)"""
         # ★ cache-bust: เพิ่ม timestamp ใน URL → browser โหลดใหม่เสมอ (กัน cache ค้าง)
+        p = request.query.get("p") or request.query.get("page")
+        if p:
+            self.switch_page(str(p))
         raise web.HTTPFound(f"/?edit=1&_t={int(__import__('time').time())}")
 
     async def _handle_dock(self, request):
@@ -290,20 +301,41 @@ class ComposerServer:
         return web.json_response(res or {"status": "ok"}, headers=self._no_cache_headers())
 
     def _is_widget_installed(self, widget_type: str) -> bool:
-        """ตรวจสอบว่ามี widget ชนิดนี้อยู่ใน composer_widgets หรือ composer_pages หรือไม่"""
+        """ตรวจสอบว่ามี widget ชนิดนี้อยู่ในหน้าที่กำลังแสดงผลบน Overlay หรือไม่ (เช็คทันทีทั้งเพิ่มและลบ)"""
         try:
             widgets = list(getattr(self.settings, "composer_widgets", []) or [])
             if any(isinstance(w, dict) and w.get("type") == widget_type and w.get("enabled", True) for w in widgets):
                 return True
-            pages = getattr(self.settings, "composer_pages", []) or []
-            for p in pages:
-                if isinstance(p, dict):
-                    pw = p.get("widgets", [])
-                    if any(isinstance(w, dict) and w.get("type") == widget_type and w.get("enabled", True) for w in pw):
-                        return True
+            cur_p = self._active_page()
+            if isinstance(cur_p, dict):
+                pw = cur_p.get("widgets", [])
+                if any(isinstance(w, dict) and w.get("type") == widget_type and w.get("enabled", True) for w in pw):
+                    return True
         except Exception:
             pass
         return False
+
+    def _find_page(self, page) -> dict | None:
+        """ค้นหา dict ของหน้าตามเลขหน้า (1-based), ID หน้า, หรือชื่อหน้า"""
+        if not page:
+            return None
+        pages = self._pages()
+        try:
+            idx = int(page) - 1
+            if 0 <= idx < len(pages):
+                return pages[idx]
+        except (TypeError, ValueError):
+            pass
+        str_p = str(page).strip().lower()
+        for p in pages:
+            if str(p.get("id", "")).strip().lower() == str_p or str(p.get("name", "")).strip().lower() == str_p:
+                return p
+        return None
+
+    def set_scene_overlay_info(self, info: dict) -> None:
+        """บันทึกข้อมูล scene overlay จาก OBS และ broadcast dock_status ใหม่"""
+        self._obs_scene_overlay_info = dict(info or {})
+        self._broadcast_threadsafe(self._get_dock_status_data())
 
     def _get_dock_status_data(self) -> dict:
         """รวบรวมข้อมูลสถานะสำหรับส่งให้ OBS Dock"""
@@ -316,6 +348,82 @@ class ComposerServer:
         has_ask = self._is_widget_installed("ask")
         has_gw = self._is_widget_installed("giveaway")
         has_chat = self._is_widget_installed("chat")
+        has_replie = self._is_widget_installed("replie")
+
+        # Pages & Widgets info for OBS Dock Overlay Control
+        pages_info = self._pages_payload()
+        scene_info = getattr(self, "_obs_scene_overlay_info", {})
+        raw_sources = scene_info.get("sources", [])
+        if not raw_sources and scene_info.get("has_overlay"):
+            raw_sources = [{
+                "source_name": scene_info.get("source_name", ""),
+                "is_pinned": scene_info.get("is_pinned", False),
+                "pinned_page": scene_info.get("pinned_page"),
+                "url": scene_info.get("url", ""),
+            }]
+
+        processed_sources = []
+        for s in raw_sources:
+            s_pinned = bool(s.get("is_pinned", False))
+            s_pinned_raw = s.get("pinned_page")
+            target_p = self._find_page(s_pinned_raw) if (s_pinned and s_pinned_raw) else None
+
+            if s_pinned and target_p:
+                disp_pid = str(target_p.get("id", ""))
+                disp_pname = str(target_p.get("name", ""))
+                raw_w = list(getattr(self.settings, "composer_widgets", []) or []) if (target_p is self._active_page()) else list(target_p.get("widgets") or [])
+            else:
+                disp_pid = str(pages_info.get("active", ""))
+                cur_p = self._active_page()
+                disp_pname = str(cur_p.get("name", ""))
+                raw_w = list(getattr(self.settings, "composer_widgets", []) or [])
+
+            sorted_w = sorted(raw_w, key=lambda w: w.get("z", 1) if isinstance(w, dict) else 1, reverse=True)
+            w_list = []
+            for w in sorted_w:
+                if isinstance(w, dict):
+                    w_list.append({
+                        "id": str(w.get("id", "")),
+                        "type": str(w.get("type", "")),
+                        "name": str(w.get("name", "")),
+                        "enabled": bool(w.get("enabled", True)),
+                        "z": int(w.get("z", 1)),
+                    })
+            processed_sources.append({
+                "source_name": str(s.get("source_name", "")),
+                "is_pinned": s_pinned,
+                "pinned_page": s_pinned_raw,
+                "display_page_id": disp_pid,
+                "display_page_name": disp_pname,
+                "widgets": w_list,
+            })
+
+        if processed_sources:
+            top_s = processed_sources[0]
+            display_page_id = top_s["display_page_id"]
+            display_page_name = top_s["display_page_name"]
+            active_widgets = top_s["widgets"]
+            is_pinned = top_s["is_pinned"]
+            pinned_page_raw = top_s["pinned_page"]
+        else:
+            display_page_id = str(pages_info.get("active", ""))
+            cur = self._active_page()
+            display_page_name = str(cur.get("name", ""))
+            is_pinned = False
+            pinned_page_raw = None
+            raw_widgets = list(getattr(self.settings, "composer_widgets", []) or [])
+            sorted_widgets = sorted(raw_widgets, key=lambda w: w.get("z", 1) if isinstance(w, dict) else 1, reverse=True)
+            active_widgets = []
+            for w in sorted_widgets:
+                if isinstance(w, dict):
+                    active_widgets.append({
+                        "id": str(w.get("id", "")),
+                        "type": str(w.get("type", "")),
+                        "name": str(w.get("name", "")),
+                        "enabled": bool(w.get("enabled", True)),
+                        "z": int(w.get("z", 1)),
+                    })
+
         return {
             "type": "dock_status",
             "status": {
@@ -327,14 +435,33 @@ class ComposerServer:
                 "ask": self._last_ask_state,
                 "ask_presets": self._ask_presets,
                 "giveaway": gw_state,
+                "replie": (self.replie_service.get_dock_data() if getattr(self, "replie_service", None) else {}),
                 "chat_hidden": self._chat_hidden,
+                "overlay_hidden": getattr(self, "_overlay_hidden", False),
+                "pages": pages_info.get("pages", []),
+                "active_page_id": display_page_id,
+                "active_widgets": active_widgets,
+                "scene_overlay": {
+                    "connected": bool(scene_info.get("connected", False)),
+                    "scene_name": str(scene_info.get("scene_name", "")),
+                    "source_name": str(scene_info.get("source_name", "")),
+                    "has_overlay": bool(scene_info.get("has_overlay", False)),
+                    "is_pinned": is_pinned,
+                    "pinned_page": pinned_page_raw,
+                    "display_page_id": display_page_id,
+                    "display_page_name": display_page_name,
+                    "multiple_sources": len(processed_sources) > 1,
+                    "sources": processed_sources,
+                },
                 "has_ask_widget": has_ask,
                 "has_giveaway_widget": has_gw,
                 "has_chat_widget": has_chat,
+                "has_replie_widget": has_replie,
                 "widgets_installed": {
                     "ask": has_ask,
                     "giveaway": has_gw,
                     "chat": has_chat,
+                    "replie": has_replie,
                 }
             }
         }
@@ -357,21 +484,185 @@ class ComposerServer:
         })
         self._broadcast_threadsafe(self._get_dock_status_data())
 
+    def push_overlay_visibility(self, hidden: bool) -> None:
+        """push สถานะซ่อน/แสดง Overlay ทั้งหมด ไปยัง composer overlay + standalone overlay + OBS dock"""
+        self._overlay_hidden = bool(hidden)
+        self._broadcast_threadsafe({
+            "type": "overlay_visibility",
+            "hidden": self._overlay_hidden
+        })
+        self._broadcast_threadsafe(self._get_dock_status_data())
+
+    def toggle_widget_enabled(self, widget_id: str, enabled=None, page=None) -> bool:
+        """เปิดหรือปิดการแสดงผลของ widget ตาม ID (รองรับระบุหน้า page_id/เลขหน้า/ชื่อหน้า)"""
+        target_page = self._find_page(page) if page else self._active_page()
+        if not target_page:
+            target_page = self._active_page()
+
+        is_cur = (target_page is self._active_page())
+        if is_cur:
+            widgets = list(getattr(self.settings, "composer_widgets", []) or [])
+        else:
+            widgets = list(target_page.get("widgets") or [])
+
+        found = False
+        for w in widgets:
+            if isinstance(w, dict) and str(w.get("id")) == str(widget_id):
+                if enabled is not None:
+                    w["enabled"] = bool(enabled)
+                else:
+                    w["enabled"] = not bool(w.get("enabled", True))
+                found = True
+                break
+        if not found:
+            return False
+
+        if is_cur:
+            self.settings.composer_widgets = widgets
+            try:
+                target_page["widgets"] = copy.deepcopy(widgets)
+            except Exception:
+                pass
+            if self.on_save_widgets is not None:
+                try:
+                    self.on_save_widgets(widgets, getattr(self.settings, "composer_canvas_size", None))
+                except Exception:
+                    pass
+            self._broadcast_threadsafe({"type": "config", "config": self._build_config()})
+        else:
+            target_page["widgets"] = widgets
+            try:
+                from settings import save_settings
+                save_settings(self.settings)
+            except Exception:
+                pass
+            self._broadcast_threadsafe({
+                "type": "page_config",
+                "page": target_page.get("id"),
+                "config": self._build_config(target_page.get("id"))
+            })
+
+        self._broadcast_threadsafe(self._get_dock_status_data())
+        return True
+
+    def switch_page(self, page_id: str) -> bool:
+        """สลับหน้า layout ของ Overlay และ push config ให้ทุก client"""
+        target = self._find_page(page_id)
+        if not target:
+            return False
+        cur = self._active_page()
+        # บันทึกสถานะหน้าเดิมก่อน
+        cur["widgets"] = copy.deepcopy(list(getattr(self.settings, "composer_widgets", []) or []))
+        self.settings.composer_active_page = target["id"]
+        widgets = copy.deepcopy(target.get("widgets") or [])
+        self.settings.composer_widgets = widgets
+        if self.on_save_widgets is not None:
+            try:
+                self.on_save_widgets(widgets, getattr(self.settings, "composer_canvas_size", None))
+            except Exception:
+                pass
+        self._broadcast_threadsafe({"type": "config", "config": self._build_config()})
+        self._broadcast_threadsafe(self._get_dock_status_data())
+        return True
+
     def _dispatch_dock_action(self, action_data: dict) -> dict:
         """กระจายคำสั่งจาก dock ไปยัง callback handler"""
         action = action_data.get("action")
         if action == "open_composer":
-            try:
-                import webbrowser
-                webbrowser.open(f"http://localhost:{self.port}/editor")
-            except Exception:
-                pass
+            target_page = action_data.get("page_id") or action_data.get("page")
+            if target_page:
+                self.switch_page(str(target_page))
+            if not self.on_dock_action:
+                try:
+                    import webbrowser
+                    webbrowser.open(f"http://localhost:{self.port}/editor")
+                except Exception:
+                    pass
         elif action == "toggle_hide_chat":
             if "hidden" in action_data:
                 target_hidden = bool(action_data.get("hidden"))
             else:
                 target_hidden = not self._chat_hidden
             self.push_chat_visibility(target_hidden)
+        elif action == "toggle_hide_all_overlay":
+            if "hidden" in action_data:
+                target_hidden = bool(action_data.get("hidden"))
+            else:
+                target_hidden = not getattr(self, "_overlay_hidden", False)
+            self.push_overlay_visibility(target_hidden)
+        elif action == "toggle_widget_visibility":
+            wid = str(action_data.get("widget_id", ""))
+            pid = action_data.get("page_id")
+            if wid:
+                self.toggle_widget_enabled(wid, action_data.get("enabled"), page=pid)
+        elif action == "switch_overlay_page":
+            pid = str(action_data.get("page_id", ""))
+            if pid:
+                self.switch_page(pid)
+        elif action == "open_replie_tool":
+            if getattr(self, "on_open_replie_tool", None) is not None:
+                try:
+                    self.on_open_replie_tool()
+                except Exception as e:
+                    logger.error(f"Error calling on_open_replie_tool: {e}")
+        elif action == "replie_trigger":
+            if not self._is_widget_installed("replie"):
+                return {"status": "error", "error": "ยังไม่ได้เพิ่ม Widget Replie บนหน้าจอ Overlay ครับ"}
+            cmd_name = action_data.get("name", "")
+            if getattr(self, "replie_service", None) and cmd_name:
+                cmd = self.replie_service.commands.get(cmd_name.lower())
+                if cmd:
+                    self.replie_service.show_replie(cmd, triggered_by="Streamer (Dock)")
+        elif action == "replie_dismiss":
+            if getattr(self, "replie_service", None):
+                self.replie_service.dismiss_current()
+        elif action == "replie_mute":
+            cmd_name = action_data.get("name", "")
+            minutes = int(action_data.get("minutes", 15))
+            if getattr(self, "replie_service", None) and cmd_name:
+                self.replie_service.mute_command(cmd_name, minutes)
+        elif action == "replie_unmute":
+            cmd_name = action_data.get("name", "")
+            if getattr(self, "replie_service", None) and cmd_name:
+                self.replie_service.unmute_command(cmd_name)
+        elif action == "replie_toggle":
+            cmd_name = action_data.get("name", "")
+            if getattr(self, "replie_service", None) and cmd_name:
+                self.replie_service.toggle_command(cmd_name)
+        elif action == "replie_schedule_start":
+            if not self._is_widget_installed("replie"):
+                return {"status": "error", "error": "ยังไม่ได้เพิ่ม Widget Replie บนหน้าจอ Overlay ครับ"}
+            cmd_name = action_data.get("name", "")
+            interval = action_data.get("interval_min", 5)
+            if getattr(self, "replie_service", None) and cmd_name:
+                self.replie_service.start_schedule(cmd_name, int(interval))
+        elif action == "replie_schedule_stop":
+            cmd_name = action_data.get("name", "")
+            if getattr(self, "replie_service", None) and cmd_name:
+                self.replie_service.stop_schedule(cmd_name)
+        elif action == "replie_start_loop":
+            if not self._is_widget_installed("replie"):
+                return {"status": "error", "error": "ยังไม่ได้เพิ่ม Widget Replie บนหน้าจอ Overlay ครับ"}
+            cmd_name = action_data.get("name", "__all__")
+            interval = action_data.get("interval_sec")
+            if getattr(self, "replie_service", None):
+                self.replie_service.start_loop(cmd_name, int(interval) if interval else None)
+        elif action == "replie_stop_loop":
+            if getattr(self, "replie_service", None):
+                self.replie_service.stop_loop()
+        elif action == "replie_toggle_loop":
+            if not self._is_widget_installed("replie"):
+                return {"status": "error", "error": "ยังไม่ได้เพิ่ม Widget Replie บนหน้าจอ Overlay ครับ"}
+            cmd_name = action_data.get("name", "__all__")
+            interval = action_data.get("interval_sec")
+            if getattr(self, "replie_service", None):
+                self.replie_service.toggle_loop(cmd_name, int(interval) if interval else None)
+        elif action == "replie_demo":
+            if not self._is_widget_installed("replie"):
+                return {"status": "error", "error": "ยังไม่ได้เพิ่ม Widget Replie บนหน้าจอ Overlay ครับ"}
+            mode = action_data.get("mode", "ticker")
+            if getattr(self, "replie_service", None):
+                self.replie_service.trigger_demo(mode)
         if self.on_dock_action:
             try:
                 return self.on_dock_action(action_data) or {"status": "ok"}
@@ -404,7 +695,7 @@ class ComposerServer:
 
         # ป้องกันข้อมุลผิดรูปแบบ — validate พื้นฐาน
         clean_widgets = []
-        valid_types = {"chat", "alert", "viewer", "clock", "image", "playroom", "webcam", "text", "video", "now_playing", "emote_party", "avatar", "donate_goal", "ask", "giveaway"}
+        valid_types = {"chat", "alert", "viewer", "clock", "image", "playroom", "webcam", "text", "video", "now_playing", "emote_party", "avatar", "donate_goal", "ask", "giveaway", "replie"}
         for i, w in enumerate(widgets if isinstance(widgets, list) else []):
             if not isinstance(w, dict):
                 continue
@@ -829,6 +1120,7 @@ class ComposerServer:
         for w in widgets:
             if w.get("type") == "chat":
                 await self._push_widget_config(w["id"])
+        await self._broadcast_safe(self._get_dock_status_data())
         return web.json_response(self._pages_payload())
 
     async def _handle_export_profile(self, request):
@@ -1628,6 +1920,10 @@ class ComposerServer:
                     })
                 # ★ สถานะสำหรับ OBS Dock ล่าสุด
                 await ws.send_json(self._get_dock_status_data())
+                await ws.send_json({
+                    "type": "overlay_visibility",
+                    "hidden": getattr(self, "_overlay_hidden", False)
+                })
             except Exception:
                 pass
 
@@ -1945,6 +2241,10 @@ class ComposerServer:
         self._broadcast_threadsafe(payload)
 
     # ═══ Giveaway (Loyalty Giveaway) integration ═══
+
+    def set_replie_service(self, service) -> None:
+        """เชื่อมต่อ ReplieService เข้ากับ ComposerServer เพื่อส่งข้อมูลขึ้น OBS WS และรับคำสั่งจาก Dock"""
+        self.replie_service = service
 
     def set_giveaway_service(self, service) -> None:
         """เชื่อมต่อสัญญาณจาก GiveawayService เข้ากับ ComposerServer เพื่อส่งข้อมูลขึ้น OBS WS เดียวกัน"""
@@ -2392,10 +2692,12 @@ class ComposerServer:
 
     # ── config builder ──
     def _widgets_for(self, page=None) -> list:
-        """widgets ของหน้าที่ page (เลข 1-based ตามลำดับในรายการ) — ไม่ระบุ/เลขผิด → layout ที่ active"""
+        """widgets ของหน้าที่ page (เลข 1-based ตามลำดับในรายการ, ID หน้า, หรือชื่อหน้า) — ไม่ระบุ/ไม่พบ → layout ที่ active"""
+        if not page:
+            return list(getattr(self.settings, "composer_widgets", []) or [])
+        pages = self._pages()
         try:
             idx = int(page) - 1
-            pages = self._pages()
             if 0 <= idx < len(pages):
                 p = pages[idx]
                 if p is self._active_page():   # หน้าที่ active ใช้ของสด (composer_widgets)
@@ -2403,6 +2705,13 @@ class ComposerServer:
                 return list(p.get("widgets") or [])
         except (TypeError, ValueError):
             pass
+        # ★ รองรับค้นหาด้วย ID หน้า หรือชื่อหน้า (case-insensitive)
+        str_p = str(page).strip().lower()
+        for p in pages:
+            if str(p.get("id", "")).strip().lower() == str_p or str(p.get("name", "")).strip().lower() == str_p:
+                if p is self._active_page():
+                    return list(getattr(self.settings, "composer_widgets", []) or [])
+                return list(p.get("widgets") or [])
         return list(getattr(self.settings, "composer_widgets", []) or [])
 
     def _build_config(self, page=None) -> dict:

@@ -357,6 +357,21 @@ class GiveawayPanel(QFrame):
                 background: transparent;
                 border: none;
             }
+            QMessageBox {
+                background-color: #0b1120;
+            }
+            QMessageBox QLabel {
+                color: #f8fafc;
+                font-size: 13.5px;
+                min-height: 0px;
+                background: transparent;
+            }
+            QMessageBox QPushButton {
+                min-width: 75px;
+                padding: 6px 16px;
+                font-size: 13px;
+                border-radius: 6px;
+            }
             QLabel[role="section"] {
                 color: #38bdf8;
                 font-size: 12px;

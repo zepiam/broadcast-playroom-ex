@@ -236,6 +236,21 @@ class AppSettings:
     ask_frame_style: str = "classic"    # classic, sharp, floating, glow, etc.
     ask_anim_in: str = "fade"           # fade | slide-up | slide-down | slide-left | slide-right | etc.
     ask_anim_out: str = "fade"
+    # ---- Replie Widget (การตอบกลับภาพบนจอ Overlay) ----
+    replie_enabled: bool = True
+    replie_cooldown_sec: int = 15
+    replie_default_duration_sec: int = 8
+    replie_pos_x: int = 85               # 0 - 100 % (จุดกึ่งกลางกล่อง)
+    replie_pos_y: int = 50               # 0 - 100 % (จุดกึ่งกลางกล่อง)
+    replie_offset_x: int = 0             # -500 to +500 px
+    replie_offset_y: int = 0             # -500 to +500 px
+    replie_scale: float = 1.0            # 0.5 - 1.5
+    replie_opacity_pct: int = 95         # 10 - 100 %
+    replie_anim_in: str = "slide-left"   # slide-left | slide-right | slide-up | slide-down | fade | zoom
+    replie_anim_out: str = "slide-right" # slide-right | slide-left | slide-down | slide-up | fade | zoom
+    replie_commands: dict = field(default_factory=dict)
+    replie_user_cooldown_sec: int = 300  # คูลดาวน์ต่อผู้ใช้ ต่อคำสั่ง (5 นาที)
+    replie_blocked_users: list[str] = field(default_factory=list)
     # ---- Networking / Custom DNS ----
     dns_enabled: bool = False
     dns_service: str = "cloudflare_doh"  # cloudflare_doh | google_doh | quad9_doh | cloudflare_udp | google_udp | custom
@@ -377,7 +392,7 @@ class AppSettings:
     overlay_enabled: bool = False
     overlay_port: int = 8765  # localhost HTTP/WS port
     # ── OBS WebSocket (auto-refresh browser source ตอนเปิดโปรแกรม) ──
-    obs_ws_enabled: bool = False
+    obs_ws_enabled: bool = True
     obs_ws_host: str = "localhost"
     obs_ws_port: int = 4455
     obs_ws_password: str = ""
@@ -675,13 +690,14 @@ class AppSettings:
     replace_words: dict[str, dict] = field(default_factory=lambda: {"55@": {"display": "", "read": "ฮ่าๆ"}})
     replace_auto_sync: bool = True  # ซิงค์คลังคำศัพท์จากเซิร์ฟเวอร์อัตโนมัติตอนเปิดโปรแกรม
     replace_deleted_words: list[str] = field(default_factory=list)  # รายการคำที่เคยลบ (ห้าม auto-sync โหลดกลับมา)
+    replace_show_display_col: bool = False  # ซ่อนคอลัมน์ "คำที่แสดง" โดยค่าเริ่มต้น (เปิดผ่านคลิกขวาในตาราง)
     secret_codes: list[dict] = field(default_factory=list)  # [{code, sound_path, volume}]
     secret_code_daily_limit: int = 0  # จำกัดการเล่นเสียงโค้ดลับต่อ user/วัน (0 = ไม่จำกัด)
     code_sound_muted: bool = False  # ปิดเสียงโค้ดลับทั้งหมดชั่วคราว (ไม่เล่น + ไม่ติดคิว)
     # ── OBS WebSocket auto-refresh ──
     # ★ refresh browser source อัตโนมัติตอนเปิดโปรแกรม
     #   แก้ปัญหา: เปิด OBS ก่อน Broadcast Playroom → browser source cache หน้าเก่า → overlay ไม่แสดง
-    obs_ws_enabled: bool = False
+    obs_ws_enabled: bool = True
     obs_ws_host: str = "localhost"
     obs_ws_port: int = 4455              # OBS WebSocket v5 default port
     obs_ws_password: str = ""
@@ -737,6 +753,7 @@ class AppSettings:
     # เก็บ legacy "notification" (flat) ไว้ด้วย เพื่อ migrate จากเวอร์ชันเก่า
     notifications: dict = field(default_factory=dict)
     notification: dict = field(default_factory=dict)  # legacy flat (สำหรับ backward compat)
+    topbar_hidden_buttons: list = field(default_factory=list)  # ปุ่มบน Topbar ที่ถูกซ่อน ["game_overlay", "overlay_plus", "user_manager"]
 
     def save_settings(self) -> None:
         """★ method wrapper — เรียก module-level save_settings(self)
@@ -811,6 +828,20 @@ class AppSettings:
             "ask_frame_style": str(self.ask_frame_style),
             "ask_anim_in": str(self.ask_anim_in),
             "ask_anim_out": str(self.ask_anim_out),
+            "replie_enabled": bool(self.replie_enabled),
+            "replie_cooldown_sec": int(self.replie_cooldown_sec),
+            "replie_default_duration_sec": int(self.replie_default_duration_sec),
+            "replie_pos_x": int(self.replie_pos_x),
+            "replie_pos_y": int(self.replie_pos_y),
+            "replie_offset_x": int(self.replie_offset_x),
+            "replie_offset_y": int(self.replie_offset_y),
+            "replie_scale": float(self.replie_scale),
+            "replie_opacity_pct": int(self.replie_opacity_pct),
+            "replie_anim_in": str(self.replie_anim_in),
+            "replie_anim_out": str(self.replie_anim_out),
+            "replie_commands": dict(self.replie_commands) if isinstance(self.replie_commands, dict) else {},
+            "replie_user_cooldown_sec": int(self.replie_user_cooldown_sec),
+            "replie_blocked_users": list(self.replie_blocked_users),
             "dns_enabled": bool(self.dns_enabled),
             "dns_service": str(self.dns_service),
             "dns_custom": str(self.dns_custom),
@@ -1054,6 +1085,7 @@ class AppSettings:
             "replace_words": dict(self.replace_words),
             "replace_auto_sync": bool(self.replace_auto_sync),
             "replace_deleted_words": list(self.replace_deleted_words),
+            "replace_show_display_col": bool(getattr(self, "replace_show_display_col", False)),
             "secret_codes": list(self.secret_codes),
             "secret_code_daily_limit": self.secret_code_daily_limit,
             "code_sound_muted": self.code_sound_muted,
@@ -1097,6 +1129,7 @@ class AppSettings:
             "events_log_max": self.events_log_max,
             "notifications": dict(self.notifications),
             "notification": dict(self.notification),
+            "topbar_hidden_buttons": list(self.topbar_hidden_buttons),
         }
 
     @classmethod
@@ -1221,6 +1254,34 @@ class AppSettings:
             s.ask_anim_in = str(data["ask_anim_in"])
         if "ask_anim_out" in data:
             s.ask_anim_out = str(data["ask_anim_out"])
+        if "replie_enabled" in data:
+            s.replie_enabled = bool(data["replie_enabled"])
+        if "replie_cooldown_sec" in data:
+            s.replie_cooldown_sec = int(data["replie_cooldown_sec"])
+        if "replie_default_duration_sec" in data:
+            s.replie_default_duration_sec = int(data["replie_default_duration_sec"])
+        if "replie_pos_x" in data:
+            s.replie_pos_x = int(data["replie_pos_x"])
+        if "replie_pos_y" in data:
+            s.replie_pos_y = int(data["replie_pos_y"])
+        if "replie_offset_x" in data:
+            s.replie_offset_x = int(data["replie_offset_x"])
+        if "replie_offset_y" in data:
+            s.replie_offset_y = int(data["replie_offset_y"])
+        if "replie_scale" in data:
+            s.replie_scale = float(data["replie_scale"])
+        if "replie_opacity_pct" in data:
+            s.replie_opacity_pct = int(data["replie_opacity_pct"])
+        if "replie_anim_in" in data:
+            s.replie_anim_in = str(data["replie_anim_in"])
+        if "replie_anim_out" in data:
+            s.replie_anim_out = str(data["replie_anim_out"])
+        if "replie_commands" in data and isinstance(data["replie_commands"], dict):
+            s.replie_commands = dict(data["replie_commands"])
+        if "replie_user_cooldown_sec" in data:
+            s.replie_user_cooldown_sec = int(data["replie_user_cooldown_sec"])
+        if "replie_blocked_users" in data:
+            s.replie_blocked_users = list(data["replie_blocked_users"])
         if "dns_enabled" in data:
             s.dns_enabled = bool(data["dns_enabled"])
         if "dns_service" in data:
@@ -1784,6 +1845,8 @@ class AppSettings:
             s.replace_auto_sync = bool(data["replace_auto_sync"])
         if "replace_deleted_words" in data:
             s.replace_deleted_words = [w for w in list(data["replace_deleted_words"]) if isinstance(w, str) and w.strip()]
+        if "replace_show_display_col" in data:
+            s.replace_show_display_col = bool(data["replace_show_display_col"])
         if "secret_codes" in data:
             s.secret_codes = list(data["secret_codes"])
             # ── migrate: secret_code prefix บังคับ "!" ──
@@ -1896,6 +1959,8 @@ class AppSettings:
             s.notifications = dict(data["notifications"])
         if "notification" in data:
             s.notification = dict(data["notification"])
+        if "topbar_hidden_buttons" in data and isinstance(data["topbar_hidden_buttons"], list):
+            s.topbar_hidden_buttons = [str(x) for x in data["topbar_hidden_buttons"]]
         return s
 
     # ------------------------------------------------------------------ #

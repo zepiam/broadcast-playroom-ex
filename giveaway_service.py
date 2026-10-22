@@ -509,7 +509,7 @@ class GiveawayService(QObject):
                     writer.writerow(["ลำดับ", "ผู้โชคดี", "แพลตฟอร์ม", "ของรางวัล", "เงื่อนไข / สิทธิ์", "เวลาที่ได้รับ"])
                     for widx, w in enumerate(self.winners_history, start=1):
                         w_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(w.timestamp))
-                        writer.writerow([widx, w.author, w.platform.capitalize(), w.prize, w.tier_label, w_time])
+                        writer.writerow([widx, w.author, w.platform.capitalize(), w_time])
 
             return True
         except Exception as e:
@@ -527,7 +527,7 @@ class GiveawayService(QObject):
                 writer.writerow(["ลำดับ", "ชื่อผู้โชคดี", "แพลตฟอร์ม", "ของรางวัลที่ได้รับ", "เงื่อนไข / ระดับสิทธิ์", "วัน-เวลาที่ได้รับรางวัล"])
                 for widx, w in enumerate(winners, start=1):
                     w_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(w.timestamp))
-                    writer.writerow([widx, w.author, w.platform.capitalize(), w.prize, w.tier_label, w_time])
+                    writer.writerow([widx, w.author, w.platform.capitalize(), w_time])
 
             return True
         except Exception as e:

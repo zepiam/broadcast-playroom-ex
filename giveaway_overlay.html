@@ -594,7 +594,7 @@ html, body {
           fill="none" pathLength="100" />
   </svg>
   <div class="cp-header">
-    <span class="cp-badge" id="cp-title-badge">🎁 กิจกรรมเช็คชื่อลุ้นรางวัล</span>
+    <span class="cp-badge" id="cp-title-badge">🎯 กิจกรรมสุ่มผู้โชคดี</span>
     <span class="cp-status-pill" id="cp-status-pill">กำลังเปิดรับ</span>
   </div>
   <div class="cp-code-row">
@@ -631,15 +631,13 @@ html, body {
 
 <!-- ── SLOT MACHINE / LUCKY DRAW STAGE ── -->
 <div id="draw-container">
-  <div class="draw-header-title">🎰 สุ่มแจกรางวัลกิจกรรม</div>
-  <div class="draw-prize-text" id="draw-prize-text">รางวัล: บัตรกำนัล 500 บาท</div>
-  <div class="draw-tier-pill" id="draw-tier-pill">🏆 Tier 1 (ครบทุกด่าน)</div>
+  <div class="draw-header-title">✨ ผลการสุ่มกิจกรรม ✨</div>
 
   <div class="slot-reel-box">
     <div class="slot-reel-name" id="slot-reel-name">...</div>
   </div>
 
-  <div class="draw-status-label" id="draw-status-label">เตรียมพร้อมสุ่มรางวัล...</div>
+  <div class="draw-status-label" id="draw-status-label">เตรียมพร้อมสุ่มผู้โชคดี...</div>
 </div>
 
 <canvas id="confetti-canvas"></canvas>
@@ -1195,9 +1193,9 @@ function startDraw(prize, tier_label, candidates) {
   drawBox.classList.remove('winner');
   drawBox.classList.add('visible');
 
-  drawPrize.textContent = prize || 'ของรางวัลกิจกรรม';
-  drawTier.textContent = tier_label || 'ผู้มีสิทธิ์ลุ้นรางวัล';
-  drawStatus.textContent = '⚡ กำลังหมุนสุ่มรายชื่อ...';
+  if (drawPrize) drawPrize.textContent = '';
+  if (drawTier) drawTier.textContent = '';
+  drawStatus.textContent = '🎲 กำลังสุ่มผู้โชคดี...';
   slotName.classList.add('rolling');
 
   _gwLastPool = (candidates && candidates.length > 0) ? candidates : ['ผู้เข้าร่วมกิจกรรม'];
@@ -1216,7 +1214,7 @@ function showWinner(author, platform, prize, tier_label) {
   _gwDecelTimers.forEach(t => clearTimeout(t));
   _gwDecelTimers = [];
 
-  drawPrize.textContent = prize || 'ของรางวัลกิจกรรม';
+  if (drawPrize) drawPrize.textContent = '';
 
   const others = _gwLastPool.filter(n => n !== author);
   const pool = others.length > 0 ? others : [author];

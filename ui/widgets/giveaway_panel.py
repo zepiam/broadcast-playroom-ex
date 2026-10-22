@@ -790,7 +790,7 @@ class GiveawayPanel(QFrame):
 
         lbl_title.setStyleSheet("font-size: 16px; font-weight: 800; color: #ffffff;")
 
-        self.lbl_sub = QLabel("ระบบเช็คชื่อ & สุ่มแจกรางวัลคนดู")
+        self.lbl_sub = QLabel("ระบบสุ่มรายชื่อผู้โชคดี & สุ่มกิจกรรมคนดู")
 
         self.lbl_sub.setStyleSheet("font-size: 11.5px; color: #94a3b8;")
 
@@ -842,7 +842,7 @@ class GiveawayPanel(QFrame):
 
 
 
-        self.btn_nav_participant = QPushButton("👥 กติกาคนเข้าร่วม")
+        self.btn_nav_participant = QPushButton("🎨 ตกแต่ง Overlay")
 
         self.btn_nav_participant.setCursor(Qt.PointingHandCursor)
 
@@ -850,23 +850,9 @@ class GiveawayPanel(QFrame):
 
         self.btn_nav_participant.clicked.connect(lambda: self._switch_main_mode(1))
 
-
-
-        self.btn_nav_prize = QPushButton("🏆 ข้อมูลของรางวัล")
-
-        self.btn_nav_prize.setCursor(Qt.PointingHandCursor)
-
-        self.btn_nav_prize.setStyleSheet(STYLE_BTN_SECONDARY)
-
-        self.btn_nav_prize.clicked.connect(lambda: self._switch_main_mode(2))
-
-
-
         nav_box.addWidget(self.btn_nav_live, 1)
 
         nav_box.addWidget(self.btn_nav_participant, 1)
-
-        nav_box.addWidget(self.btn_nav_prize, 1)
 
         layout.addLayout(nav_box)
 
@@ -900,45 +886,24 @@ class GiveawayPanel(QFrame):
 
 
 
-        # Page 2: Prize Set Setup
-
-        self.page_prize = QWidget()
-
-        self._build_prize_set_ui(self.page_prize)
-
-        self.main_stack.addWidget(self.page_prize)
-
-
+    def _on_copy_obs_link(self):
+        url = "http://localhost:8080/giveaway_overlay.html"
+        QApplication.clipboard().setText(url)
+        QMessageBox.information(self, "คัดลอกสำเร็จ", f"คัดลอกลิงก์สำหรับใส่ OBS Browser Source เรียบร้อยแล้วครับ:\n\n{url}")
 
     def _switch_main_mode(self, idx: int):
-
         self.main_stack.setCurrentIndex(idx)
-
-        btns = [self.btn_nav_live, self.btn_nav_participant, self.btn_nav_prize]
-
+        btns = [self.btn_nav_live, self.btn_nav_participant]
         for i, b in enumerate(btns):
-
             if i == idx:
-
                 b.setStyleSheet(STYLE_BTN_PRIMARY)
-
             else:
-
                 b.setStyleSheet(STYLE_BTN_SECONDARY)
 
-
-
         if idx == 0:
-
             self._load_initial_live_presets()
-
         elif idx == 1:
-
             self._reload_participant_preset_dropdown()
-
-        elif idx == 2:
-
-            self._reload_prize_set_ui()
 
 
 
@@ -968,7 +933,7 @@ class GiveawayPanel(QFrame):
 
         self.step_btn_2 = QLabel("2. เปิดรับโค้ดสด")
 
-        self.step_btn_3 = QLabel("3. สุ่มรางวัล")
+        self.step_btn_3 = QLabel("3. สุ่มผู้โชคดี")
 
         for s in (self.step_btn_1, self.step_btn_2, self.step_btn_3):
 
@@ -1080,7 +1045,7 @@ class GiveawayPanel(QFrame):
 
 
 
-        lbl_desc = QLabel("เลือกรูปแบบการเข้าร่วมกิจกรรม ระบบจะตรวจหาชุดของรางวัลที่ผูกไว้ให้ทันที")
+        lbl_desc = QLabel("เลือกรูปแบบคำสั่งและระยะเวลาที่ใช้เปิดรับรายชื่อผู้เข้าร่วมกิจกรรม")
 
         lbl_desc.setStyleSheet("font-size: 12px; color: #94a3b8;")
 
@@ -1088,7 +1053,7 @@ class GiveawayPanel(QFrame):
 
 
 
-        cv.addWidget(QLabel("เลือกกติกา / Preset คนเข้าร่วม:"))
+        cv.addWidget(QLabel("เลือกรูปแบบคำสั่ง / Preset ที่ใช้ร่วมสนุก:"))
 
         self.cmb_live_participant_preset = QComboBox()
 
@@ -1102,73 +1067,7 @@ class GiveawayPanel(QFrame):
 
 
 
-        # Clean Flat Linked Prize Box
-
-        self.box_linked_prize = QFrame()
-
-        self.box_linked_prize.setObjectName("LinkedPrizeBox")
-
-        self.box_linked_prize.setStyleSheet("""
-
-            QFrame#LinkedPrizeBox {
-
-                background-color: #1e1b4b;
-
-                border: 1px solid #4338ca;
-
-                border-radius: 8px;
-
-            }
-
-            QLabel {
-
-                border: none;
-
-                background: transparent;
-
-            }
-
-        """)
-
-        pv = QVBoxLayout(self.box_linked_prize)
-
-        pv.setContentsMargins(12, 10, 12, 10)
-
-        pv.setSpacing(4)
-
-        self.lbl_linked_prize_head = QLabel("🔗 ชุดของรางวัลที่ตรวจพบอัตโนมัติ:")
-
-        self.lbl_linked_prize_head.setStyleSheet("color: #a5b4fc; font-size: 12px; font-weight: bold;")
-
-        self.lbl_linked_prize_title = QLabel("ชุดของรางวัล: กำลังโหลด...")
-
-        self.lbl_linked_prize_title.setStyleSheet("color: #ffffff; font-size: 14px; font-weight: 800;")
-
-        self.lbl_linked_prize_badge = QLabel("สุ่มรางวัลได้ทันทีเมื่อจบการเปิดรับโค้ด")
-
-        self.lbl_linked_prize_badge.setStyleSheet("color: #34d399; font-size: 12px;")
-
-        pv.addWidget(self.lbl_linked_prize_head)
-
-        pv.addWidget(self.lbl_linked_prize_title)
-
-        pv.addWidget(self.lbl_linked_prize_badge)
-
-        cv.addWidget(self.box_linked_prize)
-
-
-
-        self.cmb_live_prize_switcher = QComboBox()
-
-        self._setup_combobox(self.cmb_live_prize_switcher)
-
-        self.cmb_live_prize_switcher.setVisible(False)
-
-        self.cmb_live_prize_switcher.currentIndexChanged.connect(self._on_live_prize_switcher_changed)
-
-        self.cmb_live_prize_switcher.activated.connect(self._on_live_prize_switcher_changed)
-
-        cv.addWidget(self.cmb_live_prize_switcher)
+        
 
 
 
@@ -1226,67 +1125,7 @@ class GiveawayPanel(QFrame):
 
         p_name = p.get("name", "")
 
-        mode_str = "ด่านเดียว" if p.get("mode") == "single" else f"หลายด่าน ({len(p.get('checkpoints', []))} ด่าน)"
-
-
-
-        # Find linked prize sets
-
-        linked = self.preset_mgr.get_prize_sets_for_participant_preset(p_id)
-
-        if linked:
-
-            self.active_prize_set = linked[0]
-
-            self.lbl_linked_prize_title.setText(f"🎁 {self.active_prize_set.get('name')} ({len(self.active_prize_set.get('tiers', []))} รางวัล)")
-
-            self.lbl_linked_prize_badge.setText(f"กติกา: {mode_str} | ผูกกับชุดรางวัลนี้เรียบร้อยแล้ว")
-
-
-
-            if len(linked) > 1:
-
-                self.cmb_live_prize_switcher.blockSignals(True)
-
-                self.cmb_live_prize_switcher.clear()
-
-                for lk in linked:
-
-                    self.cmb_live_prize_switcher.addItem(f"สลับไปใช้: {lk.get('name')}", lk.get("id"))
-
-                self.cmb_live_prize_switcher.blockSignals(False)
-
-                self.cmb_live_prize_switcher.setVisible(True)
-
-            else:
-
-                self.cmb_live_prize_switcher.setVisible(False)
-
-        else:
-
-            self.active_prize_set = None
-
-            self.lbl_linked_prize_title.setText("⚠️ ยังไม่มีชุดของรางวัลที่ผูกไว้กับกติกานี้")
-
-            self.lbl_linked_prize_badge.setText("คุณสามารถสุ่มรางวัลทั่วไป หรือระบุชื่อของรางวัลสดหน้างานได้ครับ")
-
-            self.cmb_live_prize_switcher.setVisible(False)
-
-
-
-    def _on_live_prize_switcher_changed(self, idx: int):
-
-        pz_id = self.cmb_live_prize_switcher.currentData()
-
-        pz = self.preset_mgr.get_prize_set(pz_id)
-
-        if pz:
-
-            self.active_prize_set = pz
-
-            self.lbl_linked_prize_title.setText(f"🎁 {pz.get('name')} ({len(pz.get('tiers', []))} รางวัล)")
-
-
+        pass
 
     def _start_live_from_step1(self):
 
@@ -2076,7 +1915,7 @@ class GiveawayPanel(QFrame):
 
         hdr = QHBoxLayout()
 
-        hdr.addWidget(QLabel("🎲 สุ่มรางวัลถ่ายทอดสด"))
+        hdr.addWidget(QLabel("🎲 สุ่มรายชื่อผู้โชคดี"))
 
         hdr.addStretch()
 
@@ -2094,41 +1933,7 @@ class GiveawayPanel(QFrame):
 
 
 
-        # Prize Tier Selection (Auto-linked)
-
-        cv.addWidget(QLabel("เลือกของรางวัลที่จะสุ่มตอนนี้:"))
-
-        self.cmb_draw_tier = QComboBox()
-
-        self._setup_combobox(self.cmb_draw_tier)
-
-        self.cmb_draw_tier.currentIndexChanged.connect(self._on_draw_tier_changed)
-
-        self.cmb_draw_tier.activated.connect(self._on_draw_tier_changed)
-
-        cv.addWidget(self.cmb_draw_tier)
-
-
-
-        # Custom Prize input fallback
-
-        self.drawer_custom_prize = QWidget()
-
-        self.drawer_custom_prize.setVisible(False)
-
-        cp_v = QHBoxLayout(self.drawer_custom_prize)
-
-        cp_v.setContentsMargins(0, 0, 0, 0)
-
-        cp_v.addWidget(QLabel("ชื่อรางวัลหน้างาน:"))
-
-        self.inp_custom_prize_name = QLineEdit()
-
-        self.inp_custom_prize_name.setPlaceholderText("เช่น รางวัลพิเศษ, บัตรเติมเงิน...")
-
-        cp_v.addWidget(self.inp_custom_prize_name, 1)
-
-        cv.addWidget(self.drawer_custom_prize)
+        
 
 
 
@@ -2166,7 +1971,7 @@ class GiveawayPanel(QFrame):
 
         wv.setSpacing(4)
 
-        lbl_w_top = QLabel("🎉 ยินดีด้วยกับผู้ได้รับรางวัล 🎉")
+        lbl_w_top = QLabel("🎉 ยินดีด้วยกับผู้โชคดี! 🎉")
 
         lbl_w_top.setAlignment(Qt.AlignCenter)
 
@@ -2196,13 +2001,11 @@ class GiveawayPanel(QFrame):
 
         # Winners History Table
 
-        cv.addWidget(QLabel("ประวัติผู้ได้รับรางวัลแต่ละระดับ:"))
+        cv.addWidget(QLabel("ประวัติผู้โชคดีที่ได้รับการสุ่ม:"))
 
-        self.tbl_draw_history = QTableWidget(0, 5)
-
-        self.tbl_draw_history.setHorizontalHeaderLabels(["ระดับ", "ของรางวัล", "ผู้ได้รับรางวัล", "แพลตฟอร์ม", "เวลา"])
-
-        self.tbl_draw_history.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.tbl_draw_history = QTableWidget(0, 4)
+        self.tbl_draw_history.setHorizontalHeaderLabels(["ลำดับ", "ชื่อผู้โชคดี", "แพลตฟอร์ม", "เวลา"])
+        self.tbl_draw_history.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
 
         self.tbl_draw_history.setFixedHeight(140)
 
@@ -2228,301 +2031,83 @@ class GiveawayPanel(QFrame):
 
 
 
+    def _update_step3_pool_info(self):
+        all_p = list(self.service.participants.values())
+        drawn_names = {h.get("name") for h in self.draw_history}
+        available = [p for p in all_p if p.author not in drawn_names]
+        self.lbl_pool_info.setText(f"ผู้มีสิทธิ์ลุ้นทั้งหมด: {len(available)} คน (จากทั้งหมด {len(all_p)} คน)")
+
     def _setup_live_step3_display(self):
-
-        self.cmb_draw_tier.blockSignals(True)
-
-        self.cmb_draw_tier.clear()
-
-
-
-        # If prize set is linked
-
-        if self.active_prize_set and self.active_prize_set.get("tiers"):
-
-            for t in self.active_prize_set["tiers"]:
-
-                t_name = t.get("tier_name", "รางวัล")
-
-                p_name = t.get("prize_name", "")
-
-                t_grp = t.get("target_group", "all")
-
-                qty = t.get("quantity", 1)
-
-                label = f"{t_name}: {p_name} ({qty} รางวัล)"
-
-                self.cmb_draw_tier.addItem(label, {"tier": t_name, "prize": p_name, "group": t_grp, "qty": qty})
-
-            self.drawer_custom_prize.setVisible(False)
-
-        else:
-
-            self.cmb_draw_tier.addItem("🎁 สุ่มผู้โชคดี (ระบุชื่อรางวัลด้านล่าง)", {"tier": "รางวัลทั่วไป", "prize": "", "group": "all", "qty": 1})
-
-            self.drawer_custom_prize.setVisible(True)
-
-
-
-        self.cmb_draw_tier.blockSignals(False)
-
-        self._on_draw_tier_changed(0)
-
+        self._update_step3_pool_info()
         self.box_winner_announce.setVisible(False)
 
-
-
-    def _on_draw_tier_changed(self, idx: int):
-
-        data = self.cmb_draw_tier.currentData()
-
-        if not data:
-
-            return
-
-
-
-        grp_key = data.get("group", "all")
-
-        counts = self.service.get_participant_counts()
-
-
-
-        # Check target group counts
-
-        if grp_key == "all":
-
-            pool_cnt = counts.get("total", 0)
-
-        elif grp_key == "full":
-
-            pool_cnt = counts.get("completed_all", 0)
-
-        elif grp_key.isdigit():
-
-            target_score = int(grp_key)
-
-            pool_cnt = sum(1 for p in self.service.participants.values() if p.score == target_score)
-
-        else:
-
-            pool_cnt = counts.get("total", 0)
-
-
-
-        drawn_winners = [d.get("name") for d in self.draw_history]
-
-        available_cnt = max(0, pool_cnt - len(drawn_winners))
-
-        self.lbl_pool_info.setText(f"ผู้มีสิทธิ์ในกลุ่มนี้: {pool_cnt} คน (ยังไม่ได้รับรางวัล: {available_cnt} คน)")
+    
 
 
 
     def _on_spin_draw_clicked(self):
-
-        data = self.cmb_draw_tier.currentData()
-
-        if not data:
-
-            return
-
-
-
-        grp_key = data.get("group", "all")
-
-        prize_name = data.get("prize", "")
-
-        tier_label = data.get("tier", "รางวัล")
-
-
-
-        # Fallback to custom prize name if not set
-
-        if not prize_name:
-
-            prize_name = self.inp_custom_prize_name.text().strip() or "ของรางวัลพิเศษ"
-
-
-
-        # Filter participants
-
         all_p = list(self.service.participants.values())
-
-        drawn_names = set(d.get("name") for d in self.draw_history)
-
-
-
-        candidates: List[Participant] = []
-
-        if grp_key == "all":
-
-            candidates = all_p
-
-        elif grp_key == "full":
-
-            candidates = [p for p in all_p if len(p.checkins) == self.service.total_checkpoints]
-
-        elif grp_key.isdigit():
-
-            target_score = int(grp_key)
-
-            candidates = [p for p in all_p if p.score == target_score]
-
-        else:
-
-            candidates = all_p
-
-
-
-        available = [p for p in candidates if p.author not in drawn_names]
+        drawn_names = {h.get("name") for h in self.draw_history}
+        available = [p for p in all_p if p.author not in drawn_names]
 
         if not available:
-
-            QMessageBox.warning(self, "ไม่มีผู้มีสิทธิ์", "ไม่มีรายชื่อผู้มีสิทธิ์เหลือสำหรับสุ่มรางวัลนี้แล้วครับ")
-
+            QMessageBox.warning(self, "ไม่มีผู้มีสิทธิ์", "ไม่มีผู้เข้าร่วมเหลือให้สุ่มแล้ว หรือถูกสุ่มไปครบทุกคนแล้วครับ")
             return
-
-
-
-        # Pick winner
 
         winner = random.choice(available)
-
         self._pending_winner = winner
 
-        self._pending_prize_name = prize_name
-
-        self._pending_tier_label = tier_label
-
-
-
-        # Start slot animation
-
         self._slot_candidates = [p.author for p in available]
-
         self._pending_winner_name = winner.author
-
         self._slot_ticks_left = 25
-
         self.btn_spin_draw.setEnabled(False)
-
         self._slot_timer.start()
 
-
-
         # Broadcast to OBS Overlay WebSocket
-
-        self.service.broadcast_draw_start(prize_name, tier_label, self._slot_candidates[:20], winner.author)
-
-
+        self.service.broadcast_draw_start("", "", self._slot_candidates[:20], winner.author)
 
     def _on_slot_tick(self):
-
         if self._slot_ticks_left > 0:
-
             self._slot_ticks_left -= 1
-
             cand = random.choice(self._slot_candidates)
-
-            self.lbl_winner_name.setText(f"🎰 {cand}")
-
+            self.lbl_winner_name.setText(f"🎲 {cand}")
             self.box_winner_announce.setVisible(True)
-
         else:
-
             self._slot_timer.stop()
-
             self.btn_spin_draw.setEnabled(True)
-
             self._show_draw_winner_result()
 
-
-
     def _show_draw_winner_result(self):
-
         w = getattr(self, "_pending_winner", None)
-
         if not w:
-
             return
-
-
-
-        prize = getattr(self, "_pending_prize_name", "ของรางวัล")
-
-        tier = getattr(self, "_pending_tier_label", "รางวัล")
 
         now_str = time.strftime("%H:%M:%S")
 
-
-
-        self.lbl_winner_name.setText(f"@{w.author}")
-
-        self.lbl_winner_details.setText(f"ได้รับ: {prize} ({tier}) | แพลตฟอร์ม: {w.platform}")
-
+        self.lbl_winner_name.setText(f"🎉 @{w.author}")
+        self.lbl_winner_details.setText(f"แพลตฟอร์ม: {w.platform.capitalize()} | เวลา: {now_str}")
         self.box_winner_announce.setVisible(True)
 
-
-
         # Broadcast winner to OBS Overlay
-
-        self.service.broadcast_draw_winner(w, prize, tier)
-
-
+        self.service.broadcast_draw_winner(w, "", "")
 
         # Record to history table
-
         self.draw_history.append({
-
-            "tier": tier,
-
-            "prize": prize,
-
             "name": w.author,
-
             "platform": w.platform,
-
             "time": now_str
-
         })
 
-
-
         row = self.tbl_draw_history.rowCount()
-
         self.tbl_draw_history.insertRow(row)
+        self.tbl_draw_history.setItem(row, 0, QTableWidgetItem(str(row + 1)))
+        self.tbl_draw_history.setItem(row, 1, QTableWidgetItem(w.author))
+        self.tbl_draw_history.setItem(row, 2, QTableWidgetItem(w.platform.capitalize()))
+        self.tbl_draw_history.setItem(row, 3, QTableWidgetItem(now_str))
 
-        self.tbl_draw_history.setItem(row, 0, QTableWidgetItem(tier))
+        self._update_step3_pool_info()
 
-        self.tbl_draw_history.setItem(row, 1, QTableWidgetItem(prize))
-
-        self.tbl_draw_history.setItem(row, 2, QTableWidgetItem(w.author))
-
-        self.tbl_draw_history.setItem(row, 3, QTableWidgetItem(w.platform))
-
-        self.tbl_draw_history.setItem(row, 4, QTableWidgetItem(now_str))
-
-
-
-        # Mark prize set as used
-
-        if self.active_prize_set:
-
-            self.active_prize_set["last_drawn_at"] = time.strftime("%Y-%m-%d %H:%M")
-
-            self.preset_mgr.save_prize_set(self.active_prize_set)
-
-
-
-    def _export_full_csv(self):
-
-        path, _ = QFileDialog.getSaveFileName(self, "Export รายชื่อผู้เข้าร่วมและผู้ได้รับรางวัล", "giveaway_results.csv", "CSV Files (*.csv)")
-
-        if path:
-
-            self.service.export_csv(path)
-
-            QMessageBox.information(self, "สำเร็จ", f"Export ข้อมูลเรียบร้อยที่:\n{path}")
+    
 
 
 
@@ -3667,601 +3252,124 @@ class GiveawayPanel(QFrame):
 
     # ─────────────────────────────────────────────────────────────
 
-    # PAGE 2: PRIZE SET SETUP (ข้อมูลของรางวัล)
+    def _export_full_csv(self):
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export รายชื่อผู้เข้าร่วมและผู้โชคดี",
+            "giveaway_results.csv",
+            "CSV Files (*.csv)"
+        )
+        if path:
+            self.service.export_csv(path)
+            QMessageBox.information(self, "สำเร็จ", f"Export ผลกิจกรรมเรียบร้อยแล้ว:\n{path}")
 
-    # ─────────────────────────────────────────────────────────────
+    def _finish_and_reset_activity(self):
+        ans = QMessageBox.question(
+            self,
+            "จบกิจกรรม",
+            "ต้องการจบกิจกรรมรอบนี้ และล้างข้อมูลเพื่อเริ่มรอบใหม่หรือไม่?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if ans == QMessageBox.Yes:
+            self.service.clear_all_data()
+            self.service.broadcast_draw_reset()
+            self.current_live_step = 1
+            self.live_step_stack.setCurrentIndex(0)
+            self._update_live_stepper_style(1)
+            self._load_initial_live_presets()
 
+    # Page 2 removed (no prizes)
     def _build_prize_set_ui(self, widget: QWidget):
-
-        scroll = QScrollArea(widget)
-
-        scroll.setWidgetResizable(True)
-
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-
-        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
-
-
-
-        content = QWidget()
-
-        cv = QVBoxLayout(content)
-
-        cv.setContentsMargins(10, 8, 16, 12)
-
-        cv.setSpacing(10)
-
-
-
-        # Header
-
-        hdr = QHBoxLayout()
-
-        hdr.addWidget(QLabel("🏆 ข้อมูลของรางวัล"))
-
-        hdr.addStretch()
-
-        btn_save_pz = QPushButton("💾 บันทึก")
-
-        btn_save_pz.setStyleSheet(STYLE_BTN_PRIMARY)
-
-        btn_save_pz.clicked.connect(self._save_current_prize_set)
-
-        hdr.addWidget(btn_save_pz)
-
-        cv.addLayout(hdr)
-
-
-
-        # Prize Set Selector
-
-        mgr_row = QHBoxLayout()
-
-        mgr_row.addWidget(QLabel("เลือกชุดรางวัล:"))
-
-        self.cmb_pz_editor_select = QComboBox()
-
-        self._setup_combobox(self.cmb_pz_editor_select)
-
-        self.cmb_pz_editor_select.currentIndexChanged.connect(self._on_pz_editor_selected)
-
-        self.cmb_pz_editor_select.activated.connect(self._on_pz_editor_selected)
-
-        mgr_row.addWidget(self.cmb_pz_editor_select, 1)
-
-
-
-        btn_new_pz = QPushButton("+ สร้างใหม่")
-
-        btn_new_pz.setStyleSheet(STYLE_BTN_SECONDARY)
-
-        btn_new_pz.clicked.connect(self._create_new_prize_set)
-
-        mgr_row.addWidget(btn_new_pz)
-
-
-
-        btn_del_pz = QPushButton("🗑️")
-
-        btn_del_pz.setStyleSheet(STYLE_BTN_SECONDARY)
-
-        btn_del_pz.clicked.connect(self._delete_current_prize_set)
-
-        mgr_row.addWidget(btn_del_pz)
-
-        cv.addLayout(mgr_row)
-
-
-
-        # Title
-
-        row_title = QHBoxLayout()
-
-        row_title.addWidget(QLabel("ชื่อชุดของรางวัล:"))
-
-        self.inp_pz_name = QLineEdit()
-
-        row_title.addWidget(self.inp_pz_name, 1)
-
-        cv.addLayout(row_title)
-
-
-
-        # Essential Linking Dropdown
-
-        row_link = QHBoxLayout()
-
-        lbl_lk = QLabel("🔗 ผูกกับกติกา:")
-
-        lbl_lk.setStyleSheet("color: #f59e0b; font-weight: bold;")
-
-        row_link.addWidget(lbl_lk)
-
-        self.cmb_pz_link_preset = QComboBox()
-
-        self._setup_combobox(self.cmb_pz_link_preset)
-
-        row_link.addWidget(self.cmb_pz_link_preset, 1)
-
-        cv.addLayout(row_link)
-
-
-
-        # Prize Tiers Manager
-
-        t_btn_box = QHBoxLayout()
-
-        t_btn_box.addWidget(QLabel("รายการระดับของรางวัล:"))
-
-        t_btn_box.addStretch()
-
-        btn_add_tier = QPushButton("+ เพิ่มระดับ")
-
-        btn_add_tier.setStyleSheet(STYLE_BTN_SECONDARY)
-
-        btn_add_tier.clicked.connect(self._add_prize_tier_row)
-
-        btn_del_tier = QPushButton("- ลบระดับ")
-
-        btn_del_tier.setStyleSheet(STYLE_BTN_SECONDARY)
-
-        btn_del_tier.clicked.connect(self._remove_prize_tier_row)
-
-        t_btn_box.addWidget(btn_add_tier)
-
-        t_btn_box.addWidget(btn_del_tier)
-
-        cv.addLayout(t_btn_box)
-
-
-
-        self.tbl_prize_tiers = QTableWidget(3, 4)
-
-        self.tbl_prize_tiers.setHorizontalHeaderLabels(["ระดับ", "ชื่อของรางวัล", "กลุ่มสิทธิ์", "จำนวน"])
-
-        self.tbl_prize_tiers.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-
-        self.tbl_prize_tiers.setFixedHeight(180)
-
-        cv.addWidget(self.tbl_prize_tiers)
-
-
-
-        cv.addStretch()
-
-
-
-        scroll.setWidget(content)
-
-
-
-        root_v = QVBoxLayout(widget)
-
-        root_v.setContentsMargins(0, 0, 0, 0)
-
-        root_v.addWidget(scroll)
-
-
+        pass
 
     def _reload_prize_set_ui(self):
-
-        # Refresh participant presets linking dropdown
-
-        self.cmb_pz_link_preset.blockSignals(True)
-
-        self.cmb_pz_link_preset.clear()
-
-        for p in self.preset_mgr.get_participant_presets():
-
-            self.cmb_pz_link_preset.addItem(p.get("name", "Preset"), p.get("id"))
-
-        self.cmb_pz_link_preset.blockSignals(False)
-
-
-
-        # Refresh prize sets dropdown
-
-        self.cmb_pz_editor_select.blockSignals(True)
-
-        self.cmb_pz_editor_select.clear()
-
-        prizes = self.preset_mgr.get_prize_sets()
-
-        for pz in prizes:
-
-            self.cmb_pz_editor_select.addItem(pz.get("name", "ชุดของรางวัล"), pz.get("id"))
-
-        self.cmb_pz_editor_select.blockSignals(False)
-
-
-
-        if prizes:
-
-            self._on_pz_editor_selected(0)
-
-
-
-    def _on_pz_editor_selected(self, idx: int):
-
-        pz_id = self.cmb_pz_editor_select.currentData()
-
-        pz = self.preset_mgr.get_prize_set(pz_id)
-
-        if not pz:
-
-            return
-
-
-
-        self.inp_pz_name.setText(pz.get("name", ""))
-
-        linked_id = pz.get("linked_participant_preset_id", "")
-
-        idx_link = self.cmb_pz_link_preset.findData(linked_id)
-
-        if idx_link >= 0:
-
-            self.cmb_pz_link_preset.setCurrentIndex(idx_link)
-
-
-
-        tiers = pz.get("tiers", [])
-
-        self.tbl_prize_tiers.setRowCount(len(tiers))
-
-        for r, t in enumerate(tiers):
-
-            self.tbl_prize_tiers.setItem(r, 0, QTableWidgetItem(t.get("tier_name", f"รางวัล {r+1}")))
-
-            self.tbl_prize_tiers.setItem(r, 1, QTableWidgetItem(t.get("prize_name", "")))
-
-            self.tbl_prize_tiers.setItem(r, 2, QTableWidgetItem(t.get("target_group", "all")))
-
-            self.tbl_prize_tiers.setItem(r, 3, QTableWidgetItem(str(t.get("quantity", 1))))
-
-
-
-    def _create_new_prize_set(self):
-
-        dlg = RoundNameDialog("➕ สร้างชุดของรางวัลใหม่", "ชุดของรางวัลใหม่", self)
-
-        if dlg.exec() == QDialog.Accepted and dlg.get_name():
-
-            p_id = self.cmb_pz_link_preset.currentData() or "preset_single"
-
-            new_pz = {
-
-                "id": f"prize_{int(time.time())}",
-
-                "name": dlg.get_name(),
-
-                "linked_participant_preset_id": p_id,
-
-                "tiers": [
-
-                    {"tier_name": "🏆 รางวัลใหญ่", "prize_name": "ของรางวัลที่ 1", "target_group": "all", "quantity": 1}
-
-                ],
-
-                "last_drawn_at": ""
-
-            }
-
-            self.preset_mgr.save_prize_set(new_pz)
-
-            self._reload_prize_set_ui()
-
-            idx = self.cmb_pz_editor_select.findData(new_pz["id"])
-
-            if idx >= 0:
-
-                self.cmb_pz_editor_select.setCurrentIndex(idx)
-
-
-
-    def _delete_current_prize_set(self):
-
-        pz_id = self.cmb_pz_editor_select.currentData()
-
-        if not pz_id:
-
-            return
-
-        ans = QMessageBox.question(self, "ยืนยันการลบ", "คุณแน่ใจหรือไม่ว่าต้องการลบชุดของรางวัลนี้?", QMessageBox.Yes | QMessageBox.No)
-
-        if ans == QMessageBox.Yes:
-
-            self.preset_mgr.delete_prize_set(pz_id)
-
-            self._reload_prize_set_ui()
-
-
-
-    def _add_prize_tier_row(self):
-
-        r = self.tbl_prize_tiers.rowCount()
-
-        self.tbl_prize_tiers.insertRow(r)
-
-        self.tbl_prize_tiers.setItem(r, 0, QTableWidgetItem(f"รางวัลที่ {r+1}"))
-
-        self.tbl_prize_tiers.setItem(r, 1, QTableWidgetItem("ระบุชื่อรางวัล"))
-
-        self.tbl_prize_tiers.setItem(r, 2, QTableWidgetItem("all"))
-
-        self.tbl_prize_tiers.setItem(r, 3, QTableWidgetItem("1"))
-
-
-
-    def _remove_prize_tier_row(self):
-
-        r = self.tbl_prize_tiers.rowCount()
-
-        if r > 1:
-
-            self.tbl_prize_tiers.removeRow(r - 1)
-
-
-
-    def _save_current_prize_set(self):
-
-        pz_id = self.cmb_pz_editor_select.currentData()
-
-        if not pz_id:
-
-            return
-
-
-
-        linked_p_id = self.cmb_pz_link_preset.currentData()
-
-        tiers = []
-
-        for r in range(self.tbl_prize_tiers.rowCount()):
-
-            t_name = self.tbl_prize_tiers.item(r, 0).text() if self.tbl_prize_tiers.item(r, 0) else f"รางวัล {r+1}"
-
-            p_name = self.tbl_prize_tiers.item(r, 1).text() if self.tbl_prize_tiers.item(r, 1) else ""
-
-            grp = self.tbl_prize_tiers.item(r, 2).text() if self.tbl_prize_tiers.item(r, 2) else "all"
-
-            qty = int(self.tbl_prize_tiers.item(r, 3).text()) if self.tbl_prize_tiers.item(r, 3) else 1
-
-            tiers.append({
-
-                "tier_name": t_name,
-
-                "prize_name": p_name,
-
-                "target_group": grp,
-
-                "quantity": qty
-
-            })
-
-
-
-        pz_data = {
-
-            "id": pz_id,
-
-            "name": self.inp_pz_name.text().strip() or "ชุดของรางวัล",
-
-            "linked_participant_preset_id": linked_p_id,
-
-            "tiers": tiers
-
-        }
-
-        self.preset_mgr.save_prize_set(pz_data)
-
-        QMessageBox.information(self, "สำเร็จ", "บันทึกข้อมูลของรางวัลเรียบร้อยแล้วครับ!")
-
-        self._reload_prize_set_ui()
-
-
-
-    # ─────────────────────────────────────────────────────────────
-
-    # SERVICE SIGNALS & REALTIME FEED
-
-    # ─────────────────────────────────────────────────────────────
+        pass
 
     def _connect_service_signals(self):
-
         self.service.participant_added.connect(self._on_participant_added)
-
         self.service.checkpoint_ended.connect(lambda idx, tot: self._on_live_checkpoint_stopped())
 
-
-
-    def _on_participant_added(self, p: Participant, cp_index: int):
-
+    def _on_participant_added(self, p, cp_index: int):
         self.realtime_participants_count += 1
+        if hasattr(self, "lbl_realtime_count"):
+            self.lbl_realtime_count.setText(f"{self.realtime_participants_count} คน")
 
-        self.lbl_realtime_count.setText(f"{self.realtime_participants_count} คน")
-
-
-
-        row = self.table_realtime.rowCount()
-
-        self.table_realtime.insertRow(0)
-
-        self.table_realtime.setItem(0, 0, QTableWidgetItem(p.platform.upper()))
-
-        self.table_realtime.setItem(0, 1, QTableWidgetItem(p.author))
-
-        self.table_realtime.setItem(0, 2, QTableWidgetItem(time.strftime("%H:%M:%S")))
-
-
-
-    # ─────────────────────────────────────────────────────────────
-
-    # OBS INSTALLATION CHECK & BLOCKER VIEW
-
-    # ─────────────────────────────────────────────────────────────
+        if hasattr(self, "table_realtime"):
+            self.table_realtime.insertRow(0)
+            self.table_realtime.setItem(0, 0, QTableWidgetItem(getattr(p, "platform", "").upper()))
+            self.table_realtime.setItem(0, 1, QTableWidgetItem(getattr(p, "author", "")))
+            self.table_realtime.setItem(0, 2, QTableWidgetItem(time.strftime("%H:%M:%S")))
 
     def _is_widget_installed(self) -> bool:
-
         try:
-
             app_inst = None
-
             if hasattr(self, "service") and self.service:
-
-                if callable(getattr(self.service, "parent", None)):
-
-                    app_inst = self.service.parent()
-
+                if hasattr(self.service, "app"):
+                    app_inst = self.service.app
                 elif hasattr(self.service, "parent"):
-
                     app_inst = self.service.parent
-
             if not app_inst and hasattr(self, "parent_app"):
-
                 app_inst = self.parent_app
-
             if not app_inst and callable(getattr(self, "parent", None)):
-
                 app_inst = self.parent()
 
-
-
             if app_inst and hasattr(app_inst, "_giveaway_widget_exists"):
-
                 return bool(app_inst._giveaway_widget_exists())
-
             if app_inst and hasattr(app_inst, "settings"):
-
                 widgets = list(getattr(app_inst.settings, "composer_widgets", []) or [])
-
                 return any(isinstance(w, dict) and w.get("type") == "giveaway" and w.get("enabled", True) for w in widgets)
-
         except Exception:
-
             pass
-
-        return True  # Fallback to unlocked in standalone/dev
-
-
+        return True
 
     def _check_widget_status(self):
-
         installed = self._is_widget_installed()
-
         if installed:
-
             if self.stack.currentIndex() != 0:
-
                 self.stack.setCurrentIndex(0)
-
         else:
-
             if self.stack.currentIndex() != 1:
-
                 self.stack.setCurrentIndex(1)
 
-
-
     def _build_not_installed_view(self) -> QWidget:
-
         blocker = QWidget()
-
         v = QVBoxLayout(blocker)
-
         v.setContentsMargins(24, 30, 24, 30)
-
         v.setSpacing(16)
-
         v.addStretch()
-
-
 
         icon_lbl = QLabel("⚠️")
-
         icon_lbl.setAlignment(Qt.AlignCenter)
-
         icon_lbl.setStyleSheet("font-size: 52px; background: transparent; border: none;")
-
         v.addWidget(icon_lbl)
 
-
-
         title_lbl = QLabel("ยังไม่ได้เพิ่ม Widget Giveaway บนหน้าจอ Overlay")
-
         title_lbl.setAlignment(Qt.AlignCenter)
-
         title_lbl.setStyleSheet("font-size: 16px; font-weight: 800; color: #f59e0b;")
-
         v.addWidget(title_lbl)
 
-
-
-        desc_lbl = QLabel("กรุณาเปิด Overlay Composer แล้วกดปุ่ม \"+ Giveaway\" เพื่อวาง Widget ลงบนหน้าจอก่อนครับ")
-
+        desc_lbl = QLabel('กรุณาเปิด Overlay Composer แล้วกดปุ่ม "+ Giveaway" เพื่อวาง Widget ลงบนหน้าจอก่อนครับ')
         desc_lbl.setAlignment(Qt.AlignCenter)
-
         desc_lbl.setWordWrap(True)
-
         desc_lbl.setStyleSheet("font-size: 13px; color: #94a3b8;")
-
         v.addWidget(desc_lbl)
 
-
-
         btn_open = QPushButton("🌐 เปิด Overlay Composer เพื่อเพิ่ม Widget")
-
         btn_open.setStyleSheet(STYLE_BTN_PRIMARY)
-
         btn_open.clicked.connect(self._on_open_composer_clicked)
-
         v.addWidget(btn_open)
 
-
-
         btn_check = QPushButton("🔄 ตรวจสอบอีกครั้ง")
-
         btn_check.setStyleSheet(STYLE_BTN_SECONDARY)
-
         btn_check.clicked.connect(self._check_widget_status)
-
         v.addWidget(btn_check)
 
-
-
         v.addStretch()
-
         return blocker
 
-
-
-    def _on_copy_obs_link(self):
-
-        url = "http://localhost:8080/giveaway_overlay.html"
-
-        QApplication.clipboard().setText(url)
-
-        QMessageBox.information(self, "คัดลอกสำเร็จ", f"คัดลอกลิงก์สำหรับใส่ OBS Browser Source เรียบร้อยแล้วครับ:\n\n{url}")
-
-
-
     def _on_open_composer_clicked(self):
-
         try:
-
             import webbrowser
-
             webbrowser.open("http://localhost:8080/composer")
-
         except Exception:
-
             pass
-
-
-
-    def closeEvent(self, event):
-
-        self.closed.emit()
-
-        super().closeEvent(event)
-

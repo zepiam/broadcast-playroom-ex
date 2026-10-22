@@ -1,16 +1,16 @@
 {
-  "version": "2.9.6.2",
-  "changelog": "minor bug fix",
+  "version": "2.9.6.3",
+  "changelog": "- เพิ่มการปรับแต่ง หน้าสุ่มรางวัลของ Giveaway",
   "lite": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.9.6.2/patch_lite.zip",
-    "size": 29172554,
-    "sha256": "ca92f6b51259d1ae255a7a492c8015c67072b7483b28441f5acee23ce0cbc273"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.9.6.3/patch_lite.zip",
+    "size": 28678272,
+    "sha256": "40f4c19ac3801b6aa188410ac0b1b5b541f36b5dade4e724209192b593fdbc4f"
   },
   "full": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.9.6.2/patch_full.zip",
-    "size": 83935276,
-    "sha256": "edd691058b43cc9b31284a3a6a45ff90ca8453b0ea97a4b617f0e09b3f42df81"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.9.6.3/patch_full.zip",
+    "size": 83441668,
+    "sha256": "dc3463fe3de8eb7b028d2ffc663ecb28b87e73f383f90625e5171eef60984680"
   }
 }

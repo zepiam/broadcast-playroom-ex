@@ -564,6 +564,17 @@ class GiveawayService(QObject):
         """ส่งสัญญาณทดสอบแสดงผลบน OBS Overlay"""
         self.preview_requested.emit(payload or {})
 
+    def trigger_draw_preview(self, style: Optional[str] = None):
+        """ส่งสัญญาณทดสอบแสดงผลเวทีสุ่มขึ้น OBS Overlay ทันที"""
+        st = style or self.draw_animation_style
+        candidates = ["LuckyViewer_01", "CatFan_99", "StreamerTH", "SuperChatPro", "GachaLover"]
+        self.preview_requested.emit({
+            "action": "draw_preview",
+            "style": st,
+            "winner": "🎉 @LuckyViewer_01 🎉",
+            "candidates": candidates,
+        })
+
     def update_overlay_settings(self, **kwargs):
         """อัปเดตการตั้งค่าการแสดงผลบน OBS Overlay"""
         with self._lock:

@@ -7783,8 +7783,7 @@ function renderGiveawayInto(inner) {
       <div class="giveaway-draw-box style-gachapon">
         <!-- SLOT STAGE (Reel Strip / Classic Shuffle) -->
         <div class="giveaway-slot-stage">
-          <div class="giveaway-draw-header-title">🎰 สุ่มแจกรางวัลกิจกรรม</div>
-          <div class="giveaway-draw-prize-text">ของรางวัลกิจกรรม</div>
+          <div class="giveaway-draw-header-title">✨ ผลการสุ่มผู้โชคดี ✨</div>
           <div class="giveaway-slot-reel-box">
             <div class="giveaway-slot-reel-vignette"></div>
             <div class="giveaway-slot-reel-guides"></div>
@@ -7793,7 +7792,7 @@ function renderGiveawayInto(inner) {
               <div class="giveaway-slot-strip"></div>
             </div>
           </div>
-          <div class="giveaway-draw-status-label">เตรียมพร้อมสุ่มรางวัล...</div>
+          <div class="giveaway-draw-status-label">เตรียมพร้อมสุ่มผู้โชคดี...</div>
         </div>
 
         <!-- GACHAPON STAGE (Takayu Studio Style) -->
@@ -7835,11 +7834,8 @@ function renderGiveawayInto(inner) {
             <div class="gacha-cap-bottom"></div>
           </div>
           <div class="gacha-result">
+            <div class="gacha-winner-badge">🎉 ขอแสดงความยินดีกับผู้โชคดี! 🎉</div>
             <div class="gacha-winner-name">...</div>
-            <div class="gacha-prize-box">
-              <div class="gacha-prize-label">🎉 ได้รับของรางวัล 🎉</div>
-              <div class="gacha-prize-text">ของรางวัลกิจกรรม</div>
-            </div>
           </div>
         </div>
       </div>
@@ -8160,7 +8156,7 @@ function handleGiveawayEvent(data) {
 
       const chosenStyle = data.style || _giveawayConfig.draw_animation_style || 'gachapon';
       const isGacha = (chosenStyle === 'gachapon');
-      const isReel = (chosenStyle === 'slot_reel');
+      const isReel = (chosenStyle === 'slot' || chosenStyle === 'slotmachine' || chosenStyle === 'slot_reel');
 
       _gwCandidatesPool = (data.candidates && data.candidates.length > 0) ? data.candidates : [];
       _gwDrawWinner = data.winner || '';
@@ -8179,9 +8175,9 @@ function handleGiveawayEvent(data) {
         else slotStage.classList.remove('is-reel');
       }
 
-      if (drawPrize) drawPrize.textContent = data.prize || 'ของรางวัลกิจกรรม';
-      if (drawTier) drawTier.textContent = data.tier_label || 'ผู้มีสิทธิ์ลุ้นรางวัล';
-      if (drawStatus) drawStatus.textContent = '⚡ กำลังหมุนสุ่มรายชื่อ...';
+      if (drawPrize) { drawPrize.textContent = ''; drawPrize.style.display = 'none'; }
+      if (drawTier) { drawTier.textContent = ''; drawTier.style.display = 'none'; }
+      if (drawStatus) drawStatus.textContent = '⚡ กำลังสุ่มผู้โชคดี...';
 
       const pool = (_gwCandidatesPool.length > 0) ? _gwCandidatesPool : ['ผู้เข้าร่วมกิจกรรม'];
 
@@ -8231,7 +8227,7 @@ function handleGiveawayEvent(data) {
     } else if (evtType === 'giveaway_draw_winner') {
       const chosenStyle = data.style || _giveawayConfig.draw_animation_style || 'gachapon';
       const isGacha = (chosenStyle === 'gachapon');
-      const isReel = (chosenStyle === 'slot_reel');
+      const isReel = (chosenStyle === 'slot' || chosenStyle === 'slotmachine' || chosenStyle === 'slot_reel');
       const winnerName = data.author || _gwDrawWinner || 'Streamer';
       const prizeName = data.prize || 'ของรางวัลกิจกรรม';
       const pool = (data.candidates && data.candidates.length > 0) ? data.candidates : (_gwCandidatesPool.length > 0 ? _gwCandidatesPool : [winnerName]);
@@ -8240,7 +8236,7 @@ function handleGiveawayEvent(data) {
         drawBox.classList.remove('fadeout');
         if (isGacha) drawBox.classList.add('style-gachapon');
       }
-      if (drawPrize) drawPrize.textContent = prizeName;
+      if (drawPrize) { drawPrize.textContent = ''; drawPrize.style.display = 'none'; }
 
       if (_gwIsDrawRunning && _gwDrawWinner === winnerName) {
         // อนิเมชั่นกำลังเลื่อนชะลอตัวและมุ่งสู่ผู้ชนะอยู่แล้ว ปล่อยให้ทำงานอย่างสมูทจนจบ
@@ -8298,6 +8294,19 @@ function handleGiveawayEvent(data) {
       if (drawBox) { drawBox.style.display = 'none'; drawBox.classList.remove('visible'); }
       inner.classList.add('giveaway-idle');
     } else if (evtType === 'giveaway_preview') {
+      if (data.action === 'draw_preview') {
+        inner.classList.remove('giveaway-idle');
+        const st = data.style || _giveawayConfig.draw_animation_style || 'gachapon';
+        const cand = data.candidates || ['LuckyViewer_A', 'StreamFan_99', 'SuperChat_Pro'];
+        const win = data.winner || '🎉 ผู้โชคดีตัวอย่าง 🎉';
+        handleGiveawayEvent({
+          type: 'giveaway_draw_start',
+          candidates: cand,
+          winner: win,
+          style: st
+        });
+        return;
+      }
       if (data.action === 'stop' || data.show === false) {
         if (_gwCpDismissTimer) { clearTimeout(_gwCpDismissTimer); _gwCpDismissTimer = null; }
         if (_gwCpHideTimer) { clearTimeout(_gwCpHideTimer); _gwCpHideTimer = null; }

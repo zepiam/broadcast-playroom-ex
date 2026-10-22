@@ -25,7 +25,14 @@ DEFAULT_PARTICIPANT_PRESETS: List[Dict[str, Any]] = [
         "overlay_anchor": "bottom-center",
         "anim_in": "Slide From Bottom",
         "anim_out": "Slide To Bottom",
-        "custom_image_path": ""
+        "custom_image_path": "",
+        "draw_animation_style": "gachapon",
+        "draw_theme": "gold",
+        "draw_scale": 100,
+        "draw_name_size": 52,
+        "draw_offset_x": 0,
+        "draw_offset_y": 0,
+        "draw_autohide_sec": 15
     },
     {
         "id": "preset_multi3",
@@ -45,7 +52,14 @@ DEFAULT_PARTICIPANT_PRESETS: List[Dict[str, Any]] = [
         "overlay_anchor": "bottom-center",
         "anim_in": "Slide From Bottom",
         "anim_out": "Slide To Bottom",
-        "custom_image_path": ""
+        "custom_image_path": "",
+        "draw_animation_style": "gachapon",
+        "draw_theme": "gold",
+        "draw_scale": 100,
+        "draw_name_size": 52,
+        "draw_offset_x": 0,
+        "draw_offset_y": 0,
+        "draw_autohide_sec": 15
     }
 ]
 

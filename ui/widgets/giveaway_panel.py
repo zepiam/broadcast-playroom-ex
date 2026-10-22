@@ -374,6 +374,13 @@ class GiveawayPanel(QFrame):
 
         self._pending_winner_name = ""
 
+        # Test Draw state & timer
+        self._is_obs_demo_active: bool = False
+        self._is_draw_demo_active: bool = False
+        self._draw_demo_timer = QTimer(self)
+        self._draw_demo_timer.setSingleShot(True)
+        self._draw_demo_timer.timeout.connect(self._on_draw_demo_timeout)
+
 
 
         # Runtime states
@@ -1168,19 +1175,19 @@ class GiveawayPanel(QFrame):
         # Sync overlay display settings to service
 
         self.service.update_overlay_settings(
-
             overlay_display_mode=preset.get("overlay_display_mode", "banner"),
-
             overlay_scale=preset.get("overlay_scale", 100),
-
             overlay_font_size=preset.get("overlay_font_size", 100),
-
             overlay_offset_x=preset.get("overlay_offset_x", 0),
-
             overlay_offset_y=preset.get("overlay_offset_y", 0),
-
-            custom_image_path=preset.get("custom_image_path", "")
-
+            custom_image_path=preset.get("custom_image_path", ""),
+            draw_animation_style=preset.get("draw_animation_style", "gachapon"),
+            draw_theme=preset.get("draw_theme", "gold"),
+            draw_scale=preset.get("draw_scale", 100),
+            draw_name_size=preset.get("draw_name_size", 52),
+            draw_offset_x=preset.get("draw_offset_x", 0),
+            draw_offset_y=preset.get("draw_offset_y", 0),
+            draw_autohide_sec=preset.get("draw_autohide_sec", 15)
         )
 
 
@@ -1938,12 +1945,24 @@ class GiveawayPanel(QFrame):
 
 
         self.lbl_pool_info = QLabel("ผู้มีสิทธิ์ในกลุ่มนี้: 0 คน")
-
         self.lbl_pool_info.setStyleSheet("color: #38bdf8; font-weight: bold;")
-
         cv.addWidget(self.lbl_pool_info)
 
+        # Quick Draw Style Selector in Step 3
+        row_s3_style = QHBoxLayout()
+        row_s3_style.setSpacing(8)
+        lbl_s3_st = QLabel("🎰 รูปแบบการสุ่ม:")
+        lbl_s3_st.setStyleSheet("font-weight: bold; color: #f59e0b;")
+        row_s3_style.addWidget(lbl_s3_st)
 
+        self.cmb_step3_draw_style = QComboBox()
+        self._setup_combobox(self.cmb_step3_draw_style)
+        self.cmb_step3_draw_style.addItem("⭐ Gachapon (กาชาปองระเบิดดาว)", "gachapon")
+        self.cmb_step3_draw_style.addItem("🎰 Slot Machine (ตู้สล็อตหมุนรายชื่อ)", "slot")
+        self.cmb_step3_draw_style.addItem("🎲 Smooth Shuffle (สลับการ์ดรายชื่อ)", "shuffle")
+        self.cmb_step3_draw_style.currentIndexChanged.connect(self._on_step3_style_changed)
+        row_s3_style.addWidget(self.cmb_step3_draw_style, 1)
+        cv.addLayout(row_s3_style)
 
         # Draw Launch Button
 
@@ -2037,9 +2056,25 @@ class GiveawayPanel(QFrame):
         available = [p for p in all_p if p.author not in drawn_names]
         self.lbl_pool_info.setText(f"ผู้มีสิทธิ์ลุ้นทั้งหมด: {len(available)} คน (จากทั้งหมด {len(all_p)} คน)")
 
+    def _on_step3_style_changed(self, idx: int):
+        style = self.cmb_step3_draw_style.currentData() if hasattr(self, "cmb_step3_draw_style") else "gachapon"
+        if hasattr(self, "cmb_draw_style"):
+            idx_ds = self.cmb_draw_style.findData(style)
+            if idx_ds >= 0 and self.cmb_draw_style.currentIndex() != idx_ds:
+                self.cmb_draw_style.blockSignals(True)
+                self.cmb_draw_style.setCurrentIndex(idx_ds)
+                self.cmb_draw_style.blockSignals(False)
+        self.service.update_overlay_settings(draw_animation_style=style)
+
     def _setup_live_step3_display(self):
         self._update_step3_pool_info()
         self.box_winner_announce.setVisible(False)
+        if hasattr(self, "cmb_step3_draw_style"):
+            idx = self.cmb_step3_draw_style.findData(self.service.draw_animation_style)
+            if idx >= 0:
+                self.cmb_step3_draw_style.blockSignals(True)
+                self.cmb_step3_draw_style.setCurrentIndex(idx)
+                self.cmb_step3_draw_style.blockSignals(False)
 
     
 
@@ -2059,7 +2094,16 @@ class GiveawayPanel(QFrame):
 
         self._slot_candidates = [p.author for p in available]
         self._pending_winner_name = winner.author
-        self._slot_ticks_left = 25
+
+        # ปรับเวลาแสดงใน GUI ให้สอดคล้องกับอนิเมชั่นบน OBS (Gachapon: ~3.4s, Slot: ~3.5s, Shuffle: ~5.5s)
+        draw_style = getattr(self.service, "draw_animation_style", "gachapon")
+        if draw_style == "shuffle":
+            self._slot_ticks_left = 110
+        elif draw_style in ("slot", "slotmachine", "slot_reel"):
+            self._slot_ticks_left = 70
+        else:
+            self._slot_ticks_left = 68
+
         self.btn_spin_draw.setEnabled(False)
         self._slot_timer.start()
 
@@ -2789,9 +2833,137 @@ class GiveawayPanel(QFrame):
         cv.addSpacing(6)
         cv.addLayout(row_anim)
 
+        # ─────────────────────────────────────────────────────────────
+        # Lucky Draw Stage Styling (เวทีสุ่มผู้โชคดีบน OBS)
+        # ─────────────────────────────────────────────────────────────
+        cv.addSpacing(14)
+        lbl_draw_sec = QLabel("🎲 หน้าสุ่มผู้โชคดี (Lucky Draw Stage Overlay):")
+        lbl_draw_sec.setStyleSheet("font-size: 13px; font-weight: bold; color: #fbbf24;")
+        cv.addWidget(lbl_draw_sec)
+
+        # Style & Theme Row
+        row_draw_style = QHBoxLayout()
+        row_draw_style.setSpacing(10)
+
+        col_ds = QVBoxLayout()
+        col_ds.setSpacing(4)
+        col_ds.addWidget(QLabel("🎰 รูปแบบการสุ่ม:"))
+        self.cmb_draw_style = QComboBox()
+        self._setup_combobox(self.cmb_draw_style)
+        self.cmb_draw_style.addItem("⭐ Gachapon (กาชาปองระเบิดดาว)", "gachapon")
+        self.cmb_draw_style.addItem("🎰 Slot Machine (ตู้สล็อตหมุนรายชื่อ)", "slot")
+        self.cmb_draw_style.addItem("🎲 Smooth Shuffle (สลับการ์ดรายชื่อ)", "shuffle")
+        self.cmb_draw_style.currentIndexChanged.connect(self._sync_draw_live_settings)
+        col_ds.addWidget(self.cmb_draw_style)
+        row_draw_style.addLayout(col_ds, 1)
+
+        col_dt = QVBoxLayout()
+        col_dt.setSpacing(4)
+        col_dt.addWidget(QLabel("🎨 ธีมสีเวทีสุ่ม:"))
+        self.cmb_draw_theme = QComboBox()
+        self._setup_combobox(self.cmb_draw_theme)
+        self.cmb_draw_theme.addItem("✨ สีทองหรูหรา (Gold)", "gold")
+        self.cmb_draw_theme.addItem("⚡ นีออนไซเบอร์พังก์ (Cyberpunk)", "cyberpunk")
+        self.cmb_draw_theme.addItem("🔮 ม่วงเวทมนตร์ (Violet)", "violet")
+        self.cmb_draw_theme.addItem("🌿 มรกตสดใส (Emerald)", "emerald")
+        self.cmb_draw_theme.addItem("🌸 ซากุระชมพู (Sakura)", "sakura")
+        self.cmb_draw_theme.addItem("❄️ น้ำแข็งสีฟ้า (Ice)", "ice")
+        self.cmb_draw_theme.addItem("💎 ทับทิมแดง (Ruby)", "ruby")
+        self.cmb_draw_theme.currentIndexChanged.connect(self._sync_draw_live_settings)
+        col_dt.addWidget(self.cmb_draw_theme)
+        row_draw_style.addLayout(col_dt, 1)
+
+        cv.addLayout(row_draw_style)
+
+        # Draw Sliders (Scale, Name Font Size, Offset X, Offset Y)
+        sl_draw = QVBoxLayout()
+        sl_draw.setSpacing(6)
+
+        # Draw Scale slider
+        row_d_sc = QHBoxLayout()
+        row_d_sc.addWidget(QLabel("ขนาดเวทีสุ่ม (Scale):"))
+        self.lbl_val_draw_scale = QLabel("100%")
+        self.lbl_val_draw_scale.setFixedWidth(46)
+        self.lbl_val_draw_scale.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.lbl_val_draw_scale.setStyleSheet("color: #38bdf8; font-weight: bold;")
+        self.slider_draw_scale = QSlider(Qt.Horizontal)
+        self.slider_draw_scale.setRange(50, 180)
+        self.slider_draw_scale.setValue(100)
+        self.slider_draw_scale.valueChanged.connect(lambda v: self.lbl_val_draw_scale.setText(f"{v}%"))
+        self.slider_draw_scale.valueChanged.connect(self._sync_draw_live_settings)
+        row_d_sc.addWidget(self.slider_draw_scale, 1)
+        row_d_sc.addWidget(self.lbl_val_draw_scale)
+        sl_draw.addLayout(row_d_sc)
+
+        # Draw Winner Name Font Size slider
+        row_d_fn = QHBoxLayout()
+        row_d_fn.addWidget(QLabel("ขนาดชื่อผู้โชคดี:"))
+        self.lbl_val_draw_name_size = QLabel("52px")
+        self.lbl_val_draw_name_size.setFixedWidth(46)
+        self.lbl_val_draw_name_size.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.lbl_val_draw_name_size.setStyleSheet("color: #38bdf8; font-weight: bold;")
+        self.slider_draw_name_size = QSlider(Qt.Horizontal)
+        self.slider_draw_name_size.setRange(28, 84)
+        self.slider_draw_name_size.setValue(52)
+        self.slider_draw_name_size.valueChanged.connect(lambda v: self.lbl_val_draw_name_size.setText(f"{v}px"))
+        self.slider_draw_name_size.valueChanged.connect(self._sync_draw_live_settings)
+        row_d_fn.addWidget(self.slider_draw_name_size, 1)
+        row_d_fn.addWidget(self.lbl_val_draw_name_size)
+        sl_draw.addLayout(row_d_fn)
+
+        # Draw Offset X
+        row_d_ox = QHBoxLayout()
+        row_d_ox.addWidget(QLabel("เลื่อนตำแหน่ง X:"))
+        self.lbl_val_draw_ox = QLabel("0px")
+        self.lbl_val_draw_ox.setFixedWidth(52)
+        self.lbl_val_draw_ox.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.lbl_val_draw_ox.setStyleSheet("color: #f59e0b; font-weight: bold;")
+        self.slider_draw_ox = QSlider(Qt.Horizontal)
+        self.slider_draw_ox.setRange(-400, 400)
+        self.slider_draw_ox.setValue(0)
+        self.slider_draw_ox.valueChanged.connect(lambda v: self.lbl_val_draw_ox.setText(f"{v:+d}px" if v != 0 else "0px"))
+        self.slider_draw_ox.valueChanged.connect(self._sync_draw_live_settings)
+        row_d_ox.addWidget(self.slider_draw_ox, 1)
+        row_d_ox.addWidget(self.lbl_val_draw_ox)
+        sl_draw.addLayout(row_d_ox)
+
+        # Draw Offset Y
+        row_d_oy = QHBoxLayout()
+        row_d_oy.addWidget(QLabel("เลื่อนตำแหน่ง Y:"))
+        self.lbl_val_draw_oy = QLabel("0px")
+        self.lbl_val_draw_oy.setFixedWidth(52)
+        self.lbl_val_draw_oy.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.lbl_val_draw_oy.setStyleSheet("color: #f59e0b; font-weight: bold;")
+        self.slider_draw_oy = QSlider(Qt.Horizontal)
+        self.slider_draw_oy.setRange(-400, 400)
+        self.slider_draw_oy.setValue(0)
+        self.slider_draw_oy.valueChanged.connect(lambda v: self.lbl_val_draw_oy.setText(f"{v:+d}px" if v != 0 else "0px"))
+        self.slider_draw_oy.valueChanged.connect(self._sync_draw_live_settings)
+        row_d_oy.addWidget(self.slider_draw_oy, 1)
+        row_d_oy.addWidget(self.lbl_val_draw_oy)
+        sl_draw.addLayout(row_d_oy)
+
+        cv.addLayout(sl_draw)
+
+        # Draw Autohide & Test Button
+        row_d_bot = QHBoxLayout()
+        row_d_bot.addWidget(QLabel("ซ่อนผลสุ่มอัตโนมัติ:"))
+        self.spin_draw_autohide = QSpinBox()
+        self.spin_draw_autohide.setRange(0, 60)
+        self.spin_draw_autohide.setValue(15)
+        self.spin_draw_autohide.setSuffix(" วินาที (0 = ไม่ซ่อน)")
+        self.spin_draw_autohide.valueChanged.connect(self._sync_draw_live_settings)
+        row_d_bot.addWidget(self.spin_draw_autohide, 1)
+
+        self.btn_test_draw_obs = QPushButton("👁️ ทดสอบหน้าสุ่มบน OBS")
+        self.btn_test_draw_obs.setStyleSheet(STYLE_BTN_SECONDARY)
+        self.btn_test_draw_obs.setCursor(Qt.PointingHandCursor)
+        self.btn_test_draw_obs.clicked.connect(self._test_draw_on_obs)
+        row_d_bot.addWidget(self.btn_test_draw_obs)
+
+        cv.addLayout(row_d_bot)
+
         cv.addStretch()
-
-
 
         scroll.setWidget(content)
 
@@ -2936,7 +3108,54 @@ class GiveawayPanel(QFrame):
                 self.cmb_anim_out.setCurrentIndex(idx_ao)
                 self.cmb_anim_out.blockSignals(False)
 
+        # Load Draw Stage Settings
+        if hasattr(self, "cmb_draw_style"):
+            d_st = p.get("draw_animation_style", "gachapon")
+            idx_ds = self.cmb_draw_style.findData(d_st)
+            if idx_ds >= 0:
+                self.cmb_draw_style.blockSignals(True)
+                self.cmb_draw_style.setCurrentIndex(idx_ds)
+                self.cmb_draw_style.blockSignals(False)
+
+        if hasattr(self, "cmb_draw_theme"):
+            d_th = p.get("draw_theme", "gold")
+            idx_dt = self.cmb_draw_theme.findData(d_th)
+            if idx_dt >= 0:
+                self.cmb_draw_theme.blockSignals(True)
+                self.cmb_draw_theme.setCurrentIndex(idx_dt)
+                self.cmb_draw_theme.blockSignals(False)
+
+        if hasattr(self, "slider_draw_scale"):
+            self.slider_draw_scale.blockSignals(True)
+            self.slider_draw_scale.setValue(p.get("draw_scale", 100))
+            self.lbl_val_draw_scale.setText(f"{self.slider_draw_scale.value()}%")
+            self.slider_draw_scale.blockSignals(False)
+
+        if hasattr(self, "slider_draw_name_size"):
+            self.slider_draw_name_size.blockSignals(True)
+            self.slider_draw_name_size.setValue(p.get("draw_name_size", 52))
+            self.lbl_val_draw_name_size.setText(f"{self.slider_draw_name_size.value()}px")
+            self.slider_draw_name_size.blockSignals(False)
+
+        if hasattr(self, "slider_draw_ox"):
+            self.slider_draw_ox.blockSignals(True)
+            self.slider_draw_ox.setValue(p.get("draw_offset_x", 0))
+            self.lbl_val_draw_ox.setText(f"{self.slider_draw_ox.value():+d}px" if self.slider_draw_ox.value() != 0 else "0px")
+            self.slider_draw_ox.blockSignals(False)
+
+        if hasattr(self, "slider_draw_oy"):
+            self.slider_draw_oy.blockSignals(True)
+            self.slider_draw_oy.setValue(p.get("draw_offset_y", 0))
+            self.lbl_val_draw_oy.setText(f"{self.slider_draw_oy.value():+d}px" if self.slider_draw_oy.value() != 0 else "0px")
+            self.slider_draw_oy.blockSignals(False)
+
+        if hasattr(self, "spin_draw_autohide"):
+            self.spin_draw_autohide.blockSignals(True)
+            self.spin_draw_autohide.setValue(p.get("draw_autohide_sec", 15))
+            self.spin_draw_autohide.blockSignals(False)
+
         self._sync_overlay_live_settings()
+        self._sync_draw_live_settings()
 
 
 
@@ -2957,6 +3176,82 @@ class GiveawayPanel(QFrame):
         self._sync_overlay_live_settings()
 
 
+
+    def _sync_draw_live_settings(self):
+        style = self.cmb_draw_style.currentData() if hasattr(self, "cmb_draw_style") else "gachapon"
+        theme = self.cmb_draw_theme.currentData() if hasattr(self, "cmb_draw_theme") else "gold"
+        scale = self.slider_draw_scale.value() if hasattr(self, "slider_draw_scale") else 100
+        name_size = self.slider_draw_name_size.value() if hasattr(self, "slider_draw_name_size") else 52
+        ox = self.slider_draw_ox.value() if hasattr(self, "slider_draw_ox") else 0
+        oy = self.slider_draw_oy.value() if hasattr(self, "slider_draw_oy") else 0
+        autohide = self.spin_draw_autohide.value() if hasattr(self, "spin_draw_autohide") else 15
+
+        if hasattr(self, "cmb_step3_draw_style"):
+            idx = self.cmb_step3_draw_style.findData(style)
+            if idx >= 0 and self.cmb_step3_draw_style.currentIndex() != idx:
+                self.cmb_step3_draw_style.blockSignals(True)
+                self.cmb_step3_draw_style.setCurrentIndex(idx)
+                self.cmb_step3_draw_style.blockSignals(False)
+
+        self.service.update_overlay_settings(
+            draw_animation_style=style,
+            draw_theme=theme,
+            draw_scale=scale,
+            draw_name_size=name_size,
+            draw_offset_x=ox,
+            draw_offset_y=oy,
+            draw_autohide_sec=autohide
+        )
+
+    def _toggle_draw_demo_obs(self):
+        """เปิด / ปิด ทดสอบหน้าสุ่มผู้โชคดีบนจอ OBS Studio ทันทีแบบ Toggle"""
+        if getattr(self, "_is_draw_demo_active", False):
+            # ปิดการทดสอบทันที
+            self._stop_draw_demo_obs()
+        else:
+            # เริ่มการทดสอบ
+            self._is_draw_demo_active = True
+            self.btn_test_draw_obs.setText("⏹️ ปิดทดสอบหน้าสุ่ม")
+            self.btn_test_draw_obs.setStyleSheet("""
+                QPushButton {
+                    background-color: #dc2626;
+                    color: #ffffff;
+                    border: 1px solid #ef4444;
+                    border-radius: 6px;
+                    padding: 6px 14px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #b91c1c;
+                }
+            """)
+            self._sync_draw_live_settings()
+            self.service.trigger_draw_preview()
+
+            # ตั้งเวลารีเซ็ตสถานะปุ่มตาม autohide (ถ้าตั้งไว้ > 0)
+            autohide = self.spin_draw_autohide.value() if hasattr(self, "spin_draw_autohide") else 15
+            if autohide > 0:
+                total_ms = (autohide + 4) * 1000
+                self._draw_demo_timer.start(total_ms)
+
+    def _stop_draw_demo_obs(self):
+        """หยุดการทดสอบหน้าสุ่ม และส่งคำสั่งรีเซ็ตไปยัง OBS ทันที"""
+        self._is_draw_demo_active = False
+        if hasattr(self, "_draw_demo_timer"):
+            self._draw_demo_timer.stop()
+        if hasattr(self, "btn_test_draw_obs"):
+            self.btn_test_draw_obs.setText("👁️ ทดสอบหน้าสุ่มบน OBS")
+            self.btn_test_draw_obs.setStyleSheet(STYLE_BTN_SECONDARY)
+        self.service.broadcast_draw_reset()
+
+    def _on_draw_demo_timeout(self):
+        """เมื่อหน้าสุ่มหมดเวลาแสดงผลอัตโนมัติ ให้คืนสถานะปุ่มกลับมาเป็นปกติ"""
+        self._is_draw_demo_active = False
+        if hasattr(self, "btn_test_draw_obs"):
+            self.btn_test_draw_obs.setText("👁️ ทดสอบหน้าสุ่มบน OBS")
+            self.btn_test_draw_obs.setStyleSheet(STYLE_BTN_SECONDARY)
+
+    _test_draw_on_obs = _toggle_draw_demo_obs
 
     def _sync_overlay_live_settings(self):
         """ส่งการตั้งค่า Overlay (Scale, Font, X/Y Offset, Mode, Image) ไปยัง Service และจอ OBS ทันทีแบบ Realtime"""
@@ -3174,8 +3469,14 @@ class GiveawayPanel(QFrame):
 
             "overlay_offset_y": self.slider_oy.value(),
             "overlay_anim_in": self.cmb_anim_in.currentData() if hasattr(self, "cmb_anim_in") else "slide",
-            "overlay_anim_out": self.cmb_anim_out.currentData() if hasattr(self, "cmb_anim_out") else "slide" 
-
+            "overlay_anim_out": self.cmb_anim_out.currentData() if hasattr(self, "cmb_anim_out") else "slide",
+            "draw_animation_style": self.cmb_draw_style.currentData() if hasattr(self, "cmb_draw_style") else "gachapon",
+            "draw_theme": self.cmb_draw_theme.currentData() if hasattr(self, "cmb_draw_theme") else "gold",
+            "draw_scale": self.slider_draw_scale.value() if hasattr(self, "slider_draw_scale") else 100,
+            "draw_name_size": self.slider_draw_name_size.value() if hasattr(self, "slider_draw_name_size") else 52,
+            "draw_offset_x": self.slider_draw_ox.value() if hasattr(self, "slider_draw_ox") else 0,
+            "draw_offset_y": self.slider_draw_oy.value() if hasattr(self, "slider_draw_oy") else 0,
+            "draw_autohide_sec": self.spin_draw_autohide.value() if hasattr(self, "spin_draw_autohide") else 15
         }
 
         self.preset_mgr.save_participant_preset(p_data)

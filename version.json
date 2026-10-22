@@ -1,16 +1,16 @@
 {
-  "version": "2.9.6",
-  "changelog": "- ออกแบบหน้าต่าง Giveaway ใหม่ทั้งหมด",
+  "version": "2.9.6.1",
+  "changelog": "- Minor bug fix\n- ออกแบบหน้าต่าง Giveaway ใหม่ทั้งหมด\n- เพิ่มระบบสุ่มกิจกรรมด่วน (Quick Randomizer)\n- ซ่อนปุ่มบนแถบแชทสดได้ผ่านการคลิกขวา",
   "lite": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.9.6/patch_lite.zip",
-    "size": 29171073,
-    "sha256": "e1d39914519a4f1c3014bbeaa834a1efc072ef7ac7b21e75069f05e9ce67d033"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.9.6.1/patch_lite.zip",
+    "size": 29182673,
+    "sha256": "7ecf3071166236dfed26c77a18c2261ebaf0570400dadead10f9e103c30f6957"
   },
   "full": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.9.6/patch_full.zip",
-    "size": 83934496,
-    "sha256": "7a392f19eda5b35a9ef689db527313a126f084680dfe54a588ab4d943be6be74"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.9.6.1/patch_full.zip",
+    "size": 83946245,
+    "sha256": "35b131df5185ee13f366dc773f3fb7ef33c7b942cbc36adaaf8b774195515750"
   }
 }

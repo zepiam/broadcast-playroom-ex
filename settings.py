@@ -754,6 +754,7 @@ class AppSettings:
     notifications: dict = field(default_factory=dict)
     notification: dict = field(default_factory=dict)  # legacy flat (สำหรับ backward compat)
     topbar_hidden_buttons: list = field(default_factory=list)  # ปุ่มบน Topbar ที่ถูกซ่อน ["game_overlay", "overlay_plus", "user_manager"]
+    chat_hidden_buttons: list = field(default_factory=list)  # ปุ่มบนแถบแชทที่ถูกซ่อน ["ask", "giveaway", "replie", "randomizer", "clip_marker", "code_mute"]
 
     def save_settings(self) -> None:
         """★ method wrapper — เรียก module-level save_settings(self)
@@ -1130,6 +1131,7 @@ class AppSettings:
             "notifications": dict(self.notifications),
             "notification": dict(self.notification),
             "topbar_hidden_buttons": list(self.topbar_hidden_buttons),
+            "chat_hidden_buttons": list(self.chat_hidden_buttons),
         }
 
     @classmethod
@@ -1961,6 +1963,8 @@ class AppSettings:
             s.notification = dict(data["notification"])
         if "topbar_hidden_buttons" in data and isinstance(data["topbar_hidden_buttons"], list):
             s.topbar_hidden_buttons = [str(x) for x in data["topbar_hidden_buttons"]]
+        if "chat_hidden_buttons" in data and isinstance(data["chat_hidden_buttons"], list):
+            s.chat_hidden_buttons = [str(x) for x in data["chat_hidden_buttons"]]
         return s
 
     # ------------------------------------------------------------------ #

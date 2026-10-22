@@ -127,6 +127,11 @@ def pack_patch(build_type: str) -> str:
     dist_version_json = internal_dir / "version.json"
     if local_version_json.exists() and internal_dir.exists():
         shutil.copy2(local_version_json, dist_version_json)
+    # ★ ซิงค์ assets ล่าสุด (รวมถึงภาพ splash ทั้งหมด) ไปยัง _internal/assets ก่อนแพ็ค patch
+    local_assets = Path("assets")
+    dist_assets = internal_dir / "assets"
+    if local_assets.is_dir() and internal_dir.is_dir():
+        shutil.copytree(local_assets, dist_assets, dirs_exist_ok=True)
     count = 0
     total_size = 0
     with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:

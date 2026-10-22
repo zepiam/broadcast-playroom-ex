@@ -1,16 +1,16 @@
 {
-  "version": "2.9.4",
-  "changelog": "- ปรับการอ่าน TTS ไทย อังกฤษ ให้ใช้โมเดลภาษาไทย เพื่อให้เสียงอ่านเข้ากัน\n- เพิ่มฟีเจอร์ REPLIE สำหรับใช้คำสั่งแทน Chat Bot ขึ้นบน Overlay (อ่านเพิ่มเติมในเว็บไซต์)\n- อัพเดท DOCK รองรับ REPLIE เพิ่มเติม\n- อัพเกรดเพิ่มประสิทธิภาพการเปิดโปรแกรมให้รวดเร็วขึ้น",
+  "version": "2.9.6",
+  "changelog": "- ออกแบบหน้าต่าง Giveaway ใหม่ทั้งหมด",
   "lite": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.9.4/patch_lite.zip",
-    "size": 20516876,
-    "sha256": "1667fb4d26acdf16d121b4a9ea6d331e6672252b6940d2767b3b06a8b4af31cf"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.9.6/patch_lite.zip",
+    "size": 29171073,
+    "sha256": "e1d39914519a4f1c3014bbeaa834a1efc072ef7ac7b21e75069f05e9ce67d033"
   },
   "full": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.9.4/patch_full.zip",
-    "size": 75280761,
-    "sha256": "505477ad86a68e41f6b0878c7940285420f623aaab14420f487db7efbbb9758b"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.9.6/patch_full.zip",
+    "size": 83934496,
+    "sha256": "7a392f19eda5b35a9ef689db527313a126f084680dfe54a588ab4d943be6be74"
   }
 }

@@ -1977,8 +1977,7 @@
     isolation: isolate;
     display: none;
     opacity: 0;
-    transform: translateY(-20px);
-    transition: opacity 0.35s ease, transform 0.35s ease;
+    transform: translateY(0);
     z-index: 100;
   }
   .giveaway-cp-box.visible {
@@ -2120,7 +2119,8 @@
     isolation: isolate;
     z-index: 100;
     opacity: 0;
-    transition: opacity 0.4s ease, transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: transform, opacity;
+    transition: opacity 0.38s cubic-bezier(0.25, 1, 0.5, 1), transform 0.42s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .giveaway-image-card-wrapper {
@@ -2271,37 +2271,37 @@
     box-shadow: 0 4px 12px rgba(0,0,0,0.5);
   }
 
-  /* FLY-IN ANIMATIONS: FROM ALL 8 DIRECTIONS / CORNERS / FADE / ZOOM / BOUNCE */
+  /* FLY-IN & FLY-OUT ANIMATIONS: SMOOTH VELOCITY & NO SCREEN BLUR */
   .giveaway-cp-box.anim-in-from-top, .giveaway-image-box.anim-in-from-top {
-    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px) - 120vh)) scale(var(--scale, 1)) !important;
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px) - 420px)) scale(var(--scale, 1)) !important;
     opacity: 0 !important;
   }
   .giveaway-cp-box.anim-in-from-bottom, .giveaway-image-box.anim-in-from-bottom {
-    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px) + 120vh)) scale(var(--scale, 1)) !important;
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px) + 420px)) scale(var(--scale, 1)) !important;
     opacity: 0 !important;
   }
   .giveaway-cp-box.anim-in-from-left, .giveaway-image-box.anim-in-from-left {
-    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) - 120vw), calc(var(--base-ty) + var(--offset-y, 0px))) scale(var(--scale, 1)) !important;
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) - 560px), calc(var(--base-ty) + var(--offset-y, 0px))) scale(var(--scale, 1)) !important;
     opacity: 0 !important;
   }
   .giveaway-cp-box.anim-in-from-right, .giveaway-image-box.anim-in-from-right {
-    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) + 120vw), calc(var(--base-ty) + var(--offset-y, 0px))) scale(var(--scale, 1)) !important;
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) + 560px), calc(var(--base-ty) + var(--offset-y, 0px))) scale(var(--scale, 1)) !important;
     opacity: 0 !important;
   }
   .giveaway-cp-box.anim-in-from-top-left, .giveaway-image-box.anim-in-from-top-left {
-    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) - 120vw), calc(var(--base-ty) + var(--offset-y, 0px) - 120vh)) scale(var(--scale, 1)) !important;
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) - 560px), calc(var(--base-ty) + var(--offset-y, 0px) - 420px)) scale(var(--scale, 1)) !important;
     opacity: 0 !important;
   }
   .giveaway-cp-box.anim-in-from-top-right, .giveaway-image-box.anim-in-from-top-right {
-    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) + 120vw), calc(var(--base-ty) + var(--offset-y, 0px) - 120vh)) scale(var(--scale, 1)) !important;
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) + 560px), calc(var(--base-ty) + var(--offset-y, 0px) - 420px)) scale(var(--scale, 1)) !important;
     opacity: 0 !important;
   }
   .giveaway-cp-box.anim-in-from-bottom-left, .giveaway-image-box.anim-in-from-bottom-left {
-    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) - 120vw), calc(var(--base-ty) + var(--offset-y, 0px) + 120vh)) scale(var(--scale, 1)) !important;
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) - 560px), calc(var(--base-ty) + var(--offset-y, 0px) + 420px)) scale(var(--scale, 1)) !important;
     opacity: 0 !important;
   }
   .giveaway-cp-box.anim-in-from-bottom-right, .giveaway-image-box.anim-in-from-bottom-right {
-    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) + 120vw), calc(var(--base-ty) + var(--offset-y, 0px) + 120vh)) scale(var(--scale, 1)) !important;
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) + 560px), calc(var(--base-ty) + var(--offset-y, 0px) + 420px)) scale(var(--scale, 1)) !important;
     opacity: 0 !important;
   }
   .giveaway-cp-box.anim-in-fade, .giveaway-image-box.anim-in-fade {
@@ -2309,12 +2309,21 @@
     opacity: 0 !important;
   }
   .giveaway-cp-box.anim-in-zoom, .giveaway-image-box.anim-in-zoom {
-    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px))) scale(0.2) !important;
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px))) scale(0.4) !important;
     opacity: 0 !important;
   }
   .giveaway-cp-box.anim-in-bounce, .giveaway-image-box.anim-in-bounce {
-    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px))) scale(0.6) !important;
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px))) scale(0.7) !important;
     opacity: 0 !important;
+  }
+
+.giveaway-cp-box.anim-out-active, .giveaway-image-box.anim-out-active {
+    display: block !important;
+    opacity: 0 !important;
+    transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) + var(--exit-dx, 0px)),
+                         calc(var(--base-ty) + var(--offset-y, 0px) + var(--exit-dy, 0px)))
+               scale(calc(var(--scale, 1) * var(--exit-scale, 1))) !important;
+    transition: opacity 0.38s cubic-bezier(0.4, 0, 0.2, 1), transform 0.44s cubic-bezier(0.32, 0, 0.67, 0) !important;
   }
 
   .giveaway-cp-box.visible, .giveaway-image-box.visible {
@@ -4518,6 +4527,8 @@ function connectWs() {
       }
     } else if (data.type === 'eval_js') {
       try { eval(data.js); } catch(e) {}
+    } else if (data.type === 'randomizer_spin') {
+      handleRandomizerSpin(data);
     }
   };
   // ★ WS reconnect — ถ้าล้มเหลวเกิน 3 ครั้ง (server ปิด) → reload ทั้งหน้า
@@ -7023,6 +7034,7 @@ requestAnimationFrame(askTimebarFrame);
 // Giveaway Widget Handler (แจกรางวัล & เช็คชื่อ)
 // ════════════════════════════════════════════════════════════
 let _giveawayState = null;
+let _gwIsAnimatingOut = false;
 let _giveawayConfig = {
   overlay_display_mode: 'banner',
   overlay_has_image: false,
@@ -7504,13 +7516,52 @@ function applyGiveawayConfigToInner(inner, cfg) {
     'pos-top-right', 'pos-top-left', 'pos-bottom-right', 'pos-bottom-left',
     'pos-top', 'pos-bottom', 'pos-left', 'pos-right', 'pos-center'
   ];
+  const fontScale = (c.overlay_font_size || 100) / 100;
   allBoxes.forEach(box => {
     posClasses.forEach(p => box.classList.remove(p));
     box.classList.add(`pos-${pos}`);
     box.style.setProperty('--offset-x', (c.overlay_offset_x || 0) + 'px');
     box.style.setProperty('--offset-y', (c.overlay_offset_y || 0) + 'px');
     box.style.setProperty('--scale', ((c.overlay_scale || 100) / 100));
+    box.style.setProperty('--font-scale', fontScale);
   });
+
+  if (cpBox) {
+    const codeEl = cpBox.querySelector('.giveaway-cp-code');
+    if (codeEl) codeEl.style.fontSize = Math.round(26 * fontScale) + 'px';
+    const instEl = cpBox.querySelector('.giveaway-cp-instruction');
+    if (instEl) instEl.style.fontSize = Math.round(13 * fontScale) + 'px';
+    const titleEl = cpBox.querySelector('.giveaway-cp-badge');
+    if (titleEl) titleEl.style.fontSize = Math.round(13 * fontScale) + 'px';
+    const timerEl = cpBox.querySelector('.giveaway-cp-timer');
+    if (timerEl) timerEl.style.fontSize = Math.round(12.5 * fontScale) + 'px';
+    const countEl = cpBox.querySelector('.giveaway-cp-count');
+    if (countEl) countEl.style.fontSize = Math.round(11.5 * fontScale) + 'px';
+  }
+  if (imgBox) {
+    const timerEl = imgBox.querySelector('.giveaway-img-timer-text');
+    if (timerEl) timerEl.style.fontSize = Math.round(12 * fontScale) + 'px';
+    const countEl = imgBox.querySelector('.giveaway-img-count-text');
+    if (countEl) countEl.style.fontSize = Math.round(12 * fontScale) + 'px';
+  }
+
+  // Real-time display mode toggle during preview/active (ignore if currently animating out)
+  if (!_gwIsAnimatingOut) {
+    const isCpVis = cpBox && cpBox.classList.contains('visible');
+    const isImgVis = imgBox && imgBox.classList.contains('visible');
+    if (isCpVis || isImgVis) {
+      if (c.overlay_display_mode === 'none') {
+        if (cpBox) { cpBox.style.display = 'none'; cpBox.classList.remove('visible'); }
+        if (imgBox) { imgBox.style.display = 'none'; imgBox.classList.remove('visible'); }
+      } else if (c.overlay_display_mode === 'image' && c.overlay_has_image) {
+        if (cpBox) { cpBox.style.display = 'none'; cpBox.classList.remove('visible'); }
+        if (imgBox) { imgBox.style.display = 'block'; imgBox.classList.add('visible'); }
+      } else {
+        if (imgBox) { imgBox.style.display = 'none'; imgBox.classList.remove('visible'); }
+        if (cpBox) { cpBox.style.display = 'block'; cpBox.classList.add('visible'); }
+      }
+    }
+  }
 
   const borderTheme = c.overlay_border_theme || 'rainbow';
   const themes = ['rainbow', 'cyberpunk', 'gold', 'ice', 'sakura', 'emerald', 'ruby', 'violet', 'blue'];
@@ -7855,6 +7906,63 @@ function handleGiveawayEvent(data) {
       return `anim-in-${animIn}`;
     }
 
+    function applyFlyOut(box, animOut, pos) {
+      if (!box) return;
+      pos = pos || 'top-right';
+      animOut = animOut || 'slide';
+
+      let dir = animOut;
+      if (dir === 'slide') {
+        if (pos.includes('right')) dir = 'to-right';
+        else if (pos.includes('left')) dir = 'to-left';
+        else if (pos.includes('bottom')) dir = 'to-bottom';
+        else dir = 'to-top';
+      } else if (dir.startsWith('from-')) {
+        dir = dir.replace('from-', 'to-');
+      }
+
+      let dx = 0, dy = 0, scale = 1;
+      const isAtRight = pos.includes('right');
+      const isAtLeft = pos.includes('left');
+      const isAtTop = pos.includes('top');
+      const isAtBottom = pos.includes('bottom');
+
+      if (dir === 'to-right') {
+        dx = isAtLeft ? 2200 : 600;
+      } else if (dir === 'to-left') {
+        dx = isAtRight ? -2200 : -600;
+      } else if (dir === 'to-top') {
+        dy = isAtBottom ? -1300 : -450;
+      } else if (dir === 'to-bottom') {
+        dy = isAtTop ? 1300 : 450;
+      } else if (dir === 'to-top-left') {
+        dx = isAtRight ? -2200 : -600;
+        dy = isAtBottom ? -1300 : -450;
+      } else if (dir === 'to-top-right') {
+        dx = isAtLeft ? 2200 : 600;
+        dy = isAtBottom ? -1300 : -450;
+      } else if (dir === 'to-bottom-left') {
+        dx = isAtRight ? -2200 : -600;
+        dy = isAtTop ? 1300 : 450;
+      } else if (dir === 'to-bottom-right') {
+        dx = isAtLeft ? 2200 : 600;
+        dy = isAtTop ? 1300 : 450;
+      } else if (dir === 'zoom') {
+        scale = 0.2;
+      } else if (dir === 'bounce') {
+        scale = 0.5;
+      }
+
+      const prevAnimClasses = allAnimClasses.filter(c => c !== 'visible');
+      box.classList.remove('anim-out-active', ...prevAnimClasses);
+      box.style.setProperty('--exit-dx', dx + 'px');
+      box.style.setProperty('--exit-dy', dy + 'px');
+      box.style.setProperty('--exit-scale', scale);
+      void box.offsetWidth;
+      box.classList.remove('visible');
+      box.classList.add('anim-out-active');
+    }
+
     function resolveFlyOutClass(animOut, pos) {
       if (!animOut || animOut === 'slide') {
         if (pos === 'top-right' || pos === 'bottom-right' || pos === 'right') return 'anim-in-from-right';
@@ -7886,6 +7994,7 @@ function handleGiveawayEvent(data) {
         });
       }
     } else if (evtType === 'giveaway_checkpoint_start') {
+      _gwIsAnimatingOut = false;
       inner.classList.remove('giveaway-idle');
       if (_gwCpDismissTimer) { clearTimeout(_gwCpDismissTimer); _gwCpDismissTimer = null; }
       if (_gwCpHideTimer) { clearTimeout(_gwCpHideTimer); _gwCpHideTimer = null; }
@@ -7924,7 +8033,10 @@ function handleGiveawayEvent(data) {
         if (imgCountText) imgCountText.textContent = `👥 ${initialCount} คน`;
 
         const animInClass = resolveFlyInClass(_giveawayConfig.overlay_anim_in, targetPos);
-        imgBox.classList.remove(...allAnimClasses);
+        imgBox.classList.remove('anim-out-active', ...allAnimClasses);
+        imgBox.style.removeProperty('--exit-dx');
+        imgBox.style.removeProperty('--exit-dy');
+        imgBox.style.removeProperty('--exit-scale');
         imgBox.classList.add(animInClass);
         imgBox.style.display = 'block';
         void imgBox.offsetWidth;
@@ -7960,7 +8072,10 @@ function handleGiveawayEvent(data) {
         if (cpCount) cpCount.textContent = `👥 ผู้เข้าร่วมรอบนี้: ${initialCount} คน`;
 
         const animInClass = resolveFlyInClass(_giveawayConfig.overlay_anim_in, targetPos);
-        cpBox.classList.remove(...allAnimClasses);
+        cpBox.classList.remove('anim-out-active', ...allAnimClasses);
+        cpBox.style.removeProperty('--exit-dx');
+        cpBox.style.removeProperty('--exit-dy');
+        cpBox.style.removeProperty('--exit-scale');
         cpBox.classList.add(animInClass);
         cpBox.style.display = 'block';
         void cpBox.offsetWidth;
@@ -7993,44 +8108,38 @@ function handleGiveawayEvent(data) {
       if (_gwCpDismissTimer) { clearTimeout(_gwCpDismissTimer); _gwCpDismissTimer = null; }
       if (_gwCpHideTimer) { clearTimeout(_gwCpHideTimer); _gwCpHideTimer = null; }
 
+      _gwIsAnimatingOut = true;
       const isImageMode = (_giveawayConfig.overlay_display_mode === 'image' && _giveawayConfig.overlay_has_image);
       const targetPos = _giveawayConfig.overlay_position || 'top-right';
+      const animOutClass = resolveFlyOutClass(_giveawayConfig.overlay_anim_out, targetPos);
+      const prevAnimClasses = allAnimClasses.filter(c => c !== 'visible');
 
       if (isImageMode && imgBox) {
         if (imgFill) imgFill.style.width = '0%';
         if (imgCountdownRect) imgCountdownRect.style.strokeDashoffset = '100';
-        if (imgTimerText) imgTimerText.textContent = '⏱️ หมดเวลา';
-        if (imgCountText) imgCountText.textContent = `👥 รวม: ${data.total} คน`;
-        _gwCpDismissTimer = setTimeout(() => {
-          const animOutClass = resolveFlyOutClass(_giveawayConfig.overlay_anim_out, targetPos);
-          imgBox.classList.remove('visible');
-          imgBox.classList.add(animOutClass);
-          _gwCpHideTimer = setTimeout(() => {
-            imgBox.style.display = 'none';
-            imgBox.classList.remove(...allAnimClasses);
-            inner.classList.add('giveaway-idle');
-          }, 500);
-        }, 1500);
+        applyFlyOut(imgBox, _giveawayConfig.overlay_anim_out, targetPos);
+        _gwCpHideTimer = setTimeout(() => {
+          imgBox.style.display = 'none';
+          imgBox.classList.remove('anim-out-active', ...allAnimClasses);
+          imgBox.style.removeProperty('--exit-dx');
+          imgBox.style.removeProperty('--exit-dy');
+          imgBox.style.removeProperty('--exit-scale');
+          inner.classList.add('giveaway-idle');
+          _gwIsAnimatingOut = false;
+        }, 480);
       } else if (cpBox) {
-        if (cpStatus) {
-          cpStatus.textContent = '⛔ ปิดรับรอบนี้แล้ว';
-          cpStatus.style.color = '#f87171';
-          cpStatus.style.background = 'rgba(239, 68, 68, 0.2)';
-        }
         if (cpFill) cpFill.style.width = '0%';
         if (cpCountdownRect) cpCountdownRect.style.strokeDashoffset = '100';
-        if (cpTimer) cpTimer.textContent = '⏱️ หมดเวลา';
-        if (cpCount) cpCount.textContent = `👥 รวมผ่านรอบนี้: ${data.total} คน`;
-        _gwCpDismissTimer = setTimeout(() => {
-          const animOutClass = resolveFlyOutClass(_giveawayConfig.overlay_anim_out, targetPos);
-          cpBox.classList.remove('visible');
-          cpBox.classList.add(animOutClass);
-          _gwCpHideTimer = setTimeout(() => {
-            cpBox.style.display = 'none';
-            cpBox.classList.remove(...allAnimClasses);
-            inner.classList.add('giveaway-idle');
-          }, 400);
-        }, 1500);
+        applyFlyOut(cpBox, _giveawayConfig.overlay_anim_out, targetPos);
+        _gwCpHideTimer = setTimeout(() => {
+          cpBox.style.display = 'none';
+          cpBox.classList.remove('anim-out-active', ...allAnimClasses);
+          cpBox.style.removeProperty('--exit-dx');
+          cpBox.style.removeProperty('--exit-dy');
+          cpBox.style.removeProperty('--exit-scale');
+          inner.classList.add('giveaway-idle');
+          _gwIsAnimatingOut = false;
+        }, 480);
       }
     } else if (evtType === 'giveaway_participant') {
       if (cpCount) cpCount.textContent = `👥 ผู้เข้าร่วมรอบนี้: ${data.round_participants} คน`;
@@ -8190,9 +8299,34 @@ function handleGiveawayEvent(data) {
       inner.classList.add('giveaway-idle');
     } else if (evtType === 'giveaway_preview') {
       if (data.action === 'stop' || data.show === false) {
-        if (cpBox) { cpBox.classList.remove('visible'); cpBox.style.display = 'none'; }
-        if (imgBox) { imgBox.classList.remove('visible'); imgBox.style.display = 'none'; }
-        inner.classList.add('giveaway-idle');
+        if (_gwCpDismissTimer) { clearTimeout(_gwCpDismissTimer); _gwCpDismissTimer = null; }
+        if (_gwCpHideTimer) { clearTimeout(_gwCpHideTimer); _gwCpHideTimer = null; }
+        const targetPos = _giveawayConfig.overlay_position || 'top-right';
+        _gwIsAnimatingOut = true;
+        if (cpBox && (cpBox.classList.contains('visible') || cpBox.style.display === 'block')) {
+          applyFlyOut(cpBox, _giveawayConfig.overlay_anim_out, targetPos);
+          setTimeout(() => {
+            cpBox.style.display = 'none';
+            cpBox.classList.remove('anim-out-active', ...allAnimClasses);
+            cpBox.style.removeProperty('--exit-dx');
+            cpBox.style.removeProperty('--exit-dy');
+            cpBox.style.removeProperty('--exit-scale');
+            inner.classList.add('giveaway-idle');
+            _gwIsAnimatingOut = false;
+          }, 480);
+        }
+        if (imgBox && (imgBox.classList.contains('visible') || imgBox.style.display === 'block')) {
+          applyFlyOut(imgBox, _giveawayConfig.overlay_anim_out, targetPos);
+          setTimeout(() => {
+            imgBox.style.display = 'none';
+            imgBox.classList.remove('anim-out-active', ...allAnimClasses);
+            imgBox.style.removeProperty('--exit-dx');
+            imgBox.style.removeProperty('--exit-dy');
+            imgBox.style.removeProperty('--exit-scale');
+            inner.classList.add('giveaway-idle');
+            _gwIsAnimatingOut = false;
+          }, 480);
+        }
         return;
       }
       inner.classList.remove('giveaway-idle');
@@ -8207,7 +8341,7 @@ function handleGiveawayEvent(data) {
       if (!data.stay) {
         setTimeout(() => {
           handleGiveawayEvent({ type: 'giveaway_checkpoint_end', total: 5 });
-        }, 4000);
+        }, (data.duration || 4) * 1000);
       }
     }
   });
@@ -8216,6 +8350,206 @@ function handleGiveawayEvent(data) {
 // ════════════════════════════════════════════════════════════
 // Now Playing handler (Windows System Media)
 // ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
+// Quick Randomizer On-Demand Overlay Handler
+// (ไม่ต้องเพิ่ม Widget ใน Composer — สร้างบน Top Layer อัตโนมัติ แล้วลบตัวเองทิ้ง)
+// ════════════════════════════════════════════════════════════
+let _randomizerTimer = null;
+
+function handleRandomizerSpin(data) {
+  if (!data) return;
+  // ลบอันเดิมถ้ากำลังแสดงอยู่
+  const existing = document.getElementById('on-demand-randomizer-overlay');
+  if (existing) {
+    existing.remove();
+  }
+  if (_randomizerTimer) {
+    clearTimeout(_randomizerTimer);
+    _randomizerTimer = null;
+  }
+
+  const items = (data.items && data.items.length) ? data.items : ['ตัวเลือก 1', 'ตัวเลือก 2'];
+  const winner = data.winner || items[0];
+  const title = data.title || '🎰 สุ่มกิจกรรม';
+  const st = data.settings || {};
+  const scale = (st.scale || 100) / 100;
+  const ox = parseInt(st.offset_x, 10) || 0;
+  const oy = parseInt(st.offset_y, 10) || 0;
+  const anchor = st.anchor || 'center';
+  const holdDuration = (st.duration !== undefined ? parseFloat(st.duration) : 5) * 1000;
+
+  // คำนวณตำแหน่งตาม Anchor
+  let anchorStyle = '';
+  let transOrigin = 'center center';
+  let baseTrans = '';
+
+  if (anchor === 'top-left') {
+    anchorStyle = 'top: 40px; left: 40px;';
+    transOrigin = 'top left';
+    baseTrans = 'translate(0px, 0px)';
+  } else if (anchor === 'top-center') {
+    anchorStyle = 'top: 40px; left: 50%;';
+    transOrigin = 'top center';
+    baseTrans = 'translate(-50%, 0px)';
+  } else if (anchor === 'top-right') {
+    anchorStyle = 'top: 40px; right: 40px;';
+    transOrigin = 'top right';
+    baseTrans = 'translate(0px, 0px)';
+  } else if (anchor === 'middle-left') {
+    anchorStyle = 'top: 50%; left: 40px;';
+    transOrigin = 'left center';
+    baseTrans = 'translate(0px, -50%)';
+  } else if (anchor === 'center') {
+    anchorStyle = 'top: 50%; left: 50%;';
+    transOrigin = 'center center';
+    baseTrans = 'translate(-50%, -50%)';
+  } else if (anchor === 'middle-right') {
+    anchorStyle = 'top: 50%; right: 40px;';
+    transOrigin = 'right center';
+    baseTrans = 'translate(0px, -50%)';
+  } else if (anchor === 'bottom-left') {
+    anchorStyle = 'bottom: 40px; left: 40px;';
+    transOrigin = 'bottom left';
+    baseTrans = 'translate(0px, 0px)';
+  } else if (anchor === 'bottom-center') {
+    anchorStyle = 'bottom: 40px; left: 50%;';
+    transOrigin = 'bottom center';
+    baseTrans = 'translate(-50%, 0px)';
+  } else if (anchor === 'bottom-right') {
+    anchorStyle = 'bottom: 40px; right: 40px;';
+    transOrigin = 'bottom right';
+    baseTrans = 'translate(0px, 0px)';
+  }
+
+  // สร้าง DOM element
+  // ปฏิบัติตามกฎ Zero GPU Lockup: ห้าม backdrop-filter blur บน full viewport, ใช้ containment ชัดเจน
+  const overlay = document.createElement('div');
+  overlay.id = 'on-demand-randomizer-overlay';
+  overlay.style.cssText = `
+    position: fixed;
+    ${anchorStyle}
+    z-index: 9999999;
+    pointer-events: none;
+    transform: ${baseTrans} translate(${ox}px, ${oy}px) scale(${scale});
+    transform-origin: ${transOrigin};
+    transition: opacity 0.4s ease-out, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    opacity: 0;
+    contain: layout style paint;
+    isolation: isolate;
+  `;
+
+  overlay.innerHTML = `
+    <div style="
+      width: 460px;
+      background: rgba(11, 17, 32, 0.96);
+      border: 2px solid #3b82f6;
+      border-radius: 18px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.85), 0 0 25px rgba(59, 130, 246, 0.25);
+      padding: 24px 26px 20px 26px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Prompt', 'Kanit', 'Noto Sans Thai', sans-serif;
+      box-sizing: border-box;
+      color: #ffffff;
+      text-align: center;
+      contain: layout style paint;
+    ">
+      <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 14px;">
+        <span style="font-size: 20px;">🎰</span>
+        <span style="font-size: 15px; font-weight: 800; color: #38bdf8; letter-spacing: 0.5px; text-transform: uppercase;">
+          ${escapeHtml(title)}
+        </span>
+      </div>
+
+      <div id="randomizer-roller-box" style="
+        background: rgba(2, 6, 23, 0.95);
+        border: 2px solid #1e293b;
+        border-radius: 12px;
+        height: 76px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 16px;
+        box-sizing: border-box;
+        overflow: hidden;
+        transition: border-color 0.3s, background-color 0.3s;
+      ">
+        <span id="randomizer-roller-text" style="
+          font-size: 24px;
+          font-weight: 800;
+          color: #f1f5f9;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 100%;
+        ">...</span>
+      </div>
+
+      <div id="randomizer-footer-pill" style="
+        margin-top: 14px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: #94a3b8;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+      ">
+        <span>⚡ กำลังสุ่ม...</span>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // Fade-in
+  requestAnimationFrame(() => {
+    overlay.style.opacity = '1';
+  });
+
+  const rollerText = overlay.querySelector('#randomizer-roller-text');
+  const rollerBox = overlay.querySelector('#randomizer-roller-box');
+  const footerPill = overlay.querySelector('#randomizer-footer-pill');
+
+  // Animation cycle
+  let ticks = 0;
+  const maxTicks = 26;
+  let delay = 50;
+
+  function runTick() {
+    ticks++;
+    const cand = items[Math.floor(Math.random() * items.length)];
+    if (rollerText) rollerText.textContent = cand;
+
+    if (ticks < maxTicks) {
+      if (ticks > maxTicks - 8) {
+        delay += 35; // deceleration
+      }
+      setTimeout(runTick, delay);
+    } else {
+      // Snap to Winner!
+      if (rollerText) rollerText.textContent = winner;
+      if (rollerBox) {
+        rollerBox.style.borderColor = '#f59e0b';
+        rollerBox.style.backgroundColor = 'rgba(245, 158, 11, 0.12)';
+        rollerText.style.color = '#fbbf24';
+      }
+      if (footerPill) {
+        footerPill.innerHTML = '<span style="color: #fbbf24; font-weight: 700;">🎉 ผลการสุ่มเรียบร้อยแล้ว</span>';
+      }
+
+      // Settled state (0% GPU idle) -> Auto dismiss after holdDuration
+      _randomizerTimer = setTimeout(() => {
+        overlay.style.opacity = '0';
+        overlay.style.transform = `${baseTrans} translate(${ox}px, ${oy - 20}px) scale(${scale * 0.95})`;
+        setTimeout(() => {
+          overlay.remove();
+        }, 400);
+      }, holdDuration);
+    }
+  }
+
+  runTick();
+}
+
 let _lastNowPlayingData = {};
 
 function handleNowPlaying(data) {

@@ -9,6 +9,20 @@
 import sys
 import os
 
+# ═══ Allow loading patched/updated .py files from _internal directory ═══
+if getattr(sys, "frozen", False):
+    _exe_internal = os.path.join(os.path.dirname(sys.executable), "_internal")
+    if os.path.isdir(_exe_internal):
+        if _exe_internal not in sys.path:
+            sys.path.insert(0, _exe_internal)
+        try:
+            from importlib.machinery import PathFinder
+            if PathFinder in sys.meta_path:
+                sys.meta_path.remove(PathFinder)
+                sys.meta_path.insert(0, PathFinder)
+        except Exception:
+            pass
+
 # ═══ Dispatch to Splash Subprocess (ก่อน setup_logging เพื่อให้เปิดทันทีและไม่แย่ง app_v2.log) ═══
 if "--splash-subprocess" in sys.argv:
     from splash import run_splash_subprocess
@@ -275,31 +289,42 @@ def main():
     except Exception:
         pass
 
-    # ★ Splash screen — random ระหว่าง splash_1.png / splash_2.png (ทั้ง Full + Lite)
-    #   ★ แสดง splash ทันที พร้อมหลอดโหลด (Progress bar) และข้อความสถานะ
+    # ★ Splash screen — random สุ่มจากภาพ splash ทั้งหมดใน assets/new_splash และ assets/
     splash = None
     import random
-    splash_candidates = [
-        os.path.join(base_dir, "assets", "splash_1.png"),
-        os.path.join(base_dir, "assets", "splash_2.png"),
+    import glob
+
+    splash_dirs = [
+        os.path.join(base_dir, "assets", "new_splash"),
+        os.path.join(base_dir, "assets"),
     ]
     try:
         if getattr(sys, 'frozen', False):
             _internal = os.path.join(os.path.dirname(sys.executable), "_internal")
             if os.path.isdir(_internal):
-                splash_candidates = [
-                    os.path.join(_internal, "assets", "splash_1.png"),
-                    os.path.join(_internal, "assets", "splash_2.png"),
-                ]
+                splash_dirs.insert(0, os.path.join(_internal, "assets", "new_splash"))
+                splash_dirs.insert(1, os.path.join(_internal, "assets"))
     except Exception:
         pass
-    available = [p for p in splash_candidates if os.path.exists(p)]
+
+    available = []
+    seen = set()
+    for s_dir in splash_dirs:
+        if os.path.isdir(s_dir):
+            for p in glob.glob(os.path.join(s_dir, "splash_*.png")) + glob.glob(os.path.join(s_dir, "splash_*.jpg")):
+                bn = os.path.basename(p).lower()
+                if bn in ("splash_1.png", "splash_2.png", "splash.png"):
+                    continue
+                if bn not in seen and os.path.exists(p):
+                    seen.add(bn)
+                    available.append(p)
+
     if available:
         splash_path = random.choice(available)
         from splash import create_splash
         splash = create_splash(splash_path, is_first_run=is_first_run)
         splash.set_progress(15)
-        _boot_log("splash visible ✓")
+        _boot_log(f"splash visible ✓ ({os.path.basename(splash_path)})")
 
     # ★ Import + apply theme (อ่านค่าธีมจาก settings ก่อนสร้าง widget ใดๆ)
     if splash:

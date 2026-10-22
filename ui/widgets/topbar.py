@@ -128,9 +128,9 @@ MENU_STYLE = """
 
 class RestoreButtonsDialog(QDialog):
     """ไดอะล็อกเลือกแสดงปุ่มบน Topbar ที่ถูกซ่อนอยู่"""
-    def __init__(self, hidden_items: list[tuple[str, str]], parent=None):
+    def __init__(self, hidden_items: list[tuple[str, str]], parent=None, title: str = "แสดงปุ่มบนแถบด้านบน"):
         super().__init__(parent)
-        self.setWindowTitle("แสดงปุ่มบนแถบด้านบน")
+        self.setWindowTitle(title)
         self.setFixedWidth(360)
         self.setModal(True)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)

@@ -153,7 +153,7 @@ class SettingsDialog(QDialog):
             ("🎛️ Dock OBS", "dock_obs"),
             ("🔔 แจ้งเตือน", "notifications"),
             ("🚫 NG Words", "ng"),
-            ("🔄 Replace", "replace"),
+            ("📚 คลังศัพท์", "replace"),
             ("🚫 Blocklist & Spam", "block"),
             ("🎟 โค้ดลับ", "secret_code"),
             ("🪟 Overlay+", "overlay_plus"),
@@ -1897,7 +1897,7 @@ class SettingsDialog(QDialog):
 
     def _build_replace_section(self):
         """🔄 Replace — editor inline (table + 🔊 + โหลดจากคลัง + pagination + search)"""
-        self._add_section("replace", "🔄 Replace", "คำแทนที่ — แก้ไข / ทดสอบเสียง / โหลดจากคลัง")
+        self._add_section("replace", "📚 คลังศัพท์", "คลังคำศัพท์ — แก้ไข / ทดสอบเสียง / ซิงค์อัตโนมัติ")
         layout = self._current_section_layout
         ci = lambda: layout.count() - 1
         from PySide6.QtWidgets import QTableWidget, QHeaderView
@@ -2022,6 +2022,17 @@ class SettingsDialog(QDialog):
             QTableWidget::item { padding: 4px; }
             QHeaderView::section { background-color: #131726; color: #9ca3af; padding: 6px; border: none; border-bottom: 1px solid #2a2f45; font-weight: 600; }
         """)
+
+        # ★ Context menu คลิกขวาที่หัวตาราง หรือในตาราง เพื่อเปิด/ปิด คอลัมน์ "คำที่แสดง"
+        self.replace_table.horizontalHeader().setContextMenuPolicy(Qt.CustomContextMenu)
+        self.replace_table.horizontalHeader().customContextMenuRequested.connect(self._replace_on_header_context_menu)
+        self.replace_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.replace_table.customContextMenuRequested.connect(self._replace_on_table_context_menu)
+
+        # ★ Default ซ่อนคอลัมน์ 1 ("คำที่แสดง") ตามที่ user ต้องการ
+        show_disp = getattr(self.settings, 'replace_show_display_col', False) if self.settings else False
+        self.replace_table.setColumnHidden(1, not show_disp)
+
         layout.insertWidget(ci(), self.replace_table, 1)
 
         # ═══ Pagination bar ═══
@@ -2096,6 +2107,32 @@ class SettingsDialog(QDialog):
         self.replace_page_label.setText(f"{page_num} / {total_pages}")
         self.replace_btn_prev.setEnabled(self._replace_page > 0)
         self.replace_btn_next.setEnabled(self._replace_page < max_page)
+
+    def _replace_on_header_context_menu(self, pos):
+        self._replace_show_column_menu(self.replace_table.horizontalHeader().mapToGlobal(pos))
+
+    def _replace_on_table_context_menu(self, pos):
+        self._replace_show_column_menu(self.replace_table.mapToGlobal(pos))
+
+    def _replace_show_column_menu(self, global_pos):
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self)
+        is_hidden = self.replace_table.isColumnHidden(1)
+        if is_hidden:
+            act = menu.addAction("👁️ เพิ่ม/แสดงคอลัมน์ 'คำที่แสดง'")
+        else:
+            act = menu.addAction("🙈 ซ่อนคอลัมน์ 'คำที่แสดง'")
+        chosen = menu.exec(global_pos)
+        if chosen == act:
+            self._replace_toggle_display_col()
+
+    def _replace_toggle_display_col(self):
+        is_hidden = self.replace_table.isColumnHidden(1)
+        new_hidden = not is_hidden
+        self.replace_table.setColumnHidden(1, new_hidden)
+        if self.settings:
+            self.settings.replace_show_display_col = not new_hidden
+            self._auto_save()
 
     def _replace_on_search(self, text):
         """search text เปลี่ยน → reset page 0 + render"""
@@ -4736,6 +4773,9 @@ class SettingsDialog(QDialog):
         # ★ กัน auto-save ระหว่าง load (setChecked/setText trigger stateChanged/editingFinished)
         self._loading = True
         s = self.settings
+        if hasattr(self, 'replace_table'):
+            show_disp = getattr(s, 'replace_show_display_col', False)
+            self.replace_table.setColumnHidden(1, not show_disp)
         # Platforms
         self.tw_channel.setText(getattr(s, 'twitch_channel', '') or '')
         # ★ Twitch OAuth status
@@ -4981,6 +5021,8 @@ class SettingsDialog(QDialog):
                 if item and item.text().strip():
                     s.banned_words.append(item.text().strip())
         # ★ replace words — อ่านจาก _replace_data (truth source — ทุก page ไม่ใช่แค่หน้าที่แสดง)
+        if hasattr(self, 'replace_table'):
+            s.replace_show_display_col = not self.replace_table.isColumnHidden(1)
         if hasattr(self, '_replace_data'):
             words = {}
             for e in self._replace_data:

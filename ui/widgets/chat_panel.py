@@ -26,6 +26,7 @@ class ChatPanel(QFrame):
     ask_toggled = Signal()                    # ★ ปุ่ม ASK — toggle แผงโพล
     giveaway_toggled = Signal()               # ★ ปุ่ม Giveaway — toggle แผงสุ่มแจกรางวัล
     replie_toggled = Signal()                 # ★ ปุ่ม Replie — toggle แผงตอบกลับภาพบนจอ
+    randomizer_toggled = Signal()             # ★ ปุ่ม Quick Randomizer — toggle แผงสุ่มกิจกรรม
     connect_bot_requested = Signal()  # ★ emit เมื่อกดปุ่ม "เชื่อมต่อแชทบอท"
     bot_toggle_requested = Signal(bool)  # ★ emit เมื่อ toggle Enable/Disable Chat Bot
     bot_platforms_changed = Signal(dict)  # ★ emit {platform: bool} เมื่อติ๊กเมนูเร็ว
@@ -115,6 +116,15 @@ class ChatPanel(QFrame):
         self._replie_active = False
         self.btn_replie.clicked.connect(self._on_replie_btn)
         hlayout.addWidget(self.btn_replie)
+        # ★ Quick Randomizer — สุ่มกิจกรรมด่วน (สุ่มบทลงโทษ, สุ่มคนดูร่วมกิจกรรม)
+        self.btn_randomizer = QPushButton("🎰")
+        self.btn_randomizer.setObjectName("IconButton")
+        self.btn_randomizer.setFixedSize(34, 30)
+        self.btn_randomizer.setCursor(Qt.PointingHandCursor)
+        self.btn_randomizer.setToolTip("สุ่มกิจกรรมด่วน (Quick Randomizer) แสดงผลลอยบนจอ OBS")
+        self.btn_randomizer.setStyleSheet("font-size: 15px; padding: 0px;")
+        self.btn_randomizer.clicked.connect(self.randomizer_toggled.emit)
+        hlayout.addWidget(self.btn_randomizer)
         # ★ System message toggle
         self.btn_system = QPushButton("🔔")
         self.btn_system.setObjectName("IconButton")
@@ -200,6 +210,24 @@ class ChatPanel(QFrame):
         btn_popout.clicked.connect(self.popout_requested.emit)
         hlayout.addWidget(btn_popout)
         layout.addWidget(header)
+
+        # ═══ Hideable header buttons configuration ═══
+        self._settings = None
+        self._hidden_button_keys = []
+        self._hideable_buttons = {
+            "ask": ("ASK (โพล/แบบสอบถาม)", self.btn_ask),
+            "giveaway": ("🎁 Giveaway (สุ่มแจกรางวัล)", self.btn_giveaway),
+            "replie": ("🖼️ Replie (ตอบกลับภาพ/ข้อความ)", self.btn_replie),
+            "randomizer": ("🎰 สุ่มกิจกรรม (Quick Randomizer)", self.btn_randomizer),
+            "clip_marker": ("⭐ Clip Marker (มาร์กเกอร์คลิป)", self.btn_mark_clip),
+            "code_mute": ("🎟️ เสียงโค้ดลับ (Secret Code Mute)", self.btn_code_mute),
+        }
+        for key, (_, btn_widget) in self._hideable_buttons.items():
+            self._setup_button_context_menu(btn_widget, key)
+
+        # Context menu on empty area of header
+        self._header.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._header.customContextMenuRequested.connect(self._show_header_context_menu)
 
         # ★ expose font buttons for external connections
         self.font_dec_btn = btn_font_dec
@@ -519,6 +547,97 @@ class ChatPanel(QFrame):
     def set_replie_active(self, active: bool):
         self._replie_active = bool(active)
         self.btn_replie.setStyleSheet(self._replie_btn_qss(active))
+
+    # ═══ Hideable Buttons Logic (เหมือน Topbar) ═══
+    def _setup_button_context_menu(self, widget, key):
+        """คลิกขวาที่ปุ่ม -> เมนูซ่อนปุ่มนี้ และเรียกคืนปุ่ม"""
+        widget.setContextMenuPolicy(Qt.CustomContextMenu)
+        def show_menu(pos):
+            menu = QMenu(self)
+            from ui.widgets.topbar import MENU_STYLE
+            menu.setStyleSheet(MENU_STYLE)
+            act_hide = menu.addAction("👁️‍🗨️ ซ่อนปุ่มนี้")
+            act_hide.triggered.connect(lambda: self.hide_button(key))
+
+            hidden = self.get_hidden_buttons()
+            if hidden:
+                menu.addSeparator()
+                act_restore = menu.addAction("👁️ แสดงปุ่มที่ซ่อนอยู่...")
+                act_restore.triggered.connect(self.open_restore_dialog)
+
+            menu.exec_(widget.mapToGlobal(pos))
+
+        widget.customContextMenuRequested.connect(show_menu)
+        from ui.widgets.split_button import SplitButton
+        if isinstance(widget, SplitButton):
+            widget._main_btn.setContextMenuPolicy(Qt.CustomContextMenu)
+            widget._main_btn.customContextMenuRequested.connect(show_menu)
+            widget._arrow_btn.setContextMenuPolicy(Qt.CustomContextMenu)
+            widget._arrow_btn.customContextMenuRequested.connect(show_menu)
+
+    def _show_header_context_menu(self, pos):
+        """คลิกขวาบนพื้นที่ว่างของแถบหัวแชท -> แสดงเมนูกู้คืนปุ่มที่ถูกซ่อน"""
+        menu = QMenu(self)
+        from ui.widgets.topbar import MENU_STYLE
+        menu.setStyleSheet(MENU_STYLE)
+        hidden = self.get_hidden_buttons()
+        act_restore = menu.addAction("👁️ แสดงปุ่มที่ซ่อนอยู่...")
+        if hidden:
+            act_restore.triggered.connect(self.open_restore_dialog)
+        else:
+            act_restore.setEnabled(False)
+            act_restore.setText("👁️ แสดงปุ่มที่ซ่อนอยู่ (ไม่มีปุ่มที่ซ่อน)")
+        menu.exec_(self._header.mapToGlobal(pos))
+
+    def hide_button(self, key: str, save: bool = True):
+        """ซ่อนปุ่มตาม key และบันทึกค่าลง settings"""
+        if key in self._hideable_buttons:
+            label, widget = self._hideable_buttons[key]
+            widget.setVisible(False)
+            if key not in self._hidden_button_keys:
+                self._hidden_button_keys.append(key)
+            if save and self._settings is not None:
+                self._settings.chat_hidden_buttons = list(self._hidden_button_keys)
+                self._settings.save_settings()
+
+    def restore_button(self, key: str, save: bool = True):
+        """คืนค่าแสดงปุ่มตาม key และบันทึกค่าลง settings"""
+        if key in self._hideable_buttons:
+            label, widget = self._hideable_buttons[key]
+            widget.setVisible(True)
+            if key in self._hidden_button_keys:
+                self._hidden_button_keys.remove(key)
+            if save and self._settings is not None:
+                self._settings.chat_hidden_buttons = list(self._hidden_button_keys)
+                self._settings.save_settings()
+
+    def get_hidden_buttons(self) -> list[tuple[str, str]]:
+        """คืนค่ารายการ (key, label) ของปุ่มที่กำลังถูกซ่อนอยู่"""
+        return [(k, self._hideable_buttons[k][0]) for k in self._hidden_button_keys if k in self._hideable_buttons]
+
+    def open_restore_dialog(self):
+        """เปิดหน้าต่างกล่องเล็ก ๆ เลือกปุ่มในแถบแชทที่ต้องการกู้คืน"""
+        hidden = self.get_hidden_buttons()
+        if not hidden:
+            return
+        from ui.widgets.topbar import RestoreButtonsDialog
+        from PySide6.QtWidgets import QDialog
+        dlg = RestoreButtonsDialog(hidden, parent=self.window(), title="แสดงปุ่มในแถบแชทสด")
+        if dlg.exec_() == QDialog.Accepted:
+            selected_keys = dlg.get_selected_keys()
+            for key in selected_keys:
+                self.restore_button(key, save=False)
+            if self._settings is not None:
+                self._settings.chat_hidden_buttons = list(self._hidden_button_keys)
+                self._settings.save_settings()
+
+    def set_settings(self, settings):
+        """ผูก AppSettings และซ่อนปุ่มตามที่บันทึกไว้ใน settings"""
+        self._settings = settings
+        hidden_keys = getattr(settings, "chat_hidden_buttons", []) or []
+        for key in list(hidden_keys):
+            if key in self._hideable_buttons:
+                self.hide_button(key, save=False)
 
     def _on_send_clicked(self):
         """★ กดส่ง / Enter → ส่งข้อความผ่าน signal send_requested"""

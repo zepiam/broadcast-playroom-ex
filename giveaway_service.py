@@ -77,8 +77,8 @@ class GiveawayService(QObject):
         self._lock = threading.RLock()
 
         # โหมดการเล่น: "single" (รอบเดียว) หรือ "multi" (หลายรอบ)
-        self.mode: str = "multi"
-        self.total_checkpoints: int = 3  # จำนวนด่านทั้งหมด (1 - 5)
+        self.mode: str = "single"
+        self.total_checkpoints: int = 1  # จำนวนด่านทั้งหมด (1 - 5)
 
         # รูปแบบอนิเมชั่นการสุ่มรางวัล: "gachapon" (กาชาปองระเบิดดาว) หรือ "slot" (ตู้สล็อตคลาสสิก)
         self.draw_animation_style: str = "gachapon"
@@ -127,6 +127,7 @@ class GiveawayService(QObject):
         self.overlay_offset_x: int = 0             # px (-300 ถึง 300)
         self.overlay_offset_y: int = 0             # px (-300 ถึง 300)
         self.overlay_scale: int = 100              # % (50 ถึง 150)
+        self.overlay_font_size: int = 100          # % (70 ถึง 160)
         self.overlay_anim_in: str = "slide"        # "slide", "fade", "zoom", "bounce"
         self.overlay_anim_out: str = "slide"       # "slide", "fade", "zoom"
         self.overlay_show_progress_bar: bool = True     # หลอดนับถอยหลัง (Progress bar)
@@ -198,6 +199,9 @@ class GiveawayService(QObject):
     def get_checkpoint_name(self, cp_index: int) -> str:
         """ดึงชื่อรอบกิจกรรม (กำหนดเองได้)"""
         with self._lock:
+            if self.mode == "single":
+                name = self.checkpoint_names.get(cp_index, "")
+                return name if (name and name != "รอบที่ 1") else "เปิดรับโค้ดสุ่มรางวัล"
             return self.checkpoint_names.get(cp_index, f"รอบที่ {cp_index}")
 
     def set_checkpoint_name(self, cp_index: int, name: str):
@@ -563,6 +567,8 @@ class GiveawayService(QObject):
     def update_overlay_settings(self, **kwargs):
         """อัปเดตการตั้งค่าการแสดงผลบน OBS Overlay"""
         with self._lock:
+            if "custom_image_path" in kwargs:
+                kwargs["overlay_image_path"] = kwargs.pop("custom_image_path")
             for k, v in kwargs.items():
                 if hasattr(self, k):
                     setattr(self, k, v)
@@ -605,6 +611,8 @@ class GiveawayService(QObject):
                 "overlay_offset_x": self.overlay_offset_x,
                 "overlay_offset_y": self.overlay_offset_y,
                 "overlay_scale": self.overlay_scale,
+                "overlay_font_size": getattr(self, "overlay_font_size", 100),
+                "overlay_image_path": self.overlay_image_path,
                 "overlay_anim_in": self.overlay_anim_in,
                 "overlay_anim_out": self.overlay_anim_out,
                 "overlay_show_progress_bar": self.overlay_show_progress_bar,

@@ -95,7 +95,8 @@ html, body {
   z-index: 100;
   opacity: 0;
   display: none;
-  transition: opacity 0.4s ease, transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, opacity;
+  transition: opacity 0.38s cubic-bezier(0.25, 1, 0.5, 1), transform 0.42s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 #checkpoint-container {
@@ -368,37 +369,37 @@ html, body {
   box-shadow: 0 4px 12px rgba(0,0,0,0.5);
 }
 
-/* FLY-IN ANIMATIONS: FROM ALL 8 DIRECTIONS / CORNERS / FADE / ZOOM / BOUNCE */
+/* FLY-IN & FLY-OUT ANIMATIONS: SMOOTH VELOCITY & NO SCREEN BLUR */
 #checkpoint-container.anim-in-from-top, #image-container.anim-in-from-top {
-  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px) - 120vh)) scale(var(--scale, 1)) !important;
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px) - 420px)) scale(var(--scale, 1)) !important;
   opacity: 0 !important;
 }
 #checkpoint-container.anim-in-from-bottom, #image-container.anim-in-from-bottom {
-  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px) + 120vh)) scale(var(--scale, 1)) !important;
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px) + 420px)) scale(var(--scale, 1)) !important;
   opacity: 0 !important;
 }
 #checkpoint-container.anim-in-from-left, #image-container.anim-in-from-left {
-  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) - 120vw), calc(var(--base-ty) + var(--offset-y, 0px))) scale(var(--scale, 1)) !important;
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) - 560px), calc(var(--base-ty) + var(--offset-y, 0px))) scale(var(--scale, 1)) !important;
   opacity: 0 !important;
 }
 #checkpoint-container.anim-in-from-right, #image-container.anim-in-from-right {
-  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) + 120vw), calc(var(--base-ty) + var(--offset-y, 0px))) scale(var(--scale, 1)) !important;
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) + 560px), calc(var(--base-ty) + var(--offset-y, 0px))) scale(var(--scale, 1)) !important;
   opacity: 0 !important;
 }
 #checkpoint-container.anim-in-from-top-left, #image-container.anim-in-from-top-left {
-  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) - 120vw), calc(var(--base-ty) + var(--offset-y, 0px) - 120vh)) scale(var(--scale, 1)) !important;
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) - 560px), calc(var(--base-ty) + var(--offset-y, 0px) - 420px)) scale(var(--scale, 1)) !important;
   opacity: 0 !important;
 }
 #checkpoint-container.anim-in-from-top-right, #image-container.anim-in-from-top-right {
-  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) + 120vw), calc(var(--base-ty) + var(--offset-y, 0px) - 120vh)) scale(var(--scale, 1)) !important;
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) + 560px), calc(var(--base-ty) + var(--offset-y, 0px) - 420px)) scale(var(--scale, 1)) !important;
   opacity: 0 !important;
 }
 #checkpoint-container.anim-in-from-bottom-left, #image-container.anim-in-from-bottom-left {
-  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) - 120vw), calc(var(--base-ty) + var(--offset-y, 0px) + 120vh)) scale(var(--scale, 1)) !important;
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) - 560px), calc(var(--base-ty) + var(--offset-y, 0px) + 420px)) scale(var(--scale, 1)) !important;
   opacity: 0 !important;
 }
 #checkpoint-container.anim-in-from-bottom-right, #image-container.anim-in-from-bottom-right {
-  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) + 120vw), calc(var(--base-ty) + var(--offset-y, 0px) + 120vh)) scale(var(--scale, 1)) !important;
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) + 560px), calc(var(--base-ty) + var(--offset-y, 0px) + 420px)) scale(var(--scale, 1)) !important;
   opacity: 0 !important;
 }
 #checkpoint-container.anim-in-fade, #image-container.anim-in-fade {
@@ -406,12 +407,21 @@ html, body {
   opacity: 0 !important;
 }
 #checkpoint-container.anim-in-zoom, #image-container.anim-in-zoom {
-  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px))) scale(0.2) !important;
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px))) scale(0.4) !important;
   opacity: 0 !important;
 }
 #checkpoint-container.anim-in-bounce, #image-container.anim-in-bounce {
-  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px))) scale(0.6) !important;
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px)), calc(var(--base-ty) + var(--offset-y, 0px))) scale(0.7) !important;
   opacity: 0 !important;
+}
+
+#checkpoint-container.anim-out-active, #image-container.anim-out-active {
+  display: block !important;
+  opacity: 0 !important;
+  transform: translate(calc(var(--base-tx) + var(--offset-x, 0px) + var(--exit-dx, 0px)),
+                       calc(var(--base-ty) + var(--offset-y, 0px) + var(--exit-dy, 0px)))
+             scale(calc(var(--scale, 1) * var(--exit-scale, 1))) !important;
+  transition: opacity 0.38s cubic-bezier(0.4, 0, 0.2, 1), transform 0.44s cubic-bezier(0.32, 0, 0.67, 0) !important;
 }
 
 #checkpoint-container.visible, #image-container.visible {
@@ -791,6 +801,7 @@ let cpDismissTimer = null;
 let cpHideTimer = null;
 let toastTimer = null;
 let slotRollInterval = null;
+let isAnimatingOut = false;
 let currentConfig = {
   overlay_display_mode: 'banner',
   overlay_has_image: false,
@@ -817,6 +828,63 @@ function resolveFlyInClass(animIn, pos) {
   }
   if (animIn.startsWith('from-')) return `anim-in-${animIn}`;
   return `anim-in-${animIn}`;
+}
+
+function applyFlyOut(box, animOut, pos) {
+  if (!box) return;
+  pos = pos || 'top-right';
+  animOut = animOut || 'slide';
+
+  let dir = animOut;
+  if (dir === 'slide') {
+    if (pos.includes('right')) dir = 'to-right';
+    else if (pos.includes('left')) dir = 'to-left';
+    else if (pos.includes('bottom')) dir = 'to-bottom';
+    else dir = 'to-top';
+  } else if (dir.startsWith('from-')) {
+    dir = dir.replace('from-', 'to-');
+  }
+
+  let dx = 0, dy = 0, scale = 1;
+  const isAtRight = pos.includes('right');
+  const isAtLeft = pos.includes('left');
+  const isAtTop = pos.includes('top');
+  const isAtBottom = pos.includes('bottom');
+
+  if (dir === 'to-right') {
+    dx = isAtLeft ? 2200 : 600;
+  } else if (dir === 'to-left') {
+    dx = isAtRight ? -2200 : -600;
+  } else if (dir === 'to-top') {
+    dy = isAtBottom ? -1300 : -450;
+  } else if (dir === 'to-bottom') {
+    dy = isAtTop ? 1300 : 450;
+  } else if (dir === 'to-top-left') {
+    dx = isAtRight ? -2200 : -600;
+    dy = isAtBottom ? -1300 : -450;
+  } else if (dir === 'to-top-right') {
+    dx = isAtLeft ? 2200 : 600;
+    dy = isAtBottom ? -1300 : -450;
+  } else if (dir === 'to-bottom-left') {
+    dx = isAtRight ? -2200 : -600;
+    dy = isAtTop ? 1300 : 450;
+  } else if (dir === 'to-bottom-right') {
+    dx = isAtLeft ? 2200 : 600;
+    dy = isAtTop ? 1300 : 450;
+  } else if (dir === 'zoom') {
+    scale = 0.2;
+  } else if (dir === 'bounce') {
+    scale = 0.5;
+  }
+
+  const prevAnimClasses = allAnimClasses.filter(c => c !== 'visible');
+  box.classList.remove('anim-out-active', ...prevAnimClasses);
+  box.style.setProperty('--exit-dx', dx + 'px');
+  box.style.setProperty('--exit-dy', dy + 'px');
+  box.style.setProperty('--exit-scale', scale);
+  void box.offsetWidth;
+  box.classList.remove('visible');
+  box.classList.add('anim-out-active');
 }
 
 function resolveFlyOutClass(animOut, pos) {
@@ -847,13 +915,52 @@ function applyConfig(cfg) {
     'pos-top-right', 'pos-top-left', 'pos-bottom-right', 'pos-bottom-left',
     'pos-top', 'pos-bottom', 'pos-left', 'pos-right', 'pos-center'
   ];
+  const fontScale = (currentConfig.overlay_font_size || 100) / 100;
   targetBoxes.forEach(box => {
     posClasses.forEach(p => box.classList.remove(p));
     box.classList.add(`pos-${pos}`);
     box.style.setProperty('--offset-x', (currentConfig.overlay_offset_x || 0) + 'px');
     box.style.setProperty('--offset-y', (currentConfig.overlay_offset_y || 0) + 'px');
     box.style.setProperty('--scale', ((currentConfig.overlay_scale || 100) / 100));
+    box.style.setProperty('--font-scale', fontScale);
   });
+
+  if (cpBox) {
+    const codeEl = cpBox.querySelector('.cp-code');
+    if (codeEl) codeEl.style.fontSize = Math.round(26 * fontScale) + 'px';
+    const instEl = cpBox.querySelector('.cp-instruction');
+    if (instEl) instEl.style.fontSize = Math.round(13 * fontScale) + 'px';
+    const titleEl = cpBox.querySelector('.cp-title');
+    if (titleEl) titleEl.style.fontSize = Math.round(13 * fontScale) + 'px';
+    const timerEl = cpBox.querySelector('#cp-timer');
+    if (timerEl) timerEl.style.fontSize = Math.round(12.5 * fontScale) + 'px';
+    const countEl = cpBox.querySelector('#cp-count');
+    if (countEl) countEl.style.fontSize = Math.round(11.5 * fontScale) + 'px';
+  }
+  if (imgBox) {
+    const timerEl = imgBox.querySelector('#img-timer-text');
+    if (timerEl) timerEl.style.fontSize = Math.round(12 * fontScale) + 'px';
+    const countEl = imgBox.querySelector('#img-count-text');
+    if (countEl) countEl.style.fontSize = Math.round(12 * fontScale) + 'px';
+  }
+
+  // Real-time display mode toggle during preview/active (ignore if currently animating out)
+  if (!isAnimatingOut) {
+    const isCpVis = cpBox && cpBox.classList.contains('visible');
+    const isImgVis = imgBox && imgBox.classList.contains('visible');
+    if (isCpVis || isImgVis) {
+      if (currentConfig.overlay_display_mode === 'none') {
+        if (cpBox) { cpBox.style.display = 'none'; cpBox.classList.remove('visible'); }
+        if (imgBox) { imgBox.style.display = 'none'; imgBox.classList.remove('visible'); }
+      } else if (currentConfig.overlay_display_mode === 'image' && currentConfig.overlay_has_image) {
+        if (cpBox) { cpBox.style.display = 'none'; cpBox.classList.remove('visible'); }
+        if (imgBox) { imgBox.style.display = 'block'; imgBox.classList.add('visible'); }
+      } else {
+        if (imgBox) { imgBox.style.display = 'none'; imgBox.classList.remove('visible'); }
+        if (cpBox) { cpBox.style.display = 'block'; cpBox.classList.add('visible'); }
+      }
+    }
+  }
 
   // แสดง/ซ่อน ขอบนับถอยหลัง & ธีมสี (ทั้งการ์ดข้อความและรูปภาพ)
   const allCountdownSvgs = [cpCountdownSvg, imgCountdownSvg].filter(Boolean);
@@ -890,6 +997,7 @@ function applyConfig(cfg) {
 
 // แสดง Checkpoint (แยกตามโหมด Banner หรือ Image)
 function showCheckpoint(cp_index, code, duration_sec, mode, total_cps, cp_name) {
+  isAnimatingOut = false;
   if (cpDismissTimer) {
     clearTimeout(cpDismissTimer);
     cpDismissTimer = null;
@@ -929,7 +1037,10 @@ function showCheckpoint(cp_index, code, duration_sec, mode, total_cps, cp_name) 
     imgCountText.textContent = '👥 0 คน';
 
     const animInClass = resolveFlyInClass(currentConfig.overlay_anim_in, targetPos);
-    imgBox.classList.remove(...allAnimClasses);
+    imgBox.classList.remove('anim-out-active', ...allAnimClasses);
+    imgBox.style.removeProperty('--exit-dx');
+    imgBox.style.removeProperty('--exit-dy');
+    imgBox.style.removeProperty('--exit-scale');
     imgBox.classList.add(animInClass);
     imgBox.style.display = 'block';
     void imgBox.offsetWidth;
@@ -945,7 +1056,9 @@ function showCheckpoint(cp_index, code, duration_sec, mode, total_cps, cp_name) 
     imgBox.style.display = 'none';
     imgBox.classList.remove('visible');
 
-    const displayName = cp_name || (mode === 'single' ? 'เช็คชื่อรับสิทธิ์สุ่มรางวัล' : `รอบที่ ${cp_index}`);
+    const displayName = (mode === 'single')
+      ? (cp_name && cp_name !== 'รอบที่ 1' ? cp_name : 'เปิดรับโค้ดสุ่มรางวัล')
+      : (cp_name || `รอบที่ ${cp_index}`);
     if (mode === 'single') {
       cpBadge.textContent = `🎯 ${displayName}`;
     } else {
@@ -971,7 +1084,10 @@ function showCheckpoint(cp_index, code, duration_sec, mode, total_cps, cp_name) 
     cpCount.textContent = '👥 ผู้เข้าร่วมรอบนี้: 0 คน';
 
     const animInClass = resolveFlyInClass(currentConfig.overlay_anim_in, targetPos);
-    cpBox.classList.remove(...allAnimClasses);
+    cpBox.classList.remove('anim-out-active', ...allAnimClasses);
+    cpBox.style.removeProperty('--exit-dx');
+    cpBox.style.removeProperty('--exit-dy');
+    cpBox.style.removeProperty('--exit-scale');
     cpBox.classList.add(animInClass);
     cpBox.style.display = 'block';
     void cpBox.offsetWidth;
@@ -1019,46 +1135,34 @@ function endCheckpoint(cp_index, total) {
     cpHideTimer = null;
   }
 
+  isAnimatingOut = true;
   const isImageMode = (currentConfig.overlay_display_mode === 'image' && currentConfig.overlay_has_image);
   const targetPos = currentConfig.overlay_position || 'top-right';
 
-  if (isImageMode) {
+  if (isImageMode && imgBox) {
     if (imgProgressFill) imgProgressFill.style.width = '0%';
-    if (imgCountdownRect) imgCountdownRect.style.strokeDashoffset = '100'; // เส้นขอบหายหมด
-    if (imgTimerText) imgTimerText.textContent = '⏱️ หมดเวลา';
-    if (imgCountText) imgCountText.textContent = `👥 รวม: ${total} คน`;
-
-    // Animation Out ตามที่เลือก
-    cpDismissTimer = setTimeout(() => {
-      const animOutClass = resolveFlyOutClass(currentConfig.overlay_anim_out, targetPos);
-      imgBox.classList.remove('visible');
-      imgBox.classList.add(animOutClass);
-      cpHideTimer = setTimeout(() => {
-        imgBox.style.display = 'none';
-        imgBox.classList.remove(...allAnimClasses);
-      }, 500);
-    }, 1500);
-
-  } else {
-    if (cpStatus) {
-      cpStatus.textContent = '⛔ ปิดรับรอบนี้แล้ว';
-      cpStatus.style.color = '#f87171';
-      cpStatus.style.background = 'rgba(239, 68, 68, 0.2)';
-    }
+    if (imgCountdownRect) imgCountdownRect.style.strokeDashoffset = '100';
+    applyFlyOut(imgBox, currentConfig.overlay_anim_out, targetPos);
+    cpHideTimer = setTimeout(() => {
+      imgBox.style.display = 'none';
+      imgBox.classList.remove('anim-out-active', ...allAnimClasses);
+      imgBox.style.removeProperty('--exit-dx');
+      imgBox.style.removeProperty('--exit-dy');
+      imgBox.style.removeProperty('--exit-scale');
+      isAnimatingOut = false;
+    }, 480);
+  } else if (cpBox) {
     if (cpFill) cpFill.style.width = '0%';
     if (cpCountdownRect) cpCountdownRect.style.strokeDashoffset = '100';
-    if (cpTimer) cpTimer.textContent = '⏱️ หมดเวลา';
-    if (cpCount) cpCount.textContent = `👥 รวมผ่านรอบนี้: ${total} คน`;
-
-    cpDismissTimer = setTimeout(() => {
-      const animOutClass = resolveFlyOutClass(currentConfig.overlay_anim_out, targetPos);
-      cpBox.classList.remove('visible');
-      cpBox.classList.add(animOutClass);
-      cpHideTimer = setTimeout(() => { 
-        cpBox.style.display = 'none';
-        cpBox.classList.remove(...allAnimClasses);
-      }, 400);
-    }, 1500);
+    applyFlyOut(cpBox, currentConfig.overlay_anim_out, targetPos);
+    cpHideTimer = setTimeout(() => {
+      cpBox.style.display = 'none';
+      cpBox.classList.remove('anim-out-active', ...allAnimClasses);
+      cpBox.style.removeProperty('--exit-dx');
+      cpBox.style.removeProperty('--exit-dy');
+      cpBox.style.removeProperty('--exit-scale');
+      isAnimatingOut = false;
+    }, 480);
   }
 }
 
@@ -1247,17 +1351,49 @@ function handleServerEvent(msg) {
       break;
 
     case 'giveaway_preview':
+      if (msg.action === 'stop' || msg.show === false) {
+        if (cpDismissTimer) { clearTimeout(cpDismissTimer); cpDismissTimer = null; }
+        if (cpHideTimer) { clearTimeout(cpHideTimer); cpHideTimer = null; }
+        const targetPos = currentConfig.overlay_position || 'top-right';
+        isAnimatingOut = true;
+        if (cpBox && (cpBox.classList.contains('visible') || cpBox.style.display === 'block')) {
+          applyFlyOut(cpBox, currentConfig.overlay_anim_out, targetPos);
+          setTimeout(() => {
+            cpBox.style.display = 'none';
+            cpBox.classList.remove('anim-out-active', ...allAnimClasses);
+            cpBox.style.removeProperty('--exit-dx');
+            cpBox.style.removeProperty('--exit-dy');
+            cpBox.style.removeProperty('--exit-scale');
+            isAnimatingOut = false;
+          }, 480);
+        }
+        if (imgBox && (imgBox.classList.contains('visible') || imgBox.style.display === 'block')) {
+          applyFlyOut(imgBox, currentConfig.overlay_anim_out, targetPos);
+          setTimeout(() => {
+            imgBox.style.display = 'none';
+            imgBox.classList.remove('anim-out-active', ...allAnimClasses);
+            imgBox.style.removeProperty('--exit-dx');
+            imgBox.style.removeProperty('--exit-dy');
+            imgBox.style.removeProperty('--exit-scale');
+            isAnimatingOut = false;
+          }, 480);
+        }
+        break;
+      }
       if (msg.state) applyConfig(msg.state);
       showCheckpoint(
-        (msg.state && msg.state.cp_index) || 1,
-        (msg.state && msg.state.code) || '!join',
-        10,
-        (msg.state && msg.state.mode) || 'single',
-        (msg.state && msg.state.total_checkpoints) || 1
+        msg.cp_index || (msg.state && msg.state.cp_index) || 1,
+        msg.code || (msg.state && msg.state.code) || '!join',
+        msg.duration || (msg.state && msg.state.duration_sec) || 60,
+        msg.mode || (msg.state && msg.state.mode) || 'single',
+        msg.total_checkpoints || (msg.state && msg.state.total_checkpoints) || 1,
+        msg.cp_name || (msg.state && msg.state.cp_name)
       );
-      setTimeout(() => {
-        endCheckpoint((msg.state && msg.state.cp_index) || 1, 0);
-      }, 3500);
+      if (!msg.stay) {
+        setTimeout(() => {
+          endCheckpoint(msg.cp_index || (msg.state && msg.state.cp_index) || 1, 0);
+        }, (msg.duration || 10) * 1000);
+      }
       break;
 
     case 'giveaway_data_cleared':

@@ -61,6 +61,9 @@ class SettingsDialog(QDialog):
         super().__init__(parent_app if isinstance(parent_app, QWidget) else None)
         self.parent_app = parent_app
         self.settings = getattr(parent_app, 'settings', None)
+        if self.settings is None:
+            import settings as _st
+            self.settings = _st.load_settings()
         self.setWindowTitle("⚙ ตั้งค่า")
         self.setObjectName("SettingsDialog")
         self.setGeometry(150, 110, 980, 720)

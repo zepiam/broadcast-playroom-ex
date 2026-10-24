@@ -624,13 +624,21 @@ class YouTubeChat:
         # extract viewer count (ลองหลาย pattern — YouTube เปลี่ยนบ่อย)
         self._extract_viewer_from_html(html)
         self._last_viewer_poll = time.time()
-        # หา continuation token จาก reloadContinuationData
+        # หา continuation token จาก liveChatRenderer (หรือ reloadContinuationData)
+        m_chat = re.search(r'"liveChatRenderer"[^}]+?"reloadContinuationData":\s*\{\s*"continuation":\s*"([^"]+)"', html)
+        if m_chat:
+            return m_chat.group(1)
         m = re.search(r'"reloadContinuationData":\{"continuation":"([^"]+)"', html)
         if m:
             return m.group(1)
-        m2 = re.search(r'"continuationCommand":\{"token":"([^"]+)"', html)
-        if m2:
-            return m2.group(1)
+        m_timed = re.search(r'"timedContinuationData":\{"continuation":"([^"]+)"', html)
+        if m_timed:
+            return m_timed.group(1)
+        # continuationCommand เฉพาะถ้าเป็น live chat (ห้ามหยิบกล่องคอมเมนต์ใต้คลิป)
+        for m_cmd in re.finditer(r'"continuationCommand":\{"token":"([^"]+)"(?:,"request":"([^"]+)")?', html):
+            token, req = m_cmd.group(1), m_cmd.group(2) or ""
+            if "comments" not in token.lower() and "comments" not in req.lower():
+                return token
         return None
 
     def _extract_viewer_from_html(self, html: str) -> None:

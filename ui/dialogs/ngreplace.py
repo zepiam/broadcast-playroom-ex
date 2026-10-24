@@ -26,6 +26,9 @@ class NGReplaceDialog(QDialog):
         super().__init__(parent_app if isinstance(parent_app, QWidget) else None)
         self.parent_app = parent_app
         self.settings = getattr(parent_app, 'settings', None)
+        if self.settings is None:
+            import settings as _st
+            self.settings = _st.load_settings()
         self.setWindowTitle("🚫 NG-Replace")
         self.setGeometry(180, 120, 780, 580)
         self.setMinimumSize(660, 440)

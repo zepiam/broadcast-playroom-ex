@@ -1,16 +1,16 @@
 {
-  "version": "2.9.7",
-  "changelog": "- แก้บัค Game Overlay ไม่สามารถเชื่อมต่อได้",
+  "version": "2.9.8",
+  "changelog": "- แก้บัค Game Overlay ปรับเวลาอนิเมชั่นออกแล้วไม่บันทึก",
   "lite": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.9.7/patch_lite.zip",
-    "size": 28711221,
-    "sha256": "65b902c39c7902129dcd76a5fc7663d59438f8dd44d65d99ac416b2bdc50c112"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.9.8/patch_lite.zip",
+    "size": 28713205,
+    "sha256": "560ccae156b9da7a37284f8626b9c51f72a5ad98b26f45ed5adddd6992771aa8"
   },
   "full": {
     "type": "patch",
-    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.9.7/patch_full.zip",
-    "size": 83475036,
-    "sha256": "1d015953868451872d3ed39fab8b6acb4f5e33dfb2fe1b285652dbc2117dfc7f"
+    "url": "https://github.com/zepiam/broadcast-playroom-ex/releases/download/v2.9.8/patch_full.zip",
+    "size": 83476644,
+    "sha256": "99d0879a6df9249fd31bbcfc5c203749f7ef0d261fea3204c5f08ecc60973434"
   }
 }

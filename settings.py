@@ -533,7 +533,7 @@ class AppSettings:
             "text_stroke": False, "text_stroke_color": "#000000", "text_stroke_width": 2,
             "text_shadow": True, "text_shadow_color": "#000000", "text_shadow_blur": 3,
             "layout": "stacked", "anim_in": "fade", "anim_out": "fade_out",
-            "auto_hide": True, "hide_after": 8.0,
+            "auto_hide": True, "hide_after": 10.0,
             "box_enabled": True, "box_bg_color": "#0a0e1a", "box_bg_opacity": 0.55,
             "box_radius": 8, "box_border": False, "box_border_color": "#7c3aed",
             "box_border_width": 1, "box_shadow": True, "box_blur": False,
@@ -603,7 +603,7 @@ class AppSettings:
     game_overlay_anim_in: str = "fade"
     game_overlay_anim_out: str = "fade_out"
     game_overlay_auto_hide: bool = True
-    game_overlay_hide_after: float = 8.0
+    game_overlay_hide_after: float = 10.0
     # box (กล่องข้อความ — CSS รองรับครบ)
     game_overlay_box_enabled: bool = True
     game_overlay_box_bg_color: str = "#0a0e1a"
@@ -2120,6 +2120,25 @@ def load_settings() -> AppSettings:
                     _json.dump(data, _f, ensure_ascii=False, indent=2)
             except Exception:
                 pass
+        # migration: update game_overlay_hide_after default to 10.0
+        if not data.get("_game_overlay_hide_after_v2"):
+            if s.game_overlay_hide_after in (3.0, 3, 8.0, 8):
+                s.game_overlay_hide_after = 10.0
+            if "default" in s.game_overlay_mode_configs:
+                if s.game_overlay_mode_configs["default"].get("hide_after") in (3.0, 3, 8.0, 8):
+                    s.game_overlay_mode_configs["default"]["hide_after"] = 10.0
+            try:
+                data["_game_overlay_hide_after_v2"] = True
+                if data.get("game_overlay_hide_after") in (3.0, 3, 8.0, 8):
+                    data["game_overlay_hide_after"] = 10.0
+                if "game_overlay_mode_configs" in data and isinstance(data["game_overlay_mode_configs"], dict):
+                    if data["game_overlay_mode_configs"].get("default", {}).get("hide_after") in (3.0, 3, 8.0, 8):
+                        data["game_overlay_mode_configs"]["default"]["hide_after"] = 10.0
+                import json as _json
+                with open(SETTINGS_FILE, "w", encoding="utf-8") as _f:
+                    _json.dump(data, _f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
         return s
     except (json.JSONDecodeError, OSError, TypeError):
         s = AppSettings()
@@ -2137,5 +2156,6 @@ def save_settings(settings: AppSettings) -> None:
     data["_opacity_reset_v2"] = True  # กัน reset opacity ซ้ำ (migration ครั้งเดียว)
     data["_v242_defaults_set"] = True  # กันบังคับ default ซ้ำ
     data["_read_author_default_v2"] = True  # กัน migrate ซ้ำ (เดิมหลุดหาย → clobber ค่าที่ user set เอง)
+    data["_game_overlay_hide_after_v2"] = True
     with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)

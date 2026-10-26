@@ -80,53 +80,101 @@ class NowPlayingWatcher:
 
     # ★ source matching rules — keyword ใน source_app_user_model_id
     SOURCE_KEYWORDS = {
-        "spotify":    ["spotify"],
-        "ytmusic":    ["youtube.music", "ytmdesktop", "th-ch.youtube"],
-        "browser":    ["chrome", "firefox", "edge", "msedge", "opera", "brave"],
+        "spotify":        ["spotify"],
+        "ytmusic":        ["youtube.music", "ytmdesktop", "th-ch.youtube", "youtubemusic", "cinhimbnkkaeohfgghhklpknlkcghmgn"],
+        "desktop_player": ["vlc", "wmplayer", "wmp", "windowsmediaplayer", "microsoft.windows.mediaplayer",
+                           "microsoft.zunemusic", "microsoft.zunevideo", "groove", "mpc-hc", "mpc-be", "mpc",
+                           "foobar2000", "aimp", "musicbee", "itunes", "appleinc.itunes", "potplayer",
+                           "daum", "winamp", "kmplayer", "gom"],
+        "browser":        ["chrome", "firefox", "edge", "msedge", "opera", "brave", "vivaldi"],
     }
+    BROWSER_KEYWORDS = ["chrome", "firefox", "edge", "msedge", "opera", "brave", "vivaldi"]
 
     def _match_source(self, source_id, filter_type):
-        """เช็คว่า session ตรงกับ filter ที่เลือกไหม"""
-        if filter_type == "auto" or filter_type == "any":
+        """เช็คว่า session ตรงกับ filter ที่เลือกไหม พร้อมแยกขาดจากกันไม่ให้ปนกัน"""
+        if filter_type in ("auto", "any"):
             return True
         sid = (source_id or "").lower()
+        if not sid:
+            return False
+
+        if filter_type == "desktop_player":
+            # ต้องตรงกับ keyword เครื่องเล่นมีเดียในเครื่อง และต้องไม่ใช่เว็บเบราว์เซอร์หรือ Spotify
+            is_browser = any(b in sid for b in self.BROWSER_KEYWORDS)
+            if is_browser or "spotify" in sid or "discord" in sid:
+                return False
+            keywords = self.SOURCE_KEYWORDS.get("desktop_player", [])
+            return any(kw in sid for kw in keywords)
+
+        if filter_type == "spotify":
+            # เฉพาะ Spotify
+            return "spotify" in sid
+
+        if filter_type == "ytmusic":
+            # เฉพาะ YouTube Music (แอปเฉพาะ เช่น ytmdesktop, th-ch.youtube, PWA)
+            # เด็ดขาด: ห้ามตรงกับเบราว์เซอร์ทั่วไปที่เปิด YouTube วิดีโอธรรมดา
+            keywords = self.SOURCE_KEYWORDS.get("ytmusic", [])
+            return any(kw in sid for kw in keywords)
+
         keywords = self.SOURCE_KEYWORDS.get(filter_type, [])
         return any(kw in sid for kw in keywords)
 
     def _find_session(self, manager):
-        """หา session ที่ตรงกับ source filter + กำลังเล่นอยู่"""
-        filt = self._source_filter
+        """หา session ที่ตรงกับ source filter + กำลังเล่นอยู่ แยกขาดจากกันเด็ดขาด"""
+        filt = (self._source_filter or "auto").lower()
 
-        # ถ้า auto → ใช้ current session (หรือหา playing session)
-        if filt == "auto":
-            session = manager.get_current_session()
-            if session:
-                pb = session.get_playback_info()
-                if pb.playback_status == 4:
-                    return session
-            # หา session อื่นที่ playing
+        # ถ้า auto / any → หา session ที่เล่นอยู่ โดยเน้นโปรแกรมเพลงก่อน
+        if filt in ("auto", "any"):
             sessions = manager.get_sessions()
+            # 1. หา session ที่ playing และเป็น dedicated music source (Spotify, YT Music, Desktop Player)
             for i in range(sessions.size):
                 s = sessions.get_at(i)
                 pb = s.get_playback_info()
-                if pb.playback_status == 4:
-                    return s
-            return session  # คืน current แม้ไม่ playing
+                if pb and pb.playback_status == 4:
+                    sid = (s.source_app_user_model_id or "").lower()
+                    if self._match_source(sid, "spotify") or \
+                       self._match_source(sid, "ytmusic") or \
+                       self._match_source(sid, "desktop_player"):
+                        return s
 
-        # ★ specific source → หา session ที่ตรง keyword + playing ก่อน
+            # 2. หา session อื่นที่กำลัง playing
+            for i in range(sessions.size):
+                s = sessions.get_at(i)
+                pb = s.get_playback_info()
+                if pb and pb.playback_status == 4:
+                    return s
+
+            # 3. ถ้าไม่มีอะไร playing เลย → คืน session ของเพลงล่าสุดที่ paused ไว้
+            for i in range(sessions.size):
+                s = sessions.get_at(i)
+                sid = (s.source_app_user_model_id or "").lower()
+                if self._match_source(sid, "spotify") or \
+                   self._match_source(sid, "ytmusic") or \
+                   self._match_source(sid, "desktop_player"):
+                    return s
+
+            return manager.get_current_session()
+
+        # ★ specific source (spotify, ytmusic, desktop_player)
+        # กฎเหล็ก: ค้นหาเฉพาะ session ที่ตรงกับ source นั้นเท่านั้น ห้ามข้ามไปดึงแอปอื่นเด็ดขาด
         sessions = manager.get_sessions()
-        # รอบ 1: หา matching + playing
+
+        # รอบ 1: หา matching + กำลัง playing อยู่ (status == 4)
         for i in range(sessions.size):
             s = sessions.get_at(i)
             if self._match_source(s.source_app_user_model_id, filt):
                 pb = s.get_playback_info()
-                if pb.playback_status == 4:
+                if pb and pb.playback_status == 4:
                     return s
-        # รอบ 2: หา matching (ไม่สน playing)
+
+        # รอบ 2: หา matching แม้ paused/stopped (status == 5 หรือ 3)
         for i in range(sessions.size):
             s = sessions.get_at(i)
             if self._match_source(s.source_app_user_model_id, filt):
                 return s
+
+        # หากไม่พบ session ของ source ที่เลือกเลย หรือปิดโปรแกรมไปแล้ว คืน None ทันที
+        # จะไม่ fallback ไปหาเว็บเบราว์เซอร์หรือ YouTube ธรรมดาเด็ดขาด
         return None
 
     async def _poll_once(self, Manager):

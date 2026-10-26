@@ -10386,6 +10386,7 @@ document.querySelectorAll('.widget-add-btn').forEach(btn => {
       // ตั้ง theme ตรงกับ source
       if (choice === 'spotify') w.np_theme = 'spotify';
       else if (choice === 'ytmusic') w.np_theme = 'ytmusic';
+      else if (choice === 'desktop_player') w.np_theme = 'ocean';
       else if (choice === 'browser') w.np_theme = 'dark';
     }
 
@@ -10430,10 +10431,10 @@ function showSourcePicker() {
     '<h3 style="margin:0 0 12px;color:#f59e0b;">🎵 เพิ่ม Now Playing</h3>' +
     '<p style="color:#aaa;font-size:13px;margin-bottom:16px;">คุณเล่นเพลงผ่านโปรแกรมอะไร?</p>' +
     '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;">' +
-      '<button class="np-pick-btn" data-src="spotify" style="padding:12px 16px;background:rgba(29,215,96,0.15);border:1px solid #1ed760;border-radius:8px;color:#1ed760;cursor:pointer;font-size:14px;text-align:left;">🟢 Spotify <span style="color:#666;font-size:12px;">(แอป Spotify)</span></button>' +
-      '<button class="np-pick-btn" data-src="ytmusic" style="padding:12px 16px;background:rgba(255,0,0,0.1);border:1px solid #ff0000;border-radius:8px;color:#ff4444;cursor:pointer;font-size:14px;text-align:left;">🔴 YouTube Music <span style="color:#666;font-size:12px;">(ytmdesktop)</span></button>' +
-      '<button class="np-pick-btn" data-src="browser" style="padding:12px 16px;background:rgba(100,149,237,0.1);border:1px solid #6495ed;border-radius:8px;color:#6495ed;cursor:pointer;font-size:14px;text-align:left;">🌐 เบราว์เซอร์ <span style="color:#666;font-size:12px;">(Chrome/Edge — YouTube, SoundCloud)</span></button>' +
-      '<button class="np-pick-btn" data-src="auto" style="padding:12px 16px;background:rgba(255,255,255,0.05);border:1px solid #333;border-radius:8px;color:#aaa;cursor:pointer;font-size:14px;text-align:left;">⚡ อัตโนมัติ <span style="color:#666;font-size:12px;">(จับอันที่กำลังเล่น)</span></button>' +
+      '<button class="np-pick-btn" data-src="spotify" style="padding:12px 16px;background:rgba(29,215,96,0.15);border:1px solid #1ed760;border-radius:8px;color:#1ed760;cursor:pointer;font-size:14px;text-align:left;">🟢 Spotify เท่านั้น</button>' +
+      '<button class="np-pick-btn" data-src="ytmusic" style="padding:12px 16px;background:rgba(255,0,0,0.1);border:1px solid #ff0000;border-radius:8px;color:#ff4444;cursor:pointer;font-size:14px;text-align:left;">🔴 YouTube Music เท่านั้น</button>' +
+      '<button class="np-pick-btn" data-src="desktop_player" style="padding:12px 16px;background:rgba(59,130,246,0.15);border:1px solid #3b82f6;border-radius:8px;color:#60a5fa;cursor:pointer;font-size:14px;text-align:left;">💻 เครื่องเล่นมีเดียในคอมพิวเตอร์</button>' +
+      '<button class="np-pick-btn" data-src="auto" style="padding:12px 16px;background:rgba(255,255,255,0.05);border:1px solid #333;border-radius:8px;color:#aaa;cursor:pointer;font-size:14px;text-align:left;">⚡ ทุกแหล่งที่กำลังเล่น</button>' +
     '</div>' +
     '<button id="np-pick-cancel" style="padding:8px 16px;background:rgba(255,255,255,0.05);border:1px solid #333;border-radius:6px;color:#666;cursor:pointer;font-size:13px;width:100%;">ยกเลิก</button>';
   overlay.appendChild(box);
@@ -11394,10 +11395,10 @@ function _openSettingsModalInner(id) {
     fields.innerHTML += `<p class="hint-text">อ่านเพลงที่กำลังเล่นจาก Windows System Media (Spotify, YouTube Music, ฯลฯ)</p>`;
     fields.innerHTML += `<div class="section-title">📡 แหล่งเพลง</div>`;
     fields.innerHTML += fld('จับเพลงจาก', `<select id="f-np_source" style="width:100%;padding:8px;background:#1a1a2e;color:#fff;border:1px solid #333;border-radius:6px;font-size:13px;">
-      <option value="auto" ${(w.np_source||'auto')==='auto'?'selected':''}>อัตโนมัติ (จับอันที่กำลังเล่น)</option>
-      <option value="spotify" ${w.np_source==='spotify'?'selected':''}>เฉพาะ Spotify</option>
-      <option value="ytmusic" ${w.np_source==='ytmusic'?'selected':''}>เฉพาะ YouTube Music</option>
-      <option value="browser" ${w.np_source==='browser'?'selected':''}>เฉพาะเบราว์เซอร์ (Chrome/Edge/Firefox)</option>
+      <option value="auto" ${(w.np_source||'auto')==='auto'?'selected':''}>ทุกแหล่งที่กำลังเล่น</option>
+      <option value="spotify" ${w.np_source==='spotify'?'selected':''}>Spotify เท่านั้น</option>
+      <option value="ytmusic" ${w.np_source==='ytmusic'?'selected':''}>YouTube Music เท่านั้น</option>
+      <option value="desktop_player" ${w.np_source==='desktop_player'?'selected':''}>เครื่องเล่นมีเดียในคอมพิวเตอร์</option>
     </select>`);
     fields.innerHTML += `<div class="section-title">🎨 Theme</div>`;
     fields.innerHTML += fld('เลือก Theme', `<select id="f-np_theme" onchange="applyNpTheme()" style="width:100%;padding:8px;background:#1a1a2e;color:#fff;border:1px solid #333;border-radius:6px;font-size:13px;">

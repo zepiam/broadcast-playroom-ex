@@ -133,6 +133,7 @@ class GameOverlaySettingsDialog(QDialog):
         val_lbl.setMinimumWidth(50)
         val_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         val_lbl.setStyleSheet(f"color: {COL_ACCENT}; font-size: 14px; font-weight: 600;")
+        val_lbl.setText(fmt_fn(lo) if fmt_fn else str(int(lo)))
         def _on_change(v):
             if is_float:
                 real = lo + v / scale
@@ -938,7 +939,7 @@ class GameOverlaySettingsDialog(QDialog):
         self._set_slider(self.msg_spacing_sld, getattr(s, 'game_overlay_msg_spacing', 4.0))
         self._set_slider(self.stroke_w_sld, _mc('text_stroke_width', 'game_overlay_text_stroke_width', 2))
         self._set_slider(self.shadow_blur_sld, _mc('text_shadow_blur', 'game_overlay_text_shadow_blur', 3))
-        self._set_slider(self.hide_after_sld, _mc('hide_after', 'game_overlay_hide_after', 8.0))
+        self._set_slider(self.hide_after_sld, _mc('hide_after', 'game_overlay_hide_after', 10.0))
         self._set_slider(self.opacity_sld, getattr(s, 'game_overlay_box_bg_opacity', 0.55))
         self._set_slider(self.box_radius_sld, getattr(s, 'game_overlay_box_radius', 8))
         self._set_slider(self.box_border_w_sld, getattr(s, 'game_overlay_box_border_width', 1))
@@ -1011,21 +1012,27 @@ class GameOverlaySettingsDialog(QDialog):
         if slider is None:
             return
         # coerce type (settings อาจเก็บเป็น str จาก JSON)
-        if getattr(slider, '_is_float', False):
+        is_float = getattr(slider, '_is_float', False)
+        scale = getattr(slider, '_scale', 1) or 1
+        lo = getattr(slider, '_lo', 0)
+        fmt_fn = getattr(slider, '_fmt_fn', None)
+        val_lbl = getattr(slider, '_val_lbl', None)
+
+        if is_float:
             try:
                 real_value = float(real_value)
             except (TypeError, ValueError):
                 real_value = 0.0
-            scale = getattr(slider, '_scale', 1) or 1
-            lo = getattr(slider, '_lo', 0)
             slider.setValue(int((real_value - lo) * scale))
         else:
             try:
                 real_value = int(real_value)
             except (TypeError, ValueError):
                 real_value = 0
-            lo = getattr(slider, '_lo', 0)
             slider.setValue(int(real_value - lo))
+
+        if val_lbl is not None:
+            val_lbl.setText(fmt_fn(real_value) if fmt_fn else str(int(real_value)))
 
     def _set_combo(self, combo, value):
         for i in range(combo.count()):
@@ -1232,10 +1239,9 @@ class GameOverlaySettingsDialog(QDialog):
         # ★ default/theme widgets
         if mode in ('default', 'theme'):
             if 'font_family' in cfg and hasattr(self, 'font_combo'):
-                for i in range(self.font_combo.count()):
-                    if self.font_combo.itemData(i) == cfg['font_family']:
-                        self.font_combo.setCurrentIndex(i)
-                        break
+                self._set_combo(self.font_combo, cfg['font_family'])
+            if 'font_weight' in cfg and hasattr(self, 'weight_combo'):
+                self._set_combo(self.weight_combo, str(cfg['font_weight']))
             if 'font_size' in cfg and hasattr(self, 'font_size_sld'):
                 self._set_slider(self.font_size_sld, cfg['font_size'])
             if 'emote_size' in cfg and hasattr(self, 'emote_size_sld'):
@@ -1243,12 +1249,40 @@ class GameOverlaySettingsDialog(QDialog):
             if 'text_color' in cfg and hasattr(self, 'text_color_btn'):
                 self.settings.game_overlay_text_color = cfg['text_color']
                 self.text_color_btn._update_swatch()
-            if 'box_enabled' in cfg and hasattr(self, 'box_cb'):
-                self.box_cb.setChecked(bool(cfg['box_enabled']))
             if 'text_stroke' in cfg and hasattr(self, 'stroke_cb'):
                 self.stroke_cb.setChecked(bool(cfg['text_stroke']))
+            if 'text_stroke_width' in cfg and hasattr(self, 'stroke_w_sld'):
+                self._set_slider(self.stroke_w_sld, cfg['text_stroke_width'])
             if 'text_shadow' in cfg and hasattr(self, 'shadow_cb'):
                 self.shadow_cb.setChecked(bool(cfg['text_shadow']))
+            if 'text_shadow_blur' in cfg and hasattr(self, 'shadow_blur_sld'):
+                self._set_slider(self.shadow_blur_sld, cfg['text_shadow_blur'])
+            if 'layout' in cfg and hasattr(self, 'layout_combo'):
+                self._set_combo(self.layout_combo, cfg['layout'])
+            if 'anim_in' in cfg and hasattr(self, 'anim_in_combo'):
+                self._set_combo(self.anim_in_combo, cfg['anim_in'])
+            if 'anim_out' in cfg and hasattr(self, 'anim_out_combo'):
+                self._set_combo(self.anim_out_combo, cfg['anim_out'])
+            if 'auto_hide' in cfg and hasattr(self, 'autohide_cb'):
+                self.autohide_cb.setChecked(bool(cfg['auto_hide']))
+            if 'hide_after' in cfg and hasattr(self, 'hide_after_sld'):
+                self._set_slider(self.hide_after_sld, cfg['hide_after'])
+            if 'show_logo' in cfg and hasattr(self, 'logo_cb'):
+                self.logo_cb.setChecked(bool(cfg['show_logo']))
+            if 'show_timestamp' in cfg and hasattr(self, 'ts_cb'):
+                self.ts_cb.setChecked(bool(cfg['show_timestamp']))
+            if 'box_enabled' in cfg and hasattr(self, 'box_cb'):
+                self.box_cb.setChecked(bool(cfg['box_enabled']))
+            if 'box_radius' in cfg and hasattr(self, 'box_radius_sld'):
+                self._set_slider(self.box_radius_sld, cfg['box_radius'])
+            if 'box_border' in cfg and hasattr(self, 'box_border_cb'):
+                self.box_border_cb.setChecked(bool(cfg['box_border']))
+            if 'box_border_width' in cfg and hasattr(self, 'box_border_w_sld'):
+                self._set_slider(self.box_border_w_sld, cfg['box_border_width'])
+            if 'box_shadow' in cfg and hasattr(self, 'box_shadow_cb'):
+                self.box_shadow_cb.setChecked(bool(cfg['box_shadow']))
+            if 'box_glow' in cfg and hasattr(self, 'box_glow_cb'):
+                self.box_glow_cb.setChecked(bool(cfg['box_glow']))
 
         # ★ special widgets (balloon-specific)
         elif mode == 'special':
@@ -1281,6 +1315,10 @@ class GameOverlaySettingsDialog(QDialog):
 
         ★ แต่ละ mode มี styling ของตัวเอง — save ค่าปัจจุบันก่อนสลับ
         """
+        if getattr(self, '_loading', False):
+            self._update_appearance_visibility(mode)
+            return
+
         # ★ save current mode config (ก่อนสลับ)
         old_mode = getattr(self.settings, 'game_overlay_appearance_mode', 'default')
         if old_mode != mode:
@@ -1298,8 +1336,10 @@ class GameOverlaySettingsDialog(QDialog):
             self.settings.game_overlay_character_mode = False
         # ★ load new mode config → apply to widgets (block _save_mode_config during load)
         self._loading = True
-        self._load_mode_config(mode)
-        self._loading = False
+        try:
+            self._load_mode_config(mode)
+        finally:
+            self._loading = False
         # sync balloon checkbox
         if hasattr(self, 'balloon_cb'):
             self.balloon_cb.blockSignals(True)
@@ -1446,6 +1486,7 @@ class GameOverlaySettingsDialog(QDialog):
     def _save(self):
         """save settings + update overlay + re-register hotkeys + close"""
         if self.settings:
+            self._save_mode_config()
             # ★ save hotkey fields (อ่านจาก binder button._hotkey)
             if hasattr(self, 'go_hk_toggle'):
                 hk_t = (getattr(self.go_hk_toggle, '_hotkey', '') or 'ctrl+shift+g').strip().lower()
@@ -1481,6 +1522,7 @@ class GameOverlaySettingsDialog(QDialog):
     def closeEvent(self, event):
         """save on close"""
         if self.settings:
+            self._save_mode_config()
             # ★ save hotkey fields (อ่านจาก binder button._hotkey)
             if hasattr(self, 'go_hk_toggle'):
                 self.settings.game_overlay_hotkey = (getattr(self.go_hk_toggle, '_hotkey', '') or 'ctrl+shift+g').strip().lower()

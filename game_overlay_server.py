@@ -814,7 +814,7 @@ class GameOverlayServer:
             "show_logo": mc_get("show_logo", "game_overlay_show_logo", True),
             "show_timestamp": mc_get("show_timestamp", "game_overlay_show_timestamp", False),
             "auto_hide": mc_get("auto_hide", "game_overlay_auto_hide", True),
-            "hide_after": mc_get("hide_after", "game_overlay_hide_after", 8.0),
+            "hide_after": mc_get("hide_after", "game_overlay_hide_after", 10.0),
             "font_family": mc_get("font_family", "game_overlay_font_family", "Kanit"),
             "font_weight": mc_get("font_weight", "game_overlay_font_weight", "500"),
             "text_color": mc_get("text_color", "game_overlay_text_color", "#ffffff"),
@@ -988,7 +988,7 @@ if __name__ == "__main__":
         game_overlay_show_logo = True
         game_overlay_show_timestamp = False
         game_overlay_auto_hide = True
-        game_overlay_hide_after = 8.0
+        game_overlay_hide_after = 10.0
         game_overlay_font_family = "Kanit"
         game_overlay_font_weight = "500"
         game_overlay_text_color = "#ffffff"

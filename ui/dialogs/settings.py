@@ -146,6 +146,7 @@ class SettingsDialog(QDialog):
         self.sidebar.setObjectName("SettingsSidebar")
         self._apply_sidebar_theme_qss()
         categories = [
+            ("🚀 Next Version", "next_version"),
             ("🔌 แพลตฟอร์ม", "platforms"),
             ("🔊 TTS", "tts"),
             ("🎨 Theme", "app_theme"),
@@ -199,6 +200,7 @@ class SettingsDialog(QDialog):
 
         # ★ Build all sections (แต่ละ section = page ใน stack)
         self._sections = {}
+        self._build_next_version_section()
         self._build_platforms_section()
         self._build_tts_section()
         self._build_theme_section()
@@ -223,7 +225,7 @@ class SettingsDialog(QDialog):
         self._build_about_section()
 
         # ★ Show first section
-        self._show_section("platforms")
+        self._show_section("next_version")
 
         # ★ Bottom bar (ปุ่มปิดอย่างเดียว — auto-save ทำงาน live)
         bottom = QFrame()
@@ -672,6 +674,13 @@ class SettingsDialog(QDialog):
     # ════════════════════════════════════════════════════════════
     # Section builders
     # ════════════════════════════════════════════════════════════
+    def _build_next_version_section(self):
+        """★ Section สำหรับแจ้งข่าวสารและการย้ายสู่ Broadcast Playroom 3 (v3)"""
+        from ui.dialogs.v3_migration_dialog import V3MigrationCard
+        widget = self._add_section("next_version", "", "")
+        card = V3MigrationCard(self, show_dismiss_controls=False, settings=self.settings)
+        self._current_section_layout.insertWidget(self._current_section_layout.count() - 1, card)
+
     def _build_platforms_section(self):
         w = self._add_section(
             "platforms", "🔌 แพลตฟอร์ม",

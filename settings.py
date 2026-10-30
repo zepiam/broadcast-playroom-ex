@@ -754,7 +754,11 @@ class AppSettings:
     notifications: dict = field(default_factory=dict)
     notification: dict = field(default_factory=dict)  # legacy flat (สำหรับ backward compat)
     topbar_hidden_buttons: list = field(default_factory=list)  # ปุ่มบน Topbar ที่ถูกซ่อน ["game_overlay", "overlay_plus", "user_manager"]
-    chat_hidden_buttons: list = field(default_factory=list)  # ปุ่มบนแถบแชทที่ถูกซ่อน ["ask", "giveaway", "replie", "randomizer", "clip_marker", "code_mute"]
+    chat_hidden_buttons: list = field(default_factory=list)
+    dismiss_v3_migration_notice: bool = False  # ซ่อน dialog แจ้งเตือนย้ายสู่ v3 ตอนเปิดโปรแกรม
+
+    def save(self) -> None:
+        save_settings(self)  # ปุ่มบนแถบแชทที่ถูกซ่อน ["ask", "giveaway", "replie", "randomizer", "clip_marker", "code_mute"]
 
     def save_settings(self) -> None:
         """★ method wrapper — เรียก module-level save_settings(self)
@@ -1132,6 +1136,7 @@ class AppSettings:
             "notification": dict(self.notification),
             "topbar_hidden_buttons": list(self.topbar_hidden_buttons),
             "chat_hidden_buttons": list(self.chat_hidden_buttons),
+            "dismiss_v3_migration_notice": self.dismiss_v3_migration_notice,
         }
 
     @classmethod
@@ -1965,6 +1970,8 @@ class AppSettings:
             s.topbar_hidden_buttons = [str(x) for x in data["topbar_hidden_buttons"]]
         if "chat_hidden_buttons" in data and isinstance(data["chat_hidden_buttons"], list):
             s.chat_hidden_buttons = [str(x) for x in data["chat_hidden_buttons"]]
+        if "dismiss_v3_migration_notice" in data:
+            s.dismiss_v3_migration_notice = bool(data["dismiss_v3_migration_notice"])
         return s
 
     # ------------------------------------------------------------------ #

@@ -994,6 +994,7 @@ class TTSForLivestreamApp(QMainWindow):
 
 
 
+        QTimer.singleShot(1500, self._check_v3_migration_notice)
         QTimer.singleShot(5000, self._auto_check_update)
 
 
@@ -18283,6 +18284,17 @@ class TTSForLivestreamApp(QMainWindow):
 
 
 
+
+    def _check_v3_migration_notice(self):
+        """★ แสดง dialog แจ้งเตือนการย้ายระบบสู่ Broadcast Playroom 3 ตอนเปิดโปรแกรม (ถ้ายังไม่ได้ติ๊กไม่แสดงอีก)"""
+        try:
+            if getattr(self.settings, "dismiss_v3_migration_notice", False):
+                return
+            from ui.dialogs.v3_migration_dialog import V3MigrationDialog
+            dlg = V3MigrationDialog(self, settings=self.settings)
+            dlg.exec()
+        except Exception as e:
+            logger.warning(f"Failed to show v3 migration notice: {e}")
 
     def _check_announcement(self):
 
